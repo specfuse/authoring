@@ -1,0 +1,494 @@
+# =============================================================================
+# AsyncAPI — Canonical Message & Operation Samples (v2.1)
+# =============================================================================
+# Copy-paste templates for all async patterns in the simplified pub-sub model.
+# Every new message, channel, and operation should start from these samples.
+#
+# v2.1 architecture summary:
+#   - Only two message categories: event, scheduledJob
+#   - Only two channel types: event-topic, scheduled-trigger
+#   - Pub-sub only — no commands, no sagas, no point-to-point queues
+#   - Scheduled jobs are thin fan-out dispatchers (query DB, publish events)
+#   - Language-specific fields (namespaces, class names) are NOT in specs
+#   - Two-segment Labels: {Entity}.{Action} only — tenancy in envelope ApplicationProperties
+#   - Filters are derived from operation messages: list — authors do NOT write raw filter SQL
+#   - Payloads use snapshot $refs (events/{Entity}Snapshot.yaml), not raw entity types
+#   - Action class inferred from suffix: *Created / *Updated / *Deleted / state-transition
+#   - State-transition events require x-trigger-when predicate
+#
+# Reference: handbooks/AsyncAPI_Handbook.md
+# =============================================================================
+
+# =============================================================================
+# 1. DOMAIN EVENT — Action class inferred from message-name suffix
+# =============================================================================
+# File: domains/{domain}/messages/{Entity}{Action}.yaml
+# Naming: past tense PascalCase (e.g., OrderSubmitted, CustomerCreated)
+#
+# Action class table (handbook §2.2):
+#   *Created           → after only                — NO x-trigger-when
+#   *Updated           → before + after            — NO x-trigger-when
+#   *Deleted           → before only               — NO x-trigger-when
+#   anything else      → before + after + context? — REQUIRES x-trigger-when
+#
+# All event payloads carry: a required <aggregateId> scalar (named after the
+# entity's PK, e.g. orderId) plus the appropriate before/after snapshots.
+# Tenant routing fields (tenantId) live INSIDE the snapshot, not as separate
+# top-level payload fields — the envelope ApplicationProperties carry them
+# separately for filter routing.
+
+# --- 1a. *Created example (after only) -------------------------------------
+_createdEventMessage:
+  name: OrderCreated
+  title: Order Created
+  summary: Emitted when a new order is persisted.
+  contentType: application/json
+  traits:
+    - $ref: '../../../async-common/message-traits/common.yaml#/auditableEvent'
+  x-message-category: event
+  x-label:                                         # REQUIRED — Label routing + aggregate link
+    entity: Order                                  # PascalCase — must match a schema with x-entity in OpenAPI
+    action: Created                                # PascalCase past-tense verb
+  # Runtime Label = "Order.Created"  (two segments only — tenancy in envelope)
+  x-version:                                       # REQUIRED
+    current: 1
+    status: stable                                 # draft | stable | deprecated
+  x-partition-key:                                 # OPTIONAL — for ordered delivery per aggregate
+    property: orderId
+    scope: aggregate
+  payload:
+    type: object
+    required: [orderId, after]                     # *Created: aggregateId + after only
+    properties:
+      orderId: { type: string, format: uuid }
+      after:                                       # Snapshot $ref — NEVER raw entity model
+        $ref: '../events/OrderSnapshot.yaml'
+
+# --- 1b. *Updated example (before + after) ---------------------------------
+_updatedEventMessage:
+  name: OrderUpdated
+  title: Order Updated
+  summary: Emitted when an order's tracked fields change without a state transition.
+  contentType: application/json
+  traits:
+    - $ref: '../../../async-common/message-traits/common.yaml#/auditableEvent'
+  x-message-category: event
+  x-label: { entity: Order, action: Updated }
+  x-version: { current: 1, status: stable }
+  payload:
+    type: object
+    required: [orderId, before, after]             # *Updated: aggregateId + before + after
+    properties:
+      orderId: { type: string, format: uuid }
+      before: { $ref: '../events/OrderSnapshot.yaml' }
+      after:  { $ref: '../events/OrderSnapshot.yaml' }
+
+# --- 1c. State-transition example (before + after + REQUIRED x-trigger-when) ---
+_stateTransitionEventMessage:
+  name: OrderSubmitted                             # State transition — NOT a *Created/*Updated/*Deleted
+  title: Order Submitted
+  summary: Emitted when an order transitions from placed to submitted.
+  contentType: application/json
+  traits:
+    - $ref: '../../../async-common/message-traits/common.yaml#/auditableEvent'
+  x-message-category: event
+  x-label: { entity: Order, action: Submitted }
+  x-version: { current: 1, status: stable }
+  # State-transition events REQUIRE x-trigger-when. The generator-emitted service
+  # code evaluates this predicate against EntityEntry.OriginalValues (Before) and
+  # EntityEntry.CurrentValues (After) before SaveChangesAsync. On a match, this
+  # event fires AND the corresponding *Updated is suppressed (mutual exclusivity).
+  x-trigger-when: "After.status == 'submitted' && Before.status != 'submitted'"
+  x-partition-key:
+    property: orderId
+    scope: aggregate
+  payload:
+    type: object
+    required: [orderId, before, after]
+    properties:
+      orderId: { type: string, format: uuid }
+      before: { $ref: '../events/OrderSnapshot.yaml' }
+      after:  { $ref: '../events/OrderSnapshot.yaml' }
+
+# --- 1d. *Deleted example (before only) -----------------------------------
+_deletedEventMessage:
+  name: OrderDeleted
+  title: Order Deleted
+  summary: Emitted when an order is removed.
+  contentType: application/json
+  traits:
+    - $ref: '../../../async-common/message-traits/common.yaml#/auditableEvent'
+  x-message-category: event
+  x-label: { entity: Order, action: Deleted }
+  x-version: { current: 1, status: stable }
+  payload:
+    type: object
+    required: [orderId, before]                    # *Deleted: aggregateId + before only
+    properties:
+      orderId: { type: string, format: uuid }
+      before: { $ref: '../events/OrderSnapshot.yaml' }
+
+# --- 1e. Snapshot file (one per event-emitting entity, reused across all events) ---
+# File: domains/{domain}/events/{Entity}Snapshot.yaml
+#   - Scalar columns + owned value objects + foreign-key scalars to parents
+#   - NEVER navigation properties, NEVER child collections, NEVER computed fields
+#   - Soft cap: 25 scalar fields (waive with x-snapshot-size-acknowledged: true)
+#   - PII fields (entity field with x-classification: [pii] or [sensitive]) require
+#     justification in x-snapshot-pii-acknowledged on the snapshot file
+#
+# Example (domains/order/events/OrderSnapshot.yaml):
+#
+#   type: object
+#   description: Frozen snapshot of an Order at the moment of an event.
+#   required: [id, tenantId, customerId, status, currency]
+#   properties:
+#     id:                { type: string, format: uuid }
+#     tenantId:          { type: string, format: uuid }
+#     customerId:        { type: string, format: uuid }
+#     status:            { $ref: '../models/OrderStatus.yaml' }
+#     currency:          { type: string }
+#     reference:         { type: string, nullable: true }
+#     placedAt:          { type: string, format: date-time, nullable: true }
+#     submittedAt:       { type: string, format: date-time, nullable: true }
+#     submittedByUserId: { type: string, format: uuid, nullable: true }
+#     archivedAt:        { type: string, format: date-time, nullable: true }
+
+# =============================================================================
+# 2. SCHEDULED JOB — Cron-triggered thin fan-out dispatcher
+# =============================================================================
+# File: domains/{domain}/messages/{ActionDescription}Job.yaml
+# Naming: verb phrase + Job suffix (e.g., AutoArchiveStaleOrdersJob)
+#
+# DEFAULT PATTERN: query DB, publish one event per work item via a
+# 'send' operation. The job handler itself does NO heavy processing.
+# Exceptions (single-output jobs with no per-item semantics) are rare —
+# ask before deviating.
+
+_scheduledJobMessage:
+  name: AutoArchiveStaleOrdersJob                  # PascalCase, verb phrase + Job
+  title: Auto-Archive Stale Orders Job
+  summary: Runs weekly to fan out archive events for stale draft orders
+  contentType: application/json
+  traits:
+    - $ref: '../../../async-common/message-traits/common.yaml#/commonHeaders'
+  x-message-category: scheduledJob                 # REQUIRED
+  x-label:                                         # REQUIRED
+    entity: Order
+    action: AutoArchiveStale
+  # Runtime Label = "Order.AutoArchiveStale"  (two segments only — tenancy in envelope)
+  x-version:                                       # REQUIRED
+    current: 1
+    status: stable
+  x-scheduled-job:                                 # REQUIRED
+    cron: '0 2 * * 1'                              # Standard cron (required)
+    timezone: America/New_York                     # IANA timezone (optional, default: UTC)
+    overlap: skip                                  # skip | queue | cancelPrevious (default: skip)
+    scope: perTenant                               # global | perTenant | project-defined narrower scopes (default: perTenant)
+  payload:
+    type: object
+    required:
+      - tenantId                                   # perTenant scope → tenant identifier
+    properties:
+      tenantId:
+        type: string
+        format: uuid
+      staleThresholdDays:                          # Job-specific config parameters
+        type: integer
+        default: 30
+
+# =============================================================================
+# 3. EVENT TOPIC CHANNEL (shared)
+# =============================================================================
+# File: async-common/channels/application-events.yaml
+#
+# v2.1 architecture: ALL event messages publish to a single shared topic
+# (handbook §1.5 and §3.2). Consumers isolate themselves via subscription
+# filters on the Label property. Per-aggregate or per-domain event topics
+# are NOT a default — see the sharding escape hatch in handbook §3.2 if
+# operational evidence later justifies splitting.
+
+_eventTopicChannel:
+  address: '{project}.events'                      # {project} is a literal token chosen per project (e.g., "acme")
+  description: |
+    Single shared topic for every domain event. Consumers subscribe with
+    SQL-style filters over the Label property. See handbook §1.5 and §3.2
+    for the rationale.
+  messages:                                        # MUST list every event message referenced by any operation bound to this channel
+    orderCreated:                                  # camelCase key
+      $ref: '../../domains/order/messages/OrderCreated.yaml'
+    orderSubmitted:
+      $ref: '../../domains/order/messages/OrderSubmitted.yaml'
+    customerCreated:
+      $ref: '../../domains/customer/messages/CustomerCreated.yaml'
+    # ...one entry per event message file in the repo
+  x-domain: shared                                 # REQUIRED — kebab-case domain ('shared' for the application-wide channel)
+  x-channel-type: event-topic                      # REQUIRED
+
+# =============================================================================
+# 4. SCHEDULED-TRIGGER CHANNEL
+# =============================================================================
+# File: domains/{domain}/channels/{domain}-jobs.yaml
+# One per domain. The address is a logical identifier — there is no real
+# transport for scheduled jobs (cron fires them directly).
+
+_scheduledTriggerChannel:
+  address: '{project}.order.jobs'                  # {project}.{domain}.jobs
+  description: |
+    Scheduled jobs for the order domain. Jobs are thin dispatchers
+    that query the database and publish events for further processing.
+  messages:
+    autoArchiveStaleOrdersJob:
+      $ref: '../messages/AutoArchiveStaleOrdersJob.yaml'
+  x-domain: order
+  x-channel-type: scheduled-trigger                # REQUIRED
+
+# =============================================================================
+# 5. EVENT HANDLER OPERATION (Direct Work — No Dispatch Middleman)
+# =============================================================================
+# File: domains/{domain}/async-operations/on-{event-name}.yaml
+# Prefix: on-* for event handlers
+# The handler does the actual work directly — no command dispatch.
+
+_eventHandlerOperation:
+  action: receive
+  channel:
+    $ref: '../../../async-common/channels/application-events.yaml'
+  tags:
+    - name: Order                                  # REQUIRED — exactly one tag (PascalCase, matching the domain)
+  summary: Reserve inventory when an order is submitted
+  description: |
+    Reacts to Order.Submitted events by reserving inventory directly.
+    No command dispatch layer — the handler does the work.
+  traits:
+    - $ref: '../../../async-common/operation-traits/common.yaml#/reliableDelivery'
+  messages:
+    - $ref: '../../../domains/order/messages/OrderSubmitted.yaml'
+  x-worker:                                        # REQUIRED
+    idempotent: true                               # default: true
+    inboxDedup: true                               # default: true. Set false ONLY for side-effect-free handlers (cache invalidator, metrics emitter)
+    concurrency: 3                                 # default: 1
+    timeout: 120s                                  # hard execution cap
+  x-observability:                                 # RECOMMENDED
+    criticality: high                              # low | medium | high | critical (legacy 'normal' rejected — migrate to 'medium')
+    sla:
+      maxProcessingTime: 30s                       # soft warning target
+    metrics:
+      - inventoryReservationDuration
+      - reservedItemCount
+    alertOnDlq: true
+  x-subscription:                                  # REQUIRED on event-topic receivers
+    name: on-order-submitted                       # MUST equal the operation file stem
+    # NO 'filter' field — filters are derived from the messages: list above.
+    # The generator emits: Label = 'Order.Submitted'
+    # AND-merge tenant/channel scoping via requiredHeaders (see sample 5c below).
+
+# =============================================================================
+# 5b. EVENT HANDLER THAT PUBLISHES EVENTS (on-* with x-emits)
+# =============================================================================
+# When an on-* handler emits events on completion, it declares x-emits
+# to link to the corresponding emit-* declarations.
+# The code generator wires the publish calls into the handler class.
+
+_eventHandlerWithEmits:
+  action: receive
+  channel:
+    $ref: '../../../async-common/channels/application-events.yaml'
+  tags:
+    - name: Customer
+  summary: AI-driven customer profile enrichment
+  description: |
+    Reacts to Customer.Created events and enriches the profile from external
+    sources. On completion, publishes CustomerProfile.Enriched via the
+    emit-customer-profile-enriched send operation.
+  traits:
+    - $ref: '../../../async-common/operation-traits/common.yaml#/reliableDelivery'
+  messages:
+    - $ref: '../../../domains/customer/messages/CustomerCreated.yaml'
+  x-emits:                                         # Links to emit-* declarations
+    - event: CustomerProfile.Enriched              # {Entity}.{Action} matching emit-* message's x-label
+      description: Published when enrichment finishes
+  x-worker:
+    idempotent: true
+    concurrency: 3
+    timeout: 120s
+  x-observability:
+    criticality: high
+    sla:
+      maxProcessingTime: 60s
+    alertOnDlq: true
+  x-subscription:
+    name: on-customer-created-for-enrichment       # MUST equal operation file stem
+    # NO 'filter' — derived from messages: → Label = 'Customer.Created'
+
+# =============================================================================
+# 5c. CHANNEL-AWARE EVENT HANDLER (uses requiredHeaders + x-envelope-promote)
+# =============================================================================
+# When a snapshot field is also published as an envelope ApplicationProperty
+# (declared via x-envelope-promote: true on the snapshot field), subscribers
+# can target it via requiredHeaders. The generator AND-merges the header
+# equality into the derived label filter.
+#
+# Example: NotificationJobSnapshot.yaml has 'channel' with x-envelope-promote: true.
+# This subscriber handles only the email channel.
+
+_channelAwareHandler:
+  action: receive
+  channel:
+    $ref: '../../../async-common/channels/application-events.yaml'
+  tags:
+    - name: Notification
+  summary: Email-channel notification dispatcher
+  description: |
+    Subscribes to NotificationJob.Created events whose channel header equals 'email'.
+    The 'channel' field is declared on NotificationJobSnapshot with x-envelope-promote,
+    so the producer pipeline stamps it as an ApplicationProperty for this filter to match.
+  traits:
+    - $ref: '../../../async-common/operation-traits/common.yaml#/reliableDelivery'
+  messages:
+    - $ref: '../messages/NotificationJobCreated.yaml'
+  x-worker:
+    idempotent: true
+    inboxDedup: true
+    concurrency: 5
+    timeout: 30s
+  x-observability:
+    criticality: medium
+    sla:
+      maxProcessingTime: 10s
+    alertOnDlq: true
+  x-subscription:
+    name: on-notification-job-dispatch-email       # MUST equal operation file stem
+    requiredHeaders:                               # Declarative — AND-merged with derived label filter
+      channel: email
+    # Generator emits: Label = 'NotificationJob.Created' AND user.channel = 'email'
+
+# Alternative for forward-compat or unusual SQL predicates:
+#   x-subscription:
+#     name: on-...
+#     filterOverride: "Label LIKE 'Customer.%' OR Label LIKE 'Order.%'"
+# Requires `description` ≥ 40 chars on the operation justifying why derivation is insufficient.
+# Mutually exclusive with requiredHeaders.
+
+# =============================================================================
+# 6. SCHEDULED JOB OPERATION (THIN FAN-OUT DISPATCHER)
+# =============================================================================
+# File: domains/{domain}/async-operations/run-{job-name}.yaml
+# Prefix: run-* for scheduled jobs
+# action: send — scheduled jobs are cron-triggered publishers, not message receivers
+# x-worker: REQUIRED — run-* operations ARE workers
+# MUST be a thin fan-out dispatcher — query DB, publish events, never do heavy work.
+
+_scheduledJobOperation:
+  action: send                                     # Cron-triggered publisher, NOT a message receiver
+  channel:
+    $ref: '../../../async-common/channels/application-events.yaml'  # Where the per-item events are published
+  tags:
+    - name: Order
+  summary: Identify stale orders and publish one archive-requested event per order
+  description: |
+    Cron-triggered thin fan-out dispatcher. Queries the DB for stale draft
+    orders, then publishes one Order.ArchiveRequested event per order. A
+    separate subscriber archives each order with per-item retry and DLQ
+    isolation.
+
+    Uses action: send because this is a cron-triggered publisher, not a
+    message receiver. The cron schedule is defined in x-scheduled-job on
+    the AutoArchiveStaleOrdersJob message.
+  traits:
+    - $ref: '../../../async-common/operation-traits/common.yaml#/standardDelivery'
+  messages:
+    - $ref: '../messages/AutoArchiveStaleOrdersJob.yaml'
+  x-worker:                                        # REQUIRED — run-* operations ARE workers
+    idempotent: true
+    concurrency: 1
+    timeout: 120s                                  # Short — just query + publish, no processing
+  x-observability:
+    criticality: medium                            # low | medium | high | critical (legacy 'normal' rejected)
+    sla:
+      maxProcessingTime: 60s
+    metrics:
+      - staleOrdersFound
+      - archiveEventsPublished
+    alertOnDlq: true
+  # NOTE: run-* operations do NOT use emit-* or x-emits — they publish directly
+  # NOTE: run-* operations do NOT use x-subscription — they are cron-triggered, not subscribers
+
+# =============================================================================
+# 7. EVENT PUBLISHER DECLARATION (send — NOT a worker)
+# =============================================================================
+# File: domains/{domain}/async-operations/emit-{event-name}.yaml
+# Prefix: emit-* for publishing declarations
+# Declares that an on-* worker publishes an event as part of its processing.
+# The owning on-* operation links to this via x-emits.
+# x-worker: FORBIDDEN — emit-* operations are NOT workers.
+# This REPLACES the v1 x-dispatches extension.
+#
+# Multiple on-* workers and/or REST endpoints may publish the same event.
+# The emit-* operation is a shared contract, not owned by a single producer.
+
+_eventPublisherOperation:
+  action: send
+  channel:
+    $ref: '../../../async-common/channels/application-events.yaml'
+  tags:
+    - name: Order
+  summary: Publish Order.ArchiveRequested event
+  description: |
+    Publishing declaration for events emitted by workers that need to
+    trigger per-item archive processing. Downstream subscribers handle
+    each item independently with per-item retry and DLQ isolation.
+
+    This is NOT a worker — the code generator wires this publish call
+    into the owning worker(s) via x-emits.
+  messages:
+    - $ref: '../messages/OrderArchiveRequested.yaml'
+  # NO x-worker — emit-* operations are declarations, not workers
+  # NO x-observability — observability belongs on the owning worker
+
+# =============================================================================
+# 8. AI-POWERED OPERATION
+# =============================================================================
+# Same as any event handler, but adds x-ai extension.
+
+_aiPoweredOperation:
+  action: receive
+  channel:
+    $ref: '../../../async-common/channels/application-events.yaml'
+  tags:
+    - name: Customer
+  summary: AI-powered customer profile enrichment
+  description: |
+    Reacts to Customer.Created by assembling context and using an LLM
+    to enrich the customer profile from external sources.
+  traits:
+    - $ref: '../../../async-common/operation-traits/common.yaml#/reliableDelivery'
+  messages:
+    - $ref: '../../../domains/customer/messages/CustomerCreated.yaml'
+  x-worker:
+    idempotent: true
+    concurrency: 3
+    timeout: 120s
+  x-observability:
+    criticality: high
+    sla:
+      maxProcessingTime: 60s
+    alertOnDlq: true
+  x-subscription:
+    name: on-customer-created-for-enrichment       # MUST equal operation file stem
+    # NO 'filter' — derived from messages: → Label = 'Customer.Created'
+  x-ai:                                           # Marks this as AI-powered
+    enabled: true
+    task: generation                               # generation | classification | extraction | etc.
+    model: claude-sonnet                           # Informational — runtime configurable
+    promptTemplate: customer/enrich-profile
+    capabilities:
+      - structuredOutput
+      - toolUse
+    estimatedTokens:
+      input: 8000
+      output: 3000
+    maxLatency: 60s
+    fallback: queue                                # skip | queue | default
+    entities:                                      # Required when enabled: true
+      reads: [Customer]                            # Each must have aiAccess.operations containing 'read'
+      updates: [Customer]                          # Each must have aiAccess.operations containing 'update'
