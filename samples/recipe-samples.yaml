@@ -1,0 +1,909 @@
+# =============================================================================
+# Arazzo — Canonical Recipe Samples
+# =============================================================================
+#
+# This file is the authoritative template for Arazzo setup recipe authoring.
+# It serves the same role as scenario-samples.yaml (scenarios) and
+# endpoint-samples.yaml (REST): when in doubt, consult this file.
+#
+# Four sections:
+#   1. Foundational recipe chain (minimal-tenant → minimal-customer
+#      → basic-orders)
+#   2. Domain-specific example (completed-order-with-customer)
+#   3. Demo-fixture variant (realistic-medium-tenant)
+#   4. Scenario consuming a recipe (closes the authoring loop)
+#
+# Reference: handbooks/Arazzo_Handbook.md §7
+# Schemas:   schemas/arazzo-extensions/x-recipe.schema.json
+#            schemas/arazzo-extensions/x-setup.schema.json
+#            schemas/arazzo-extensions/specfuse-arazzo-combined.schema.json
+#
+# ---------------------------------------------------------------------------
+# Composition chain (extends hierarchy):
+#
+#   minimal-tenant                                ← root (no extends)
+#     └─ minimal-customer                         ← extends minimal-tenant
+#          └─ basic-orders                        ← extends minimal-customer
+#               └─ completed-order-with-customer  ← extends basic-orders
+#
+# Each level inherits ALL parent outputs and adds its own. The output
+# namespace is FLAT — no nesting, no prefixes. If a parent and child
+# both declare an output with the same name, the validator emits an
+# error. This keeps $setup.outputs.X unambiguous in scenarios.
+# ---------------------------------------------------------------------------
+#
+# KEY INSIGHT: Recipes ARE Arazzo workflows.
+# There is no new spec format, no new runtime, no special schema.
+# A recipe is simply an Arazzo workflow that carries the x-recipe
+# extension. This means:
+#   - Standard Arazzo steps, inputs, outputs, successCriteria all work
+#   - Standard Arazzo tooling (editors, linters, viewers) all work
+#   - Composition uses Arazzo's native workflowId step references
+#   - The code generator and Specfuse get recipe support for free
+#
+# IMPORTANT: Token minting is NOT part of recipes.
+# Recipes provision ENTITIES (tenants, customers, orders, etc.) using
+# real OpenAPI operations. Authentication tokens are minted by the
+# Specfuse runtime's auth layer, which maps actors to recipe-seeded
+# entities. Recipes never call auth endpoints or produce tokens.
+#
+# IMPORTANT: Recipe data comes from x-sample annotations on OpenAPI
+# model properties (faker/fixed/template providers). Recipes should
+# reference x-sample-derived data, not hardcode realistic values.
+# Inline values shown below are for pedagogical clarity only.
+#
+# Extensions covered in this file:
+#   x-recipe, x-version, x-domain
+#
+# Extensions FORBIDDEN on recipes (scenario-only):
+#   x-actors  — recipes run as implicit $system mapped to the project's
+#               highest-privileged role
+#   x-setup   — recipes compose via 'extends', not $setup
+#   x-mcp     — recipes are infrastructure, not user-facing tools
+#   x-as      — every recipe step runs as $system (no actor binding)
+#   x-ui      — no user-facing interactions in fixture setup
+#
+# =============================================================================
+
+
+# =============================================================================
+# SECTION 1 — Foundational recipe chain
+# =============================================================================
+#
+# The three foundational recipes form the bedrock of every test scenario.
+# They create the minimum tenant hierarchy: Tenant → Customer → Orders.
+#
+# Most domain-specific recipes extend basic-orders (or minimal-customer
+# if they don't need orders). Scenarios reference the appropriate recipe
+# via x-setup.recipe and bind actors to recipe outputs via $setup.outputs.X.
+#
+# Composition chain for this section:
+#
+#   minimal-tenant         outputs: tenantId, adminUserId
+#     └─ minimal-customer  outputs: + customerId, customerUserId
+#          └─ basic-orders outputs: + orderId1, orderId2, agentId
+#
+# =============================================================================
+
+
+# ---------------------------------------------------------------------------
+# Recipe 1a: minimal-tenant.recipe.yaml
+# ---------------------------------------------------------------------------
+# The ROOT of the composition chain. No 'extends'. Creates one Tenant
+# and one User with the Admin role via real OpenAPI operations.
+#
+# File location: scenarios/setup-recipes/foundational/minimal-tenant.recipe.yaml
+# ---------------------------------------------------------------------------
+
+arazzo: "1.0.1"
+
+info:
+  title: "Minimal tenant fixture"
+  version: "1.0.0"
+
+# Source descriptions — same as scenarios. Every operationId must resolve
+# against one of these.
+sourceDescriptions:
+  - name: apiSpec
+    url: ../specs/v1/openapi.yaml
+    type: openapi
+
+# ---------------------------------------------------------------------------
+# x-version (REQUIRED) — lifecycle tracking, same shape as scenarios
+# ---------------------------------------------------------------------------
+x-version:
+  current: 1
+  status: draft
+
+# ---------------------------------------------------------------------------
+# x-domain (REQUIRED) — the owning domain for this recipe
+# ---------------------------------------------------------------------------
+# Foundational recipes use the domain of the primary entity they create.
+# minimal-tenant creates a Tenant, so its domain is 'tenant'.
+x-domain: tenant
+
+# ---------------------------------------------------------------------------
+# x-recipe (REQUIRED on recipes — this IS the recipe/scenario discriminator)
+# See handbook §7.2
+# ---------------------------------------------------------------------------
+# Presence of x-recipe marks this workflow as a recipe. There is no
+# separate x-category field.
+#
+# Fields:
+#   purpose             — what the recipe provisions fixtures for
+#                          test-fixture: disposable, fast, cleaned up after each scenario
+#                          demo-fixture: persistent, realistic, for demos and UAT
+#                          dev-fixture:  local dev seeding (like demo but refreshable)
+#   extends             — composition chain (absent = root recipe)
+#   idempotent          — running twice produces same result (default: true)
+#   estimatedDurationMs — informational, for test scheduling
+#   scope               — scenario (per-scenario) | session (shared across scenarios)
+#                          Session scope is deferred to Phase 5+.
+x-recipe:
+  purpose: test-fixture
+  # No 'extends' — this is the root of the chain
+  idempotent: true
+  estimatedDurationMs: 500
+  scope: scenario
+
+# NOTE: No x-actors, no x-setup, no x-mcp — these are FORBIDDEN on recipes.
+# Recipes execute as the implicit $system actor mapped to the project's
+# highest-privileged role (typically Admin).
+
+workflows:
+  - workflowId: setup
+    summary: "Create one tenant and one admin user"
+
+    # -------------------------------------------------------------------
+    # Inputs — parameterize the recipe for flexibility
+    # -------------------------------------------------------------------
+    # Callers (child recipes or scenarios) can override these defaults.
+    # x-sample annotations on the OpenAPI model properties provide
+    # realistic values via faker; the defaults below are fallbacks.
+    inputs:
+      type: object
+      properties:
+        tenantCode:
+          type: string
+          default: "TEST_TENANT"
+        tenantName:
+          type: string
+          default: "Test Tenant"
+
+    # -------------------------------------------------------------------
+    # Steps — ordered sequence of API calls
+    # -------------------------------------------------------------------
+    # No x-as on any step — recipes run as implicit $system.
+    steps:
+
+      # Step 1: Create the tenant
+      - stepId: create-tenant
+        operationId: createTenant            # REAL operationId
+        requestBody:
+          payload:
+            tenantCode: $inputs.tenantCode
+            legalName: $inputs.tenantName
+            # x-sample on NewTenant model properties provides realistic
+            # values for billing address, locale, etc.
+            # Minimal recipe: only the required fields.
+        successCriteria:
+          - condition: $statusCode == 201
+        outputs:
+          tenantId: $response.body#/id
+
+      # Step 2: Create an admin user for the tenant
+      - stepId: create-admin-user
+        operationId: createUser              # REAL operationId
+        requestBody:
+          payload:
+            # x-sample on NewUser provides faker-generated name/email
+            firstName: "Admin"
+            lastName: "User"
+            email: "admin@test-tenant.local"
+            role: admin
+            tenantId: $steps.create-tenant.outputs.tenantId
+        successCriteria:
+          - condition: $statusCode == 201
+        outputs:
+          adminUserId: $response.body#/id
+
+    # -------------------------------------------------------------------
+    # Outputs — the recipe's PUBLIC CONTRACT
+    # -------------------------------------------------------------------
+    # Scenarios reference these via $setup.outputs.X.
+    # Adding outputs is safe; removing or renaming is a BREAKING CHANGE
+    # that requires updating all dependent scenarios and child recipes.
+    #
+    # NOTE: No token outputs. Token minting is handled by the Specfuse
+    # runtime's auth layer, which maps scenario actors to recipe-seeded
+    # entities. Recipes produce entities, not tokens.
+    outputs:
+      tenantId: $steps.create-tenant.outputs.tenantId
+      adminUserId: $steps.create-admin-user.outputs.adminUserId
+
+
+# =============================================================================
+# Recipe 1b: minimal-customer.recipe.yaml
+# =============================================================================
+# Extends minimal-tenant. Inherits tenantId and adminUserId from parent.
+# Creates one Customer under the tenant and one User with the Customer role
+# (the user who acts on behalf of that customer).
+#
+# File location: scenarios/setup-recipes/foundational/minimal-customer.recipe.yaml
+# =============================================================================
+---
+
+arazzo: "1.0.1"
+
+info:
+  title: "Minimal customer fixture"
+  version: "1.0.0"
+
+sourceDescriptions:
+  - name: apiSpec
+    url: ../specs/v1/openapi.yaml
+    type: openapi
+
+x-version:
+  current: 1
+  status: draft
+
+x-domain: customer
+
+# ---------------------------------------------------------------------------
+# x-recipe with 'extends' — composition in action
+# ---------------------------------------------------------------------------
+# extends: [minimal-tenant] means:
+#   1. The Specfuse runtime runs minimal-tenant.recipe.yaml FIRST
+#   2. All of minimal-tenant's outputs become available to this recipe
+#      via $steps.parent-setup.outputs.X (the inherited output namespace)
+#   3. This recipe adds its own outputs on top
+#
+# The extends array is an ORDERED chain (single-inheritance).
+# Max depth: 6. No cycles. No output name collisions between levels.
+x-recipe:
+  purpose: test-fixture
+  extends:
+    - minimal-tenant
+  idempotent: true
+  estimatedDurationMs: 800
+  scope: scenario
+
+workflows:
+  - workflowId: setup
+    summary: "Create one customer and one customer-role user"
+
+    inputs:
+      type: object
+      properties:
+        customerName:
+          type: string
+          default: "Acme Co."
+        customerCode:
+          type: string
+          default: "ACME-001"
+
+    steps:
+
+      # Step 1: Create the customer under the inherited tenant
+      - stepId: create-customer
+        operationId: createCustomer          # REAL operationId
+        parameters:
+          # createCustomer requires tenantId as a path parameter.
+          # We reference the inherited output from the parent recipe.
+          - name: tenantId
+            in: path
+            value: $steps.parent-setup.outputs.tenantId
+        requestBody:
+          payload:
+            name: $inputs.customerName
+            customerCode: $inputs.customerCode
+            # Minimal required fields — x-sample fills the rest
+            primaryAddress:
+              street: "100 Test Street"
+              city: "Springfield"
+              region: "US-NY"
+              postalCode: "10001"
+              country: "US"
+        successCriteria:
+          - condition: $statusCode == 201
+        outputs:
+          customerId: $response.body#/id
+
+      # Step 2: Create the user who represents this customer
+      - stepId: create-customer-user
+        operationId: createUser              # REAL operationId
+        requestBody:
+          payload:
+            firstName: "Customer"
+            lastName: "User"
+            email: "customer@test-tenant.local"
+            role: customer
+            tenantId: $steps.parent-setup.outputs.tenantId
+            customerId: $steps.create-customer.outputs.customerId
+        successCriteria:
+          - condition: $statusCode == 201
+        outputs:
+          customerUserId: $response.body#/id
+
+    # Outputs accumulate: parent outputs are inherited automatically.
+    # Only declare NEW outputs here. The runtime merges them with the
+    # parent's outputs into a single flat namespace.
+    outputs:
+      # Inherited from minimal-tenant (shown in comments for clarity):
+      #   tenantId         — from parent
+      #   adminUserId      — from parent
+      # New outputs from this recipe:
+      customerId: $steps.create-customer.outputs.customerId
+      customerUserId: $steps.create-customer-user.outputs.customerUserId
+
+
+# =============================================================================
+# Recipe 1c: basic-orders.recipe.yaml
+# =============================================================================
+# Extends minimal-customer. Inherits tenantId, adminUserId, customerId,
+# customerUserId from parent chain. Creates 2 Orders for the customer and
+# a Support Agent user — the typical two-party scenario set-up (customer
+# + agent).
+#
+# File location: scenarios/setup-recipes/foundational/basic-orders.recipe.yaml
+# =============================================================================
+---
+
+arazzo: "1.0.1"
+
+info:
+  title: "Basic orders fixture"
+  version: "1.0.0"
+
+sourceDescriptions:
+  - name: apiSpec
+    url: ../specs/v1/openapi.yaml
+    type: openapi
+
+x-version:
+  current: 1
+  status: draft
+
+x-domain: order
+
+x-recipe:
+  purpose: test-fixture
+  extends:
+    - minimal-customer
+  idempotent: true
+  estimatedDurationMs: 1200
+  scope: scenario
+
+workflows:
+  - workflowId: setup
+    summary: "Create orders for the customer and seed a support agent user"
+
+    # -------------------------------------------------------------------
+    # Inputs with defaults
+    # -------------------------------------------------------------------
+    # orderCount is informational here — Arazzo 1.0.1 does not natively
+    # support iteration/looping. The Specfuse runtime interprets this input
+    # to control how many create-order steps to execute. For the samples
+    # file, we show the explicit two-order case (the most common pattern).
+    inputs:
+      type: object
+      properties:
+        orderCount:
+          type: integer
+          default: 2
+        orderPlacedDate:
+          type: string
+          default: "@today-1d"
+
+    steps:
+
+      # Step 1: Create a support agent user (needed by scenarios with
+      # an agent-side actor)
+      - stepId: create-agent-user
+        operationId: createUser              # REAL operationId
+        requestBody:
+          payload:
+            firstName: "Support"
+            lastName: "Agent"
+            email: "agent@test-tenant.local"
+            role: supportAgent
+            tenantId: $steps.parent-setup.outputs.tenantId
+        successCriteria:
+          - condition: $statusCode == 201
+        outputs:
+          agentId: $response.body#/id
+
+      # Step 2: Create first order (the "primary" order in most scenarios)
+      - stepId: create-order-1
+        operationId: createOrder             # REAL operationId
+        parameters:
+          - name: customerId
+            in: path
+            value: $steps.parent-setup.outputs.customerId
+        requestBody:
+          payload:
+            # x-sample on NewOrder provides faker-generated reference, etc.
+            placedAt: $inputs.orderPlacedDate
+            currency: "USD"
+        successCriteria:
+          - condition: $statusCode == 201
+        outputs:
+          orderId1: $response.body#/id
+
+      # Step 3: Create second order (for scenarios that need two orders,
+      # e.g., comparing or cross-referencing)
+      - stepId: create-order-2
+        operationId: createOrder             # REAL operationId
+        parameters:
+          - name: customerId
+            in: path
+            value: $steps.parent-setup.outputs.customerId
+        requestBody:
+          payload:
+            placedAt: $inputs.orderPlacedDate
+            currency: "USD"
+        successCriteria:
+          - condition: $statusCode == 201
+        outputs:
+          orderId2: $response.body#/id
+
+    # -------------------------------------------------------------------
+    # Outputs — named aliases for common patterns
+    # -------------------------------------------------------------------
+    # `orderId` is a convenience alias for single-order scenarios that
+    # don't care which of the two orders they get.
+    #
+    # Inherited from parent chain (not redeclared):
+    #   tenantId, adminUserId, customerId, customerUserId
+    outputs:
+      orderId1: $steps.create-order-1.outputs.orderId1
+      orderId2: $steps.create-order-2.outputs.orderId2
+      # Convenience alias for single-order scenarios:
+      orderId: $steps.create-order-1.outputs.orderId1
+      # Agent user output:
+      agentId: $steps.create-agent-user.outputs.agentId
+
+
+# =============================================================================
+# PARENT OUTPUT ACCESS — $steps.parent-setup.outputs.X
+# =============================================================================
+#
+# When a recipe extends another recipe, the child accesses the parent's
+# outputs via the expression root $steps.parent-setup.outputs.X.
+#
+# The parent-setup pseudo-step resolves to the parent recipe's workflow
+# outputs. This root is ONLY valid inside recipe workflows that declare
+# extends. Recipes without extends cannot reference $steps.parent-setup.
+#
+# OUTPUT INHERITANCE (how consumers see the merged namespace):
+#
+#   minimal-tenant outputs:        { tenantId, adminUserId }
+#   minimal-customer outputs:      { customerId, customerUserId }
+#   basic-orders outputs:          { orderId1, orderId2, orderId, agentId }
+#
+#   Scenario using basic-orders via x-setup sees ALL outputs merged:
+#     $setup.outputs.tenantId          ← from minimal-tenant (2 levels up)
+#     $setup.outputs.adminUserId       ← from minimal-tenant (2 levels up)
+#     $setup.outputs.customerId        ← from minimal-customer (1 level up)
+#     $setup.outputs.customerUserId    ← from minimal-customer (1 level up)
+#     $setup.outputs.orderId1          ← from basic-orders (direct)
+#     $setup.outputs.orderId2          ← from basic-orders (direct)
+#     $setup.outputs.orderId           ← from basic-orders (direct)
+#     $setup.outputs.agentId           ← from basic-orders (direct)
+#
+# RULES:
+#   - The runtime merges outputs from the full extends chain into a single
+#     flat namespace. Child recipes do NOT re-declare parent outputs.
+#   - Output name collisions between parent and child are a VALIDATOR ERROR.
+#     There is no shadowing or "child wins" — names must be unique.
+#   - Inside the child recipe's workflow, parent outputs are accessed via
+#     $steps.parent-setup.outputs.X (see minimal-customer step 1 above
+#     for a concrete example: tenantId comes from the parent).
+#
+# See handbook §7.5 for output contract rules and §8.1 for expression roots.
+# =============================================================================
+
+
+# =============================================================================
+# SECTION 2 — Domain-specific recipe example
+# =============================================================================
+#
+# Domain-specific recipes extend foundational ones to add domain fixtures.
+# This recipe takes one of the basic orders into the "completed" state so
+# that refund-flow scenarios have an order they can request a refund on.
+#
+# Composition chain:
+#   minimal-tenant → minimal-customer → basic-orders
+#     → completed-order-with-customer (this recipe)
+#
+# File location: scenarios/setup-recipes/domain-specific/order/
+#                completed-order-with-customer.recipe.yaml
+# =============================================================================
+---
+
+arazzo: "1.0.1"
+
+info:
+  title: "Completed order with customer fixture"
+  version: "1.0.0"
+
+sourceDescriptions:
+  - name: apiSpec
+    url: ../specs/v1/openapi.yaml
+    type: openapi
+
+x-version:
+  current: 1
+  status: draft
+
+x-domain: order
+
+x-recipe:
+  purpose: test-fixture
+  extends:
+    - basic-orders
+  idempotent: true
+  estimatedDurationMs: 2000
+  scope: scenario
+
+workflows:
+  - workflowId: setup
+    summary: "Take orderId1 through submit + fulfill so refund scenarios have something to refund"
+
+    inputs:
+      type: object
+      properties:
+        orderPlacedDate:
+          type: string
+          default: "@today-7d"
+
+    steps:
+
+      # Step 1: Add a line item to orderId1
+      - stepId: add-order-line
+        operationId: addOrderLine            # REAL operationId
+        parameters:
+          - name: orderId
+            in: path
+            value: $steps.parent-setup.outputs.orderId1
+        requestBody:
+          payload:
+            description: "Sample product"
+            quantity: 1
+            unitPriceMinor: 9999             # cents
+            currency: "USD"
+        successCriteria:
+          - condition: $statusCode == 201
+        outputs:
+          orderLineId: $response.body#/id
+
+      # Step 2: Submit the order
+      - stepId: submit-order
+        operationId: submitOrder             # REAL operationId
+        parameters:
+          - name: orderId
+            in: path
+            value: $steps.parent-setup.outputs.orderId1
+        successCriteria:
+          - condition: $statusCode == 200
+        outputs:
+          submittedAt: $response.body#/submittedAt
+
+      # Step 3: Fulfill the order (so it's in a state that allows refund)
+      - stepId: fulfill-order
+        operationId: fulfillOrder            # REAL operationId
+        parameters:
+          - name: orderId
+            in: path
+            value: $steps.parent-setup.outputs.orderId1
+        successCriteria:
+          - condition: $statusCode == 200
+        outputs:
+          fulfilledAt: $response.body#/fulfilledAt
+
+    # Inherited from parent chain:
+    #   tenantId, adminUserId, customerId, customerUserId,
+    #   orderId1, orderId2, orderId, agentId
+    outputs:
+      orderLineId: $steps.add-order-line.outputs.orderLineId
+      submittedAt: $steps.submit-order.outputs.submittedAt
+      fulfilledAt: $steps.fulfill-order.outputs.fulfilledAt
+
+
+# =============================================================================
+# SECTION 3 — Demo-fixture variant
+# =============================================================================
+#
+# This recipe has purpose: demo-fixture instead of test-fixture.
+# It demonstrates that the SAME construct serves different fixture needs:
+#
+#   test-fixture  — fast, minimal, disposable. Created and torn down per
+#                   scenario. Optimized for speed and isolation.
+#
+#   demo-fixture  — rich, realistic, persistent. Seeded once for demos,
+#                   UAT, or stakeholder walkthroughs. Uses x-sample model-
+#                   level faker for realistic names, addresses, order
+#                   histories. NOT cleaned up after execution.
+#
+#   dev-fixture   — like demo-fixture but refreshable. Seeded into the
+#                   local dev environment. Can be re-run to reset state.
+#
+# The difference is in the x-recipe.purpose field and the parameterization
+# (more customers, deeper order history, richer data). The spec structure,
+# composition model, and output contract are identical.
+#
+# File location: scenarios/setup-recipes/domain-specific/tenant/
+#                realistic-medium-tenant.recipe.yaml
+# =============================================================================
+---
+
+arazzo: "1.0.1"
+
+info:
+  title: "Realistic medium tenant demo fixture"
+  version: "1.0.0"
+
+sourceDescriptions:
+  - name: apiSpec
+    url: ../specs/v1/openapi.yaml
+    type: openapi
+
+x-version:
+  current: 1
+  status: draft
+
+x-domain: tenant
+
+# ---------------------------------------------------------------------------
+# Demo-fixture recipe — same x-recipe shape, different purpose
+# ---------------------------------------------------------------------------
+# Note: demo-fixtures are NOT cleaned up after execution. They persist
+# for the duration of the demo/UAT session. The Specfuse runtime uses
+# the purpose field to determine cleanup behavior.
+x-recipe:
+  purpose: demo-fixture
+  extends:
+    - basic-orders
+  idempotent: true
+  # Longer estimated duration — more entities to create
+  estimatedDurationMs: 15000
+  scope: scenario
+
+workflows:
+  - workflowId: setup
+    summary: >-
+      Seed a realistic medium-sized tenant with 20 customers, multiple
+      product categories, and 4 weeks of order history. Intended for
+      demos, UAT, and stakeholder walkthroughs.
+
+    # -------------------------------------------------------------------
+    # Richer parameterization for demo scenarios
+    # -------------------------------------------------------------------
+    # In a real demo-fixture, these inputs control the volume and
+    # diversity of seeded data. The Specfuse runtime iterates over
+    # entity creation based on these values.
+    inputs:
+      type: object
+      properties:
+        customerCount:
+          type: integer
+          default: 20
+        weekDepth:
+          type: integer
+          default: 4
+          description: "Number of weeks of order history to generate"
+        tenantName:
+          type: string
+          default: "Demo Distribution Inc."
+
+    # -------------------------------------------------------------------
+    # Steps — abbreviated for pedagogical clarity
+    # -------------------------------------------------------------------
+    # A real demo-fixture would have many more steps (create multiple
+    # product categories, seed multiple customers, generate order history
+    # for each week, etc.). The pattern is the same as test-fixture
+    # recipes — just more of everything.
+    #
+    # x-sample annotations on OpenAPI models provide realistic data:
+    #   - Customer names via faker (person.firstName, person.lastName)
+    #   - Addresses via faker (location.streetAddress, location.city)
+    #   - Tenant names via fixed/template providers
+    #   - Order references via templated codes
+    #
+    # The recipe references x-sample-derived data rather than hardcoding
+    # realistic values. Inline values below are fallback defaults only.
+    steps:
+
+      # Step 1: Create multiple product categories for variety
+      - stepId: create-category-electronics
+        operationId: createCategory          # REAL operationId
+        requestBody:
+          payload:
+            tenantId: $steps.parent-setup.outputs.tenantId
+            name:
+              en: "Electronics"
+              fr: "Électronique"
+        successCriteria:
+          - condition: $statusCode == 201
+        outputs:
+          electronicsCategoryId: $response.body#/id
+
+      - stepId: create-category-apparel
+        operationId: createCategory          # REAL operationId
+        requestBody:
+          payload:
+            tenantId: $steps.parent-setup.outputs.tenantId
+            name:
+              en: "Apparel"
+              fr: "Vêtements"
+        successCriteria:
+          - condition: $statusCode == 201
+        outputs:
+          apparelCategoryId: $response.body#/id
+
+      - stepId: create-category-home-goods
+        operationId: createCategory          # REAL operationId
+        requestBody:
+          payload:
+            tenantId: $steps.parent-setup.outputs.tenantId
+            name:
+              en: "Home Goods"
+              fr: "Articles ménagers"
+        successCriteria:
+          - condition: $statusCode == 201
+        outputs:
+          homeGoodsCategoryId: $response.body#/id
+
+      # Step 2: Create a catalog grouping these categories
+      - stepId: create-catalog
+        operationId: createCatalog           # REAL operationId
+        requestBody:
+          payload:
+            tenantId: $steps.parent-setup.outputs.tenantId
+            name: "Standard Catalog"
+            categoryIds:
+              - $steps.create-category-electronics.outputs.electronicsCategoryId
+              - $steps.create-category-apparel.outputs.apparelCategoryId
+              - $steps.create-category-home-goods.outputs.homeGoodsCategoryId
+        successCriteria:
+          - condition: $statusCode == 201
+        outputs:
+          catalogId: $response.body#/id
+
+      # Steps 3-N: Create customers, generate order history, add order lines...
+      # (Abbreviated — the Specfuse runtime expands $inputs.customerCount
+      # and $inputs.weekDepth into the appropriate number of iterations.
+      # Each iteration uses the same operationIds: createCustomer,
+      # createOrder, addOrderLine.)
+
+    # -------------------------------------------------------------------
+    # Demo-fixture outputs — richer than test-fixture
+    # -------------------------------------------------------------------
+    # Inherited from basic-orders chain:
+    #   tenantId, adminUserId, customerId, customerUserId,
+    #   orderId1, orderId2, orderId, agentId
+    outputs:
+      electronicsCategoryId: $steps.create-category-electronics.outputs.electronicsCategoryId
+      apparelCategoryId: $steps.create-category-apparel.outputs.apparelCategoryId
+      homeGoodsCategoryId: $steps.create-category-home-goods.outputs.homeGoodsCategoryId
+      catalogId: $steps.create-catalog.outputs.catalogId
+
+
+# =============================================================================
+# SECTION 4 — Scenario consuming a recipe
+# =============================================================================
+#
+# This section CLOSES THE AUTHORING LOOP. It shows a complete scenario
+# that references the completed-order-with-customer recipe from Section 2
+# and demonstrates how x-setup.recipe, x-actors.ref, and $setup.outputs.X
+# wire everything together.
+#
+# The reader now sees the full chain:
+#   1. Recipe defines outputs (Sections 1-3 above)
+#   2. Scenario declares x-setup.recipe pointing to the recipe
+#   3. Scenario binds actors to recipe outputs via $setup.outputs.X
+#   4. Steps use $setup.outputs.X for parameter values
+#
+# This is a SCENARIO, not a recipe — note the presence of x-actors,
+# x-setup, and x-as on steps, and the absence of x-recipe.
+# =============================================================================
+---
+
+arazzo: "1.0.1"
+
+info:
+  title: "Agent reviews and annotates a fulfilled order"
+  version: "1.0.0"
+
+sourceDescriptions:
+  - name: apiSpec
+    url: ../specs/v1/openapi.yaml
+    type: openapi
+
+x-version:
+  current: 1
+  status: draft
+
+x-domain: order
+
+# ---------------------------------------------------------------------------
+# x-setup — references the recipe from Section 2
+# ---------------------------------------------------------------------------
+# The recipe file stem resolves to completed-order-with-customer.recipe.yaml.
+# The Specfuse runtime:
+#   1. Resolves the full extends chain (minimal-tenant → minimal-customer
+#      → basic-orders → completed-order-with-customer)
+#   2. Executes each recipe in order
+#   3. Merges all outputs into the flat $setup.outputs namespace
+#   4. Makes them available to this scenario's x-actors and steps
+x-setup:
+  recipe: completed-order-with-customer
+  inputs:
+    orderPlacedDate: "@today-7d"
+
+# ---------------------------------------------------------------------------
+# x-actors — bound to recipe outputs via $setup.outputs.X
+# ---------------------------------------------------------------------------
+# Each actor's 'ref' points to an entity ID produced by the recipe chain.
+# The Specfuse runtime mints auth tokens for each actor based on their
+# role and the referenced entity — but that's runtime concern, not spec
+# concern (token minting is separate from recipe scope).
+x-actors:
+  agent:
+    role: SupportAgent
+    description: "The support agent reviewing the order"
+    ref: $setup.outputs.agentId
+  customer:
+    role: Customer
+    description: "The customer who placed the order"
+    ref: $setup.outputs.customerUserId
+
+workflows:
+  - workflowId: happy-path
+    summary: "Agent views the fulfilled order, adds a note, customer confirms"
+
+    steps:
+
+      # Step 1: Agent views the order
+      - stepId: view-order
+        x-as: $agent                         # Actor binding — scenario-only
+        operationId: getOrder                # REAL operationId
+        parameters:
+          - name: orderId
+            in: path
+            # $setup.outputs.orderId1 comes from basic-orders (inherited
+            # all the way up the chain into $setup.outputs)
+            value: $setup.outputs.orderId1
+        successCriteria:
+          - condition: $statusCode == 200
+        outputs:
+          orderStatus: $response.body#/status
+
+      # Step 2: Agent adds a note to the order
+      - stepId: add-note
+        x-as: $agent
+        operationId: updateOrder             # REAL operationId
+        parameters:
+          - name: orderId
+            in: path
+            value: $setup.outputs.orderId1
+        requestBody:
+          payload:
+            notes: "Verified delivery — flagging for follow-up survey"
+        successCriteria:
+          - condition: $statusCode == 200
+
+      # Step 3: Customer checks their order
+      - stepId: customer-views-order
+        x-as: $customer                      # Different actor, same order
+        operationId: getOrder                # REAL operationId
+        parameters:
+          - name: orderId
+            in: path
+            value: $setup.outputs.orderId1
+        successCriteria:
+          - condition: $statusCode == 200
+
+    outputs:
+      orderStatus: $steps.view-order.outputs.orderStatus
