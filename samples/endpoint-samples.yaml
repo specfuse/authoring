@@ -1,0 +1,370 @@
+openapi: 3.0.3
+info:
+  title: API — Endpoint Samples
+  version: 1.0.2
+
+# =============================================================================
+# Canonical REST endpoint samples for a Specfuse project.
+# See handbooks/API_Handbook.md for the authoritative rules.
+# =============================================================================
+# Pattern shown here: Customer CRUD scoped to a Tenant, exercising every
+# HTTP verb (list, get, create, search, replace, update, delete) with the
+# standard error responses, ETag concurrency, and validateOnly.
+# Replace `Customer` / `Tenant` with your project's actual entity names.
+# =============================================================================
+
+paths:
+  /v1/tenants/{tenantId}/customers:
+    get:
+      tags: [Customers]
+      summary: List customers in a tenant
+      x-roles: [Admin, Manager]
+      x-scopes: [customers.read]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - $ref: '#/components/parameters/sort'
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: OK
+          headers:
+            API-Version: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CustomerList' }
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+    post:
+      tags: [Customers]
+      summary: Create a customer in a tenant
+      x-roles: [Admin, Manager]
+      x-scopes: [customers.write]
+      x-emits:
+        - event: Customer.Created
+          description: Emitted when a new customer is successfully created
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/validateOnly'
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NewCustomer' }
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location: { schema: { type: string, format: uri } }
+            API-Version: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+  /v1/tenants/{tenantId}/customers:search:
+    post:
+      tags: [Customers]
+      summary: Search customers in a tenant
+      x-roles: [Admin, Manager]
+      x-scopes: [customers.read]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CustomerSearchRequest' }
+      responses:
+        '200':
+          description: OK
+          headers:
+            API-Version: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CustomerList' }
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+  /v1/customers/{customerId}:
+    get:
+      tags: [Customers]
+      summary: Get a customer
+      x-roles: [Admin, Manager]
+      x-scopes: [customers.read]
+      parameters:
+        - $ref: '#/components/parameters/customerId'
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag: { schema: { type: string } }
+            API-Version: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+    put:
+      tags: [Customers]
+      summary: Replace a customer
+      x-roles: [Admin, Manager]
+      x-scopes: [customers.write]
+      x-emits:
+        - event: Customer.Updated
+          description: Emitted when a customer is replaced
+      parameters:
+        - $ref: '#/components/parameters/customerId'
+        - $ref: '#/components/parameters/If-Match'
+        - $ref: '#/components/parameters/validateOnly'
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NewCustomer' }
+      responses:
+        '200':
+          description: OK
+          headers:
+            Location: { schema: { type: string, format: uri } }
+            API-Version: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '412':
+          description: Precondition Failed (If-Match mismatch or missing)
+
+    patch:
+      tags: [Customers]
+      summary: Update a customer
+      x-roles: [Admin, Manager]
+      x-scopes: [customers.write]
+      x-emits:
+        - event: Customer.Updated
+          description: Emitted when a customer's tracked fields change
+      parameters:
+        - $ref: '#/components/parameters/customerId'
+        - $ref: '#/components/parameters/If-Match'
+        - $ref: '#/components/parameters/validateOnly'
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateCustomer' }
+      responses:
+        '200':
+          description: OK
+          headers:
+            Location: { schema: { type: string, format: uri } }
+            API-Version: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '412':
+          description: Precondition Failed (If-Match mismatch or missing)
+
+    delete:
+      tags: [Customers]
+      summary: Delete a customer
+      x-roles: [Admin, Manager]
+      x-scopes: [customers.write]
+      x-emits:
+        - event: Customer.Deleted
+          description: Emitted when a customer is soft-deleted
+      parameters:
+        - $ref: '#/components/parameters/customerId'
+        - $ref: '#/components/parameters/If-Match'
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204':
+          description: No Content
+          headers:
+            API-Version: { schema: { type: string } }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '412':
+          description: Precondition Failed (If-Match mismatch or missing)
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    tenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    customerId:
+      name: customerId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    If-Match:
+      name: If-Match
+      in: header
+      required: true
+      schema: { type: string }
+      description: Strong ETag of the current representation; required for PUT/PATCH/DELETE.
+    validateOnly:
+      name: validateOnly
+      in: query
+      required: false
+      schema: { type: boolean, default: false }
+      description: Run full validation without committing side effects.
+    page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    pageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 2500, default: 25 }
+    sort:
+      name: sort
+      in: query
+      schema: { type: string }
+      description: "Comma-separated: field[:asc|desc][,field2...]"
+
+  responses:
+    UnauthorizedError:
+      description: The error is returned when the authentication token is missing or expired
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFoundError:
+      description: The error is returned when a specific element requested does not exist
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ForbiddenError:
+      description: >
+        This error is returned when a user is trying to call an API endpoint for which they do not
+        have the right privileges
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BadRequestError:
+      description: This error is returned when the user is passing invalid information to the API endpoint
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/Error'
+
+  schemas:
+    Customer:
+      type: object
+      required: [id, createdAt, updatedAt, firstName, lastName]
+      properties:
+        id:        { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        firstName: { type: string }
+        lastName:  { type: string }
+        status:    { $ref: '#/components/schemas/CustomerStatus' }
+
+    BasicCustomer:
+      type: object
+      required: [id]
+      properties:
+        id:        { type: string, format: uuid }
+        firstName: { type: string }
+        lastName:  { type: string }
+        status:    { $ref: '#/components/schemas/CustomerStatus' }
+
+    NewCustomer:
+      type: object
+      required: [firstName, lastName]
+      properties:
+        firstName:
+          type: string
+          x-sample:
+            provider: faker
+            path: person.firstName
+        lastName:
+          type: string
+          x-sample:
+            provider: faker
+            path: person.lastName
+
+    UpdateCustomer:
+      type: object
+      additionalProperties: false
+      properties:
+        firstName: { type: string }
+        lastName:  { type: string }
+        status:    { $ref: '#/components/schemas/CustomerStatus' }
+
+    CustomerList:
+      type: object
+      required: [totalItemsCount, pageCount, page, pageSize, data]
+      properties:
+        totalItemsCount: { type: integer }
+        pageCount:       { type: integer }
+        page:            { type: integer }
+        pageSize:        { type: integer }
+        hasPrev:         { type: boolean }
+        hasNext:         { type: boolean }
+        links:
+          type: object
+          properties:
+            self:  { type: string, format: uri }
+            first: { type: string, format: uri }
+            prev:  { type: string, format: uri }
+            next:  { type: string, format: uri }
+            last:  { type: string, format: uri }
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/BasicCustomer' }
+
+    CustomerSearchRequest:
+      type: object
+      properties:
+        filters:  { type: array, items: { type: object } }
+        sort:     { type: array, items: { type: string } }
+        page:     { type: integer, minimum: 1 }
+        pageSize: { type: integer }
+
+    CustomerStatus:
+      type: string
+      enum: [active, inactive, suspended]
+
+    Error:
+      type: object
+      required: [id, code, message]
+      properties:
+        id: { type: string }
+        code: { type: string }
+        message: { type: string }
+        field: { type: string }
+        details: { type: string }
