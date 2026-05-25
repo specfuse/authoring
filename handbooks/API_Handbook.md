@@ -67,7 +67,7 @@ api/specs/v3/
             └── ...
 ```
 
-Domain folder names follow the project's domain naming convention (kebab-case, one folder per bounded context). The active domain list is defined by the project (typically in `.specfuse/project.yaml` or an equivalent overlay).
+Domain folder names follow the project's domain naming convention (kebab-case, one folder per bounded context). The active domain list is defined by the project's overlay; location is project-specific.
 
 ### File Naming Conventions
 
@@ -976,7 +976,7 @@ When including 409 in an operation spec, document the specific business rules th
 
 - Bearer JWT (RS256). `iss` and `aud` are project-specific (e.g., `iss=https://<tenant>.auth0.com/`, `aud=https://api.{project-host}/`).
 - Access token lifetime and rotating refresh window are project-defined (typical defaults: 60-minute access token, ≤ 30-day refresh).
-- **Roles**: The project defines its closed role enum (project-specific). Declare it in the project's overlay (e.g., `common/enums.yaml` or `.specfuse/project.yaml`). All secured endpoints declare allowed roles via the `x-roles` vendor extension.
+- **Roles**: The project defines its closed role enum (project-specific). Declare it in the project's OpenAPI common enums file (typically `common/enums.yaml`). All secured endpoints declare allowed roles via the `x-roles` vendor extension.
 - **Scopes**: Use the `{tag}.{read|write|delete}` format where `tag` is based on the tag associated with the endpoint, in camelCase (e.g., `customers.read`, `orders.write`). All secured endpoints declare required scopes via the `x-scopes` vendor extension.
 - ABAC with a project-specific custom claim namespace (e.g., `https://{project-host}/claims`):
   - Enforce tenant context first; optionally also narrower scope context.
@@ -2219,7 +2219,7 @@ Every **secured** operation **must** declare:
 - `x-roles`: array of allowed role names drawn from the project's closed role enum.
 - `x-scopes`: array of OAuth scopes (camelCase, e.g., `customers.read`, `customers.write`).
 
-The role enum is project-defined; declare it in the project's overlay (e.g., `common/enums.yaml` or `.specfuse/project.yaml`).
+The role enum is project-defined; declare it in the project's OpenAPI common enums file (typically `common/enums.yaml`).
 
 **Default policy templates (may be narrowed per endpoint):**
 - **Read ops** (GET list/search/get):

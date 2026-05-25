@@ -148,7 +148,7 @@ api/specs/v3/
                 └── *.recipe.yaml
 ```
 
-Domain folder names follow the project's domain naming convention (kebab-case, one folder per bounded context). The active domain list is defined by the project (typically in `.specfuse/project.yaml` or an equivalent overlay).
+Domain folder names follow the project's domain naming convention (kebab-case, one folder per bounded context). The active domain list is defined by the project's overlay; location is project-specific.
 
 ### 3.2 File Naming
 
@@ -263,7 +263,7 @@ x-domain: order
 
 **Conventions:**
 - Domain names are kebab-case, one domain per bounded context.
-- The project defines its domain list in an overlay file (typically `.specfuse/project.yaml`); the validator loads that list at lint time.
+- The project defines its domain list in an overlay file; the validator loads that list at lint time.
 - The reserved value `cross-domain` is only valid for files under `scenarios/cross-domain/`. The validator enforces this constraint.
 
 ### 4.4 `tags` (optional, native Arazzo)

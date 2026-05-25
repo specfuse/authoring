@@ -589,7 +589,7 @@ x-channel-type: scheduled-trigger
 
 #### `x-domain` (required on all channels)
 
-The domain this channel belongs to. Must match the domain folder name. The active domain list is defined by the project (typically in `.specfuse/project.yaml`).
+The domain this channel belongs to. Must match the domain folder name. The active domain list is defined by the project's overlay (location is project-specific; the validator loads it at lint time).
 
 ```yaml
 x-domain: order
@@ -1279,7 +1279,7 @@ currency:
 
 ### 7.4 Project Configuration
 
-The Workers group in the project's overlay (typically `.specfuse/project.yaml`) specifies the target language and output directory. The spec itself remains language-agnostic.
+The Workers group in the project's generator configuration file (a JSON file at the project root, consumed by the Specfuse generator) specifies the target language and output directory. The spec itself remains language-agnostic.
 
 ---
 

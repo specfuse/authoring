@@ -526,7 +526,7 @@ Order:
 x-roles: string[]  # Array of role names from the project's closed role enum
 ```
 
-**Valid Roles**: The role values are **project-defined**. Declare the closed role enum in the project's overlay (typically `common/enums.yaml` or `.specfuse/project.yaml`); the Spectral validator enforces that every `x-roles` member is drawn from that enum. The illustrative roles used throughout this document (`Admin`, `Manager`, `Customer`, `Authenticated`) are examples only — replace them with your project's actual values.
+**Valid Roles**: The role values are **project-defined**. Declare the closed role enum in the project's OpenAPI common enums file (typically `common/enums.yaml`); the Spectral validator enforces that every `x-roles` member is drawn from that enum. The illustrative roles used throughout this document (`Admin`, `Manager`, `Customer`, `Authenticated`) are examples only — replace them with your project's actual values.
 
 **Recommended convention:** projects that distinguish pre-business-role flows (e.g., self-service signup, invitation acceptance, where the user has a valid auth token but no assigned role yet) should include an `Authenticated` role for that case.
 
@@ -1455,7 +1455,7 @@ For the full rules, rationale, and patterns, see the [AsyncAPI Handbook](./Async
 x-domain: order    # kebab-case domain name
 ```
 
-The domain value must be drawn from the project's active domain list (defined in the project's overlay — typically `.specfuse/project.yaml`).
+The domain value must be drawn from the project's active domain list (defined in the project's overlay; location is project-specific).
 
 **Arazzo cross-reference**: `x-domain` is also required on Arazzo workflow documents, where it identifies the owning domain of a scenario or recipe. The value set is the same project-defined domain list plus the reserved value `cross-domain` (valid only for files under `scenarios/cross-domain/`). See §13.1 `x-domain`.
 
@@ -1950,7 +1950,7 @@ x-doc:
 x-domain: order
 ```
 
-**Valid values**: A kebab-case domain name drawn from the project's active domain list, or the reserved value `cross-domain`. The active domain list is defined by the project (typically `.specfuse/project.yaml`); the validator loads that list at lint time.
+**Valid values**: A kebab-case domain name drawn from the project's active domain list, or the reserved value `cross-domain`. The active domain list is defined by the project's overlay; the validator loads that list at lint time.
 
 **Rules**:
 - The `cross-domain` value is only valid for files under `scenarios/cross-domain/`; the validator enforces this path constraint
