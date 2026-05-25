@@ -1,0 +1,1133 @@
+# =============================================================================
+# Arazzo — Canonical Scenario Samples
+# =============================================================================
+#
+# This file is the authoritative template for Arazzo scenario authoring.
+# It serves the same role as endpoint-samples.yaml (REST) and
+# message-samples.yaml (AsyncAPI): when in doubt, consult this file.
+#
+# Five sections:
+#   1. Canonical happy-path scenario (refund request between customer and agent)
+#   2. Multi-workflow file with variants (granularity rule illustration)
+#   3. Minimal scenario skeleton (bare-minimum starting point)
+#   4. System-initiated (cron-triggered) scenario pattern
+#   5. Same-status poll pattern (wait-then-verify)
+#
+# Reference: handbooks/Arazzo_Handbook.md
+# Schema:    schemas/arazzo-extensions/specfuse-arazzo-combined.schema.json
+#
+# Extensions covered in this file:
+#   x-version, x-domain, x-doc, x-mcp, x-actors, x-setup, x-as,
+#   x-async (emit, await, poll), x-ui, x-recipe
+#
+# Extensions that DO NOT exist as standalone — by design:
+#   x-deprecated: deprecation lives INSIDE x-version (status: deprecated,
+#                 deprecatedAt, replacedBy, removalDate). See handbook §4.2.
+#   x-tags:       Arazzo natively provides 'tags' on workflows. A parallel
+#                 x-tags would duplicate the concept. See handbook §4.4.
+#   x-category:   determined by the PRESENCE of x-recipe on a workflow.
+#                 No standalone field needed. See handbook §7.1.
+#
+# =============================================================================
+
+
+# =============================================================================
+# SECTION 1 — Canonical happy-path scenario
+# =============================================================================
+#
+# Use case: Refund request from a customer that a support agent approves.
+# The customer initiates a refund on a completed order; the support agent
+# reviews the request and approves it; the system validates the refund
+# asynchronously; the customer is notified. This is a multi-actor,
+# multi-step flow with async events.
+#
+# This scenario exercises every step-level extension at least once:
+#   x-as, x-async (emit, await, poll), x-ui, x-doc (step-level)
+#
+# NOTE ON HYPOTHETICAL OPERATIONS:
+# Refund operations marked "HYPOTHETICAL" do not yet exist in the project's
+# spec — they would be added as part of designing the refund flow. Real
+# operationIds (e.g., listOrders, getOrder) are used where they would exist
+# in a typical Order domain.
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Arazzo document header
+# ---------------------------------------------------------------------------
+
+# The Arazzo spec version. Specfuse uses 1.0.1.
+arazzo: "1.0.1"
+
+# Standard info block — title should match the use-case name;
+# version uses semver for the document itself.
+info:
+  title: "Request refund for an order"
+  version: "1.0.0"
+
+# ---------------------------------------------------------------------------
+# Source descriptions — which OpenAPI spec(s) does this scenario reference?
+# ---------------------------------------------------------------------------
+# Every operationId used in steps MUST resolve against one of these sources.
+# The URL is relative to this file's location.
+sourceDescriptions:
+  - name: apiSpec
+    url: ../specs/v1/openapi.yaml
+    type: openapi
+
+# ---------------------------------------------------------------------------
+# x-version (REQUIRED on all Arazzo documents) — See handbook §4.2
+# ---------------------------------------------------------------------------
+# Tracks the lifecycle of this scenario. Shared shape across all three
+# spec pillars (OpenAPI, AsyncAPI, Arazzo).
+#
+# Fields:
+#   current       — integer >= 1, the content/schema version
+#   status        — draft | stable | deprecated
+#   deprecatedAt  — ISO date, required when status is 'deprecated'
+#   replacedBy    — successor scenario file stem, required when deprecated
+#   removalDate   — optional target removal date
+x-version:
+  current: 1
+  status: draft                          # New scenarios start as 'draft'
+
+# ---------------------------------------------------------------------------
+# x-domain (REQUIRED on all Arazzo documents) — See handbook §4.3
+# ---------------------------------------------------------------------------
+# Must match a kebab-case domain name from the project's active domain list,
+# or the reserved value 'cross-domain'. Cross-domain is only valid for files
+# under scenarios/cross-domain/.
+x-domain: order
+
+# ---------------------------------------------------------------------------
+# tags (native Arazzo, optional) — See handbook §4.4
+# ---------------------------------------------------------------------------
+# Free-form tags for categorization. The 'critical-path' tag has special
+# meaning: scenarios tagged critical-path run as blocking checks on PRs.
+#
+# NOTE: use the native Arazzo 'tags' array, NOT 'x-tags'. Arazzo already
+# provides tags; a parallel x-tags would duplicate the concept.
+tags:
+  - critical-path                        # Blocks PR merge if this scenario fails
+  - order-management                     # Domain-specific categorization
+
+# ---------------------------------------------------------------------------
+# x-doc (optional, workflow-level) — See handbook §4.5
+# ---------------------------------------------------------------------------
+# Documentation metadata consumed by the doc generator and tutorial renderer.
+# Provides PM-facing context that cannot be derived from step definitions.
+x-doc:
+  # summary (required within x-doc) — one-paragraph PM-facing description
+  summary: >-
+    Customers can request a refund on a completed order. A support agent
+    reviews the request and approves or rejects it; the system validates
+    the refund asynchronously before confirming.
+  # personas — user personas involved (informational, for tutorial routing)
+  personas:
+    - customer
+    - support-agent
+  # businessOutcome — why this workflow matters to the business
+  businessOutcome: >-
+    Self-service refund initiation reduces support burden while
+    maintaining oversight and constraint validation.
+
+# ---------------------------------------------------------------------------
+# x-mcp (optional, scenario workflows only) — See handbook §4.8 / §11
+# ---------------------------------------------------------------------------
+# Declares whether this scenario is exposed as an MCP tool for AI
+# orchestrators. Explicit opt-in; default is false.
+#
+# Fields:
+#   exposed            — boolean (required). Must be explicitly set.
+#   toolName           — kebab-case, globally unique across all scenarios
+#   description        — MCP-facing description
+#   requiresActorAuth  — whether actor auth context is needed (default: true)
+#   safeForAutoInvoke  — can AI invoke without human confirmation? (default: false)
+#
+# Inputs/outputs are DERIVED from the workflow's inputs/outputs —
+# never redeclared in x-mcp.
+x-mcp:
+  exposed: false                         # Explicit opt-out for this sample
+
+# ---------------------------------------------------------------------------
+# x-actors (REQUIRED on scenario workflows, forbidden on recipes)
+# See handbook §4.6
+# ---------------------------------------------------------------------------
+# Declares the actors who perform steps. Each actor is bound to a role
+# from the project's closed role enum and optionally to a recipe-seeded entity.
+#
+# Roles are project-defined (see handbook §4.6) — the illustrative values
+# (Customer, SupportAgent, SupportManager) are examples. Replace with your
+# project's actual role enum.
+#
+# Actor keys are camelCase identifiers, referenced in steps via $actorKey.
+x-actors:
+  customer:
+    role: Customer
+    description: "The customer who placed the original order"
+    # ref binds this actor to a recipe-seeded entity. The expression
+    # $setup.outputs.X resolves against the recipe declared in x-setup.
+    ref: $setup.outputs.customerId
+  agent:
+    role: SupportAgent
+    description: "The support agent who reviews the refund request"
+    ref: $setup.outputs.agentId
+  manager:
+    role: SupportManager
+    description: "The support manager who oversees escalations"
+    ref: $setup.outputs.managerId
+
+# ---------------------------------------------------------------------------
+# x-setup (optional on scenario workflows, forbidden on recipes)
+# See handbook §4.7
+# ---------------------------------------------------------------------------
+# Declares which setup recipe must run before this scenario to provision
+# the required test fixtures. The recipe's outputs become available via
+# $setup.outputs.X.
+#
+# Fields:
+#   recipe  — file stem of the recipe (resolves to {name}.recipe.yaml)
+#   inputs  — values passed to the recipe's workflow inputs; supports
+#             date tokens (see handbook §8.3)
+x-setup:
+  recipe: completed-order-with-customer
+  inputs:
+    orderPlacedDate: "@today-7d"         # Date token — resolved at runtime
+    customerName: "Acme Co."
+
+# ---------------------------------------------------------------------------
+# Workflows — the actual step sequences
+# ---------------------------------------------------------------------------
+# A file may contain multiple workflows (see Section 2 below).
+# All workflows in a scenario file share the same x-actors and x-setup.
+workflows:
+  - workflowId: happy-path
+    summary: "Customer requests refund, agent approves, system validates"
+
+    # -------------------------------------------------------------------
+    # Steps — ordered sequence of API calls and async interactions
+    # -------------------------------------------------------------------
+    steps:
+
+      # -----------------------------------------------------------------
+      # Step 1: Customer lists their recent orders
+      # -----------------------------------------------------------------
+      # This step uses a REAL-shape operationId from the order domain.
+      - stepId: list-orders
+        x-as: $customer
+        operationId: listMyOrders        # REAL — typical /me/orders endpoint
+        parameters:
+          - name: filter
+            in: query
+            value: "status eq 'fulfilled'"
+        successCriteria:
+          - condition: $statusCode == 200
+        outputs:
+          recentOrderId: $response.body#/data/0/id
+
+      # -----------------------------------------------------------------
+      # Step 2: Customer views the order they want to refund
+      # -----------------------------------------------------------------
+      # Another REAL operationId — chains output from the previous step.
+      - stepId: view-order
+        # x-as (REQUIRED on all scenario steps) — See handbook §5.1
+        # Identifies which actor performs this step. The value references
+        # an actor defined in x-actors using the $actorKey convention.
+        x-as: $customer
+        operationId: getOrder            # REAL operationId
+        parameters:
+          - name: orderId
+            in: path
+            value: $setup.outputs.orderId
+        # successCriteria — Arazzo native. All conditions must pass (AND).
+        # Status code assertions must match the OpenAPI spec (GET -> 200).
+        # See handbook §9 for the cross-spec source-of-truth rule.
+        successCriteria:
+          - condition: $statusCode == 200
+        # outputs — named values extracted from the response, available
+        # to subsequent steps via $steps.<stepId>.outputs.<name>
+        outputs:
+          orderStatus: $response.body#/status
+          orderTotal: $response.body#/total
+
+      # -----------------------------------------------------------------
+      # Step 3: Customer creates the refund request
+      # -----------------------------------------------------------------
+      # This step exercises x-async.emit (event assertion) and x-ui.
+      - stepId: create-refund-request
+        x-as: $customer
+        operationId: requestRefund       # HYPOTHETICAL — TODO: verify operationId exists
+        requestBody:
+          payload:
+            orderId: $setup.outputs.orderId
+            reason: "Item arrived damaged"
+        successCriteria:
+          - condition: $statusCode == 201
+        outputs:
+          refundRequestId: $response.body#/id
+
+        # x-async (optional, on steps with async behavior) — See handbook §6
+        # Models event-driven interactions. Three verbs: emit, await, poll.
+        # This step exercises 'emit': assert that the API call publishes
+        # the expected event(s) on the message bus.
+        x-async:
+          # emit — Assert that this step publishes event(s)
+          # See handbook §6.2 (emit)
+          emit:
+            - # event uses {Entity}.{Action} PascalCase format,
+              # matching an AsyncAPI message's x-label.
+              # Channel derivation is automatic — never write channel
+              # addresses in Arazzo files. See handbook §6.1.
+              event: Refund.Requested    # HYPOTHETICAL — TODO: verify event exists in AsyncAPI
+              # expect — partial payload match. Key/value pairs to assert
+              # on the event payload. Values may use expressions.
+              expect:
+                customerId: $setup.outputs.customerId
+                orderId: $setup.outputs.orderId
+              # timeout — ISO 8601 duration. Max wait for the event.
+              # Default: PT10S
+              timeout: PT10S
+
+        # x-ui (optional, on steps with user-facing interactions)
+        # See handbook §5.3
+        # Provides UI automation hints for the LLM-driven exploratory
+        # runner and the Playwright test generator.
+        #
+        # Two-mode consumption:
+        #   LLM-driven mode: reads actions[].text and expect as natural language
+        #   Playwright mode: reads selectors[].playwright as concrete locators;
+        #                    falls back to LLM-derived selectors when absent
+        x-ui:
+          platform: web                  # web | mobile | any (default: any)
+          page: /orders/history          # Route where this step takes place
+          # actions — ordered list of user-facing actions
+          # Each action has a stable id (kebab-case) and natural-language text
+          actions:
+            - id: open-order
+              text: "Click the recent order tile"
+            - id: open-refund-dialog
+              text: "Click 'Request refund' button"
+            - id: select-reason
+              text: "Select 'Item arrived damaged' from the reason dropdown"
+            - id: confirm-request
+              text: "Click 'Confirm' to submit the refund request"
+          # expect — expected visual outcomes after the step completes
+          expect:
+            - "A toast confirms the request was submitted"
+            - "The order tile shows a 'Refund pending' badge"
+          # selectors — optional Playwright selector hints
+          # Binding rule: every selectors[].for MUST match an actions[].id
+          # in the same step. Dangling references are a Spectral error.
+          selectors:
+            - for: open-order
+              playwright: "[data-testid='order-tile-recent']"
+            - for: confirm-request
+              playwright: "button:has-text('Confirm')"
+          captureScreenshot: true        # Capture screenshot after this step
+
+      # -----------------------------------------------------------------
+      # Step 4: Agent views the pending refund request
+      # -----------------------------------------------------------------
+      - stepId: view-refund-request
+        x-as: $agent
+        operationId: getRefund           # HYPOTHETICAL — TODO: verify operationId exists
+        parameters:
+          - name: refundId
+            in: path
+            value: $steps.create-refund-request.outputs.refundRequestId
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/status == 'pending'
+        outputs:
+          refundStatus: $response.body#/status
+
+        # x-doc at step level — See handbook §5.4
+        # Contextual note rendered in generated tutorial documentation.
+        x-doc:
+          tutorialNote: >-
+            The agent sees the refund request in their support queue and
+            navigates to it. The request shows the order details, the
+            customer's stated reason, and any attached evidence.
+
+      # -----------------------------------------------------------------
+      # Step 5: Agent approves the refund
+      # -----------------------------------------------------------------
+      # This step exercises x-async.emit combined with x-async.await —
+      # the step both publishes an event AND waits for a downstream
+      # async outcome. See handbook §6.3 for combining verbs.
+      - stepId: approve-refund
+        x-as: $agent
+        operationId: approveRefund       # HYPOTHETICAL — TODO: verify operationId exists
+        requestBody:
+          payload:
+            refundId: $steps.create-refund-request.outputs.refundRequestId
+        successCriteria:
+          - condition: $statusCode == 200
+        outputs:
+          approvedAt: $response.body#/approvedAt
+
+        x-async:
+          # The approval API call publishes Refund.Approved
+          emit:
+            - event: Refund.Approved     # HYPOTHETICAL — TODO: verify event exists in AsyncAPI
+              expect:
+                refundId: $steps.create-refund-request.outputs.refundRequestId
+              timeout: PT10S
+          # await — passively wait for a downstream async event
+          # See handbook §6.2 (await)
+          # After approval, an async worker validates the refund (e.g.,
+          # against the payment gateway) and emits a validation result event.
+          #
+          # NOTE: await steps that are combined with an operationId step
+          # (like this one) wait AFTER the API call succeeds. Standalone
+          # await steps (no operationId) are purely event-driven.
+          await:
+            event: Refund.Validated      # HYPOTHETICAL — TODO: verify event exists in AsyncAPI
+            # match — key/value pairs the event payload must match.
+            # Values may use expressions. Used to correlate the event
+            # to this specific refund request.
+            match:
+              refundId: $steps.create-refund-request.outputs.refundRequestId
+            # timeout (required on await) — max wait time
+            timeout: PT30S
+            # outputs — named outputs extracted from the matched event.
+            # Values use $message.* expressions (only valid inside await).
+            # See handbook §8.1 for expression roots.
+            outputs:
+              validationResult: $message.payload.result
+              gatewayConfirmation: $message.payload.gatewayConfirmation
+
+      # -----------------------------------------------------------------
+      # Step 6: Customer polls for final refund status (REST polling)
+      # -----------------------------------------------------------------
+      # This step exercises x-async.poll — repeated REST calls until a
+      # condition is met. Useful when no observable event exists for a
+      # state change, or when asserting final REST state matters more
+      # than intercepting an event. See handbook §6.2 (poll).
+      #
+      # NOTE: poll steps do not use a top-level operationId — the
+      # operationId lives inside x-async.poll.
+      - stepId: poll-refund-completion
+        x-as: $customer
+        x-async:
+          poll:
+            # operationId — the OpenAPI operation to call repeatedly
+            operationId: getRefund       # HYPOTHETICAL — TODO: verify operationId exists
+            # parameters — passed to each poll request
+            parameters:
+              refundId: $steps.create-refund-request.outputs.refundRequestId
+            # until — Arazzo simple condition. Polling stops when true.
+            until: $response.body#/status == 'completed'
+            # interval — ISO 8601 duration between poll attempts. Default: PT2S.
+            interval: PT2S
+            # timeout — max total polling time (required)
+            timeout: PT30S
+
+      # -----------------------------------------------------------------
+      # Step 7: Manager verifies the refund via the order record
+      # -----------------------------------------------------------------
+      # Uses a REAL operationId to confirm the refund's effect on the order.
+      - stepId: manager-verifies-order
+        x-as: $manager
+        operationId: getOrder            # REAL operationId
+        parameters:
+          - name: orderId
+            in: path
+            value: $setup.outputs.orderId
+        successCriteria:
+          - condition: $statusCode == 200
+
+    # -------------------------------------------------------------------
+    # Failure handling — See Arazzo native onFailure
+    # -------------------------------------------------------------------
+    # onFailure defines what happens when a step's successCriteria fail.
+    # Actions: end (terminate), goto (jump to step), retry (with backoff).
+    failureActions:
+      - name: refund-rejected-by-agent
+        type: end
+        # workflowId references which workflow this failure applies to
+        workflowId: happy-path
+        criteria:
+          - condition: $steps.approve-refund.outputs.refundStatus == 'rejected'
+
+    # -------------------------------------------------------------------
+    # Workflow outputs — public contract consumed by downstream tools
+    # -------------------------------------------------------------------
+    outputs:
+      refundRequestId: $steps.create-refund-request.outputs.refundRequestId
+      finalStatus: $steps.poll-refund-completion.outputs
+
+
+# =============================================================================
+# SECTION 2 — Multi-workflow file with variants
+# =============================================================================
+#
+# This section illustrates the GRANULARITY RULE (handbook §2):
+#
+#   One file = one use case.
+#   Multiple workflows = step-sequence or actor-set VARIANTS of the
+#   same use case.
+#   Input parameters = data-only variants (don't create new workflows
+#   for different refund reasons — parametrize instead).
+#
+# THE MERMAID DIAGRAM TEST (handbook §2.2):
+#   If two scenarios produce the same Mermaid sequence diagram (same
+#   actors, same steps, same decision points), they should be ONE
+#   scenario with input parameters. Conversely, if they produce
+#   meaningfully different diagrams, they belong in separate workflows
+#   (within the same file if same use case) or separate files (if
+#   different use cases).
+#
+# STEP-OVERLAP FLOOR (handbook §2.3):
+#   Spectral enforces >= 80% operationId overlap as an error.
+#   60-80% is flagged for human review. < 60% is fine.
+#
+# Below: three workflows for the refund-request use case.
+# - happy-path: customer-initiated, agent approves (Section 1 above)
+# - manager-imposed: different actor, different entry point (admin refund)
+# - cancellation: different steps entirely
+#
+# All three produce meaningfully different Mermaid diagrams, so they
+# are separate workflows. But they share the same use case (refund),
+# so they belong in one file.
+# =============================================================================
+---
+
+arazzo: "1.0.1"
+info:
+  title: "Request refund for an order"
+  version: "1.0.0"
+
+sourceDescriptions:
+  - name: apiSpec
+    url: ../specs/v1/openapi.yaml
+    type: openapi
+
+x-version:
+  current: 1
+  status: draft
+
+x-domain: order
+
+tags:
+  - critical-path
+  - order-management
+
+x-doc:
+  summary: >-
+    Complete refund use case with three variants: customer-initiated
+    (happy path), manager-imposed (admin refund), and cancellation.
+    Demonstrates the granularity rule — one file per use case, multiple
+    workflows for meaningful variants.
+  personas:
+    - customer
+    - support-agent
+    - support-manager
+  businessOutcome: >-
+    Self-service refund initiation reduces support burden while
+    maintaining constraint validation and management oversight.
+
+x-mcp:
+  exposed: false
+
+x-actors:
+  customer:
+    role: Customer
+    description: "The customer who placed the order"
+    ref: $setup.outputs.customerId
+  agent:
+    role: SupportAgent
+    description: "The support agent reviewing the request"
+    ref: $setup.outputs.agentId
+  manager:
+    role: SupportManager
+    description: "The support manager who can impose or oversee refunds"
+    ref: $setup.outputs.managerId
+
+x-setup:
+  recipe: completed-order-with-customer
+  inputs:
+    orderPlacedDate: "@today-7d"
+
+workflows:
+
+  # =========================================================================
+  # Workflow 1 of 3 — Customer requests refund, agent approves
+  # =========================================================================
+  # This is the same flow as Section 1 above, shown here in condensed
+  # form to illustrate multi-workflow file structure.
+  - workflowId: customer-requests-refund
+    summary: "Happy path: customer initiates, agent approves"
+    steps:
+      - stepId: create-refund-request
+        x-as: $customer
+        operationId: requestRefund       # HYPOTHETICAL — TODO: verify operationId exists
+        requestBody:
+          payload:
+            orderId: $setup.outputs.orderId
+            reason: "Item arrived damaged"
+        successCriteria:
+          - condition: $statusCode == 201
+        outputs:
+          refundRequestId: $response.body#/id
+        x-async:
+          emit:
+            - event: Refund.Requested    # HYPOTHETICAL — TODO: verify event exists in AsyncAPI
+              timeout: PT10S
+
+      - stepId: approve-refund
+        x-as: $agent
+        operationId: approveRefund       # HYPOTHETICAL — TODO: verify operationId exists
+        requestBody:
+          payload:
+            refundId: $steps.create-refund-request.outputs.refundRequestId
+        successCriteria:
+          - condition: $statusCode == 200
+        x-async:
+          emit:
+            - event: Refund.Approved     # HYPOTHETICAL — TODO: verify event exists in AsyncAPI
+              timeout: PT10S
+
+      - stepId: poll-refund-completion
+        x-as: $customer
+        x-async:
+          poll:
+            operationId: getRefund       # HYPOTHETICAL — TODO: verify operationId exists
+            parameters:
+              refundId: $steps.create-refund-request.outputs.refundRequestId
+            until: $response.body#/status == 'completed'
+            interval: PT2S
+            timeout: PT30S
+    outputs:
+      refundRequestId: $steps.create-refund-request.outputs.refundRequestId
+
+  # =========================================================================
+  # Workflow 2 of 3 — Manager imposes a refund
+  # =========================================================================
+  # Different actor initiates (manager, not customer). Different entry
+  # point (imposeRefund, not requestRefund). The approval step is
+  # skipped — manager authority overrides the need for agent review.
+  # This produces a meaningfully different Mermaid diagram.
+  - workflowId: manager-imposes-refund
+    summary: "Manager directly issues a refund without agent review"
+    steps:
+      - stepId: impose-refund
+        x-as: $manager
+        operationId: imposeRefund        # HYPOTHETICAL — TODO: verify operationId exists
+        requestBody:
+          payload:
+            orderId: $setup.outputs.orderId
+            customerId: $setup.outputs.customerId
+            reason: "Goodwill credit for repeat issue"
+        successCriteria:
+          - condition: $statusCode == 201
+        outputs:
+          refundRequestId: $response.body#/id
+        x-async:
+          emit:
+            - event: Refund.Imposed      # HYPOTHETICAL — TODO: verify event exists in AsyncAPI
+              timeout: PT10S
+
+      # Manager-imposed refunds still go through async validation
+      - stepId: await-validation
+        x-as: $manager
+        x-async:
+          await:
+            event: Refund.Validated      # HYPOTHETICAL — TODO: verify event exists in AsyncAPI
+            match:
+              refundId: $steps.impose-refund.outputs.refundRequestId
+            timeout: PT30S
+            outputs:
+              validationResult: $message.payload.result
+
+      # Verify via real operationId
+      - stepId: verify-order-updated
+        x-as: $manager
+        operationId: getOrder            # REAL operationId
+        parameters:
+          - name: orderId
+            in: path
+            value: $setup.outputs.orderId
+        successCriteria:
+          - condition: $statusCode == 200
+    outputs:
+      refundRequestId: $steps.impose-refund.outputs.refundRequestId
+
+  # =========================================================================
+  # Workflow 3 of 3 — Customer cancels a pending refund
+  # =========================================================================
+  # Completely different step sequence: create then immediately cancel.
+  # No approval step, no validation wait. Distinct Mermaid diagram.
+  - workflowId: customer-cancels-pending-refund
+    summary: "Customer initiates a refund request, then cancels it before approval"
+    steps:
+      - stepId: create-refund-request
+        x-as: $customer
+        operationId: requestRefund       # HYPOTHETICAL — TODO: verify operationId exists
+        requestBody:
+          payload:
+            orderId: $setup.outputs.orderId
+            reason: "Item arrived damaged"
+        successCriteria:
+          - condition: $statusCode == 201
+        outputs:
+          refundRequestId: $response.body#/id
+
+      - stepId: cancel-refund-request
+        x-as: $customer
+        operationId: cancelRefund        # HYPOTHETICAL — TODO: verify operationId exists
+        requestBody:
+          payload:
+            refundId: $steps.create-refund-request.outputs.refundRequestId
+            reason: "Changed my mind"
+        successCriteria:
+          - condition: $statusCode == 200
+        x-async:
+          emit:
+            - event: Refund.Cancelled    # HYPOTHETICAL — TODO: verify event exists in AsyncAPI
+              timeout: PT10S
+
+      # Confirm cancellation via polling with real-domain context
+      - stepId: confirm-cancelled
+        x-as: $customer
+        x-async:
+          poll:
+            operationId: getRefund       # HYPOTHETICAL — TODO: verify operationId exists
+            parameters:
+              refundId: $steps.create-refund-request.outputs.refundRequestId
+            until: $response.body#/status == 'cancelled'
+            interval: PT2S
+            timeout: PT10S
+    outputs:
+      refundRequestId: $steps.create-refund-request.outputs.refundRequestId
+
+
+# =============================================================================
+# SECTION 3 — Minimal scenario skeleton
+# =============================================================================
+#
+# The smallest valid scenario a PM would ever write. Used as the starting
+# point for /design-scenario generation.
+#
+# Required fields only:
+#   - arazzo, info (Arazzo native)
+#   - sourceDescriptions (Arazzo native — at least one)
+#   - x-version (required on all documents)
+#   - x-domain (required on all documents)
+#   - x-actors (required on scenario documents)
+#   - workflows with at least one step using x-as
+#
+# Everything else (x-doc, x-mcp, x-setup, x-ui, x-async, tags,
+# onFailure) is optional and can be added incrementally.
+# =============================================================================
+---
+
+arazzo: "1.0.1"
+info:
+  title: "Submit and archive an order"
+  version: "1.0.0"
+
+sourceDescriptions:
+  - name: apiSpec
+    url: ../specs/v1/openapi.yaml
+    type: openapi
+
+# Minimum required extensions — just these two
+x-version:
+  current: 1
+  status: draft
+
+x-domain: order
+
+# x-actors is required on scenarios (not on recipes).
+# Even a minimal scenario must declare at least one actor.
+x-actors:
+  manager:
+    role: Manager
+    description: "The manager submitting the order"
+
+# A minimal workflow — two steps, both using REAL operationIds and events
+workflows:
+  - workflowId: submit-and-archive-order
+    summary: "Manager submits an order, then archives it"
+    steps:
+      - stepId: submit
+        x-as: $manager                   # Required on every scenario step
+        operationId: submitOrder         # REAL operationId
+        parameters:
+          - name: orderId
+            in: path
+            value: $inputs.orderId
+        successCriteria:
+          - condition: $statusCode == 200
+        # x-async.emit using a REAL event from AsyncAPI
+        x-async:
+          emit:
+            - event: Order.Submitted     # REAL event (matches AsyncAPI x-label)
+              timeout: PT10S
+        outputs:
+          submittedOrderId: $response.body#/id
+
+      # A standalone await step (no operationId) — waits for an async
+      # event emitted by a downstream worker. Uses a REAL AsyncAPI event.
+      - stepId: await-archive-event
+        x-as: $manager
+        x-async:
+          await:
+            event: Order.ArchiveRequested  # REAL event (matches AsyncAPI x-label)
+            match:
+              orderId: $steps.submit.outputs.submittedOrderId
+            timeout: PT60S
+    outputs:
+      orderId: $steps.submit.outputs.submittedOrderId
+
+# =============================================================================
+# SECTION 4 — System-initiated (cron-triggered) scenario pattern
+# =============================================================================
+#
+# Scheduled-job scenarios have no human actor that initiates the workflow —
+# the job runs as the system. Arazzo 1.0.1 has no native concept of "trigger
+# a cron job": every step must reference an OpenAPI operationId.
+#
+# Pattern: model OBSERVABLE OUTCOMES, not job triggers.
+#   1. Create preconditions that the job will act upon
+#   2. Use x-async.await to observe the event the job publishes
+#   3. Use x-async.poll or a direct GET to verify the final REST state
+#   4. The test runtime is responsible for triggering the job between
+#      setup and observation steps
+#
+# Actors: use an "observer" actor (Admin or Manager — a role with read
+# access to the affected entities) who verifies the outcome, not an
+# initiator. Apply x-as: $observer on verification steps.
+#
+# See handbook §4.6 for full guidance on scheduled-job scenarios.
+# =============================================================================
+---
+
+arazzo: "1.0.1"
+info:
+  title: "Auto-archive stale orders"
+  version: "1.0.0"
+
+sourceDescriptions:
+  - name: apiSpec
+    url: ../specs/v1/openapi.yaml
+    type: openapi
+
+x-version:
+  current: 1
+  status: draft
+
+x-domain: order
+
+tags:
+  - scheduled-job
+
+x-doc:
+  summary: >-
+    A weekly cron job identifies stale draft orders and archives them via
+    the thin fan-out pattern. This scenario verifies the observable outcome:
+    a stale order transitions to archived status after the job runs.
+  personas:
+    - system
+  businessOutcome: >-
+    Prevents clutter from abandoned draft orders.
+
+x-mcp:
+  exposed: false
+
+# Scheduled-job scenarios: the actor is an OBSERVER, not an initiator.
+# The job runs as the system. The observer verifies results.
+x-actors:
+  observer:
+    role: Admin
+    description: "Admin who verifies the archive results after the job runs"
+    ref: $setup.outputs.adminUserId
+
+x-setup:
+  recipe: basic-orders
+  inputs:
+    orderPlacedDate: "@today-90d"        # An old order that should be considered stale
+
+workflows:
+  - workflowId: stale-order-gets-archived
+    summary: "A draft order beyond the stale threshold is archived by the cron job"
+
+    steps:
+      # Step 1: Create a stale order (precondition for the job)
+      - stepId: generate-stale-order
+        x-as: $observer
+        operationId: createOrder
+        parameters:
+          - name: customerId
+            in: path
+            value: $setup.outputs.customerId
+        requestBody:
+          payload:
+            placedAt: "@today-90d"
+        successCriteria:
+          - condition: $statusCode == 201
+        outputs:
+          staleOrderId: $response.body#/id
+
+        x-doc:
+          tutorialNote: >-
+            The test runtime must trigger the scheduled job between this step
+            and the next. Arazzo cannot model the cron trigger directly.
+
+      # Step 2: Await the event the job publishes (observable outcome)
+      - stepId: await-archive-event
+        x-as: $observer
+        x-async:
+          await:
+            event: Order.ArchiveRequested
+            match:
+              orderId: $steps.generate-stale-order.outputs.staleOrderId
+            timeout: PT120S
+            outputs:
+              archiveReason: $message.payload.reason
+
+      # Step 3: Poll for final REST state
+      - stepId: poll-order-archived
+        x-as: $observer
+        x-async:
+          poll:
+            operationId: getOrder
+            parameters:
+              orderId: $steps.generate-stale-order.outputs.staleOrderId
+            until: $response.body#/status == 'archived'
+            interval: PT5S
+            timeout: PT120S
+
+    outputs:
+      staleOrderId: $steps.generate-stale-order.outputs.staleOrderId
+      archiveReason: $steps.await-archive-event.outputs.archiveReason
+
+
+# =============================================================================
+# SECTION 5 — Same-status poll pattern (wait-then-verify)
+# =============================================================================
+#
+# When async processing leaves the status field UNCHANGED (e.g., a draft
+# order is enriched but stays 'draft'), the x-async.poll 'until' condition
+# is trivially true from the first poll. Two approaches handle this:
+#
+# APPROACH 1 (preferred): Await-then-verify
+#   If the async processing emits a detectable event, use x-async.await
+#   to confirm processing completed, then verify final state with a
+#   direct GET step. This eliminates the trivially-true poll entirely.
+#
+# APPROACH 2 (fallback): Wait-then-verify poll
+#   If no detectable event exists, keep the poll as a time-boxed delay
+#   and document the limitation with x-doc.tutorialNote.
+#
+# See handbook §6.2 for the poll limitation discussion.
+# =============================================================================
+---
+
+arazzo: "1.0.1"
+info:
+  title: "Same-status poll patterns"
+  version: "1.0.0"
+
+sourceDescriptions:
+  - name: apiSpec
+    url: ../specs/v1/openapi.yaml
+    type: openapi
+
+x-version:
+  current: 1
+  status: draft
+
+x-domain: order
+
+x-actors:
+  manager:
+    role: Manager
+    description: "Manager observing the order state"
+    ref: $setup.outputs.managerUserId
+
+x-setup:
+  recipe: basic-orders
+  inputs:
+    orderPlacedDate: "@today-1d"
+
+x-mcp:
+  exposed: false
+
+workflows:
+
+  # =========================================================================
+  # Approach 1: Await-then-verify (preferred)
+  # =========================================================================
+  # Use this when the async processing emits a detectable event.
+  # The await confirms processing completed; the GET verifies state.
+  - workflowId: await-then-verify
+    summary: "Await the processing event, then verify via GET"
+
+    steps:
+      - stepId: view-order-before
+        x-as: $manager
+        operationId: getOrder
+        parameters:
+          - name: orderId
+            in: path
+            value: $setup.outputs.orderId
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/status == 'draft'
+        outputs:
+          originalUpdatedAt: $response.body#/updatedAt
+
+      - stepId: trigger-enrichment
+        x-as: $manager
+        operationId: updateOrder
+        parameters:
+          - name: orderId
+            in: path
+            value: $setup.outputs.orderId
+        requestBody:
+          payload:
+            notes: "Trigger enrichment"
+        successCriteria:
+          - condition: $statusCode == 200
+        x-async:
+          emit:
+            - event: Order.Updated
+              timeout: PT10S
+
+      # Await the downstream event instead of polling with a trivially-true
+      # condition. The worker enriches the order and emits this event.
+      - stepId: await-order-enriched
+        x-as: $manager
+        x-async:
+          await:
+            event: Order.Enriched
+            match:
+              orderId: $setup.outputs.orderId
+            timeout: PT60S
+
+      # Verify final state via direct GET (status is still 'draft'
+      # but the order content has been enriched)
+      - stepId: verify-order-after
+        x-as: $manager
+        operationId: getOrder
+        parameters:
+          - name: orderId
+            in: path
+            value: $setup.outputs.orderId
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/status == 'draft'
+
+    outputs:
+      orderId: $setup.outputs.orderId
+
+  # =========================================================================
+  # Approach 2: Wait-then-verify poll (fallback)
+  # =========================================================================
+  # Use this when NO detectable event exists for the async processing.
+  # The poll serves as a time-boxed delay. Document the limitation.
+  - workflowId: wait-then-verify-poll
+    summary: "Poll as a processing delay when no event is available"
+
+    steps:
+      - stepId: trigger-processing
+        x-as: $manager
+        operationId: updateOrder
+        parameters:
+          - name: orderId
+            in: path
+            value: $setup.outputs.orderId
+        requestBody:
+          payload:
+            notes: "Trigger processing"
+        successCriteria:
+          - condition: $statusCode == 200
+
+      # The status does not change — poll serves as a time-boxed delay.
+      # The until condition is trivially true; the real purpose is to
+      # wait interval * (timeout / interval) for processing to complete.
+      - stepId: wait-for-processing
+        x-as: $manager
+        x-async:
+          poll:
+            operationId: getOrder
+            parameters:
+              orderId: $setup.outputs.orderId
+            until: $response.body#/status == 'draft'
+            interval: PT3S
+            timeout: PT30S
+
+        x-doc:
+          tutorialNote: >-
+            The order remains in 'draft' status after processing. The
+            observable change is in updatedAt and content, not status.
+            This poll serves as a wait-then-verify delay to allow async
+            processing to complete. The until condition is trivially true
+            from the first poll. Prefer the await-then-verify approach
+            (workflow 1) when a detectable event exists.
+
+      - stepId: verify-result
+        x-as: $manager
+        operationId: getOrder
+        parameters:
+          - name: orderId
+            in: path
+            value: $setup.outputs.orderId
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/status == 'draft'
+
+    outputs:
+      orderId: $setup.outputs.orderId
+
+
+# ---------------------------------------------------------------------------
+# RECIPE SKELETON REFERENCE
+# ---------------------------------------------------------------------------
+# Recipes are NOT scenarios — they go in separate files (*.recipe.yaml).
+# Shown here ONLY as a reference for the x-recipe extension shape.
+# See handbook §7 for full recipe rules.
+#
+# Key differences from scenarios:
+#   - x-recipe PRESENT (discriminator — makes it a recipe)
+#   - x-actors FORBIDDEN (recipes run as implicit $system mapped to the project's
+#     highest-privileged role)
+#   - x-setup FORBIDDEN (recipes compose via 'extends', not $setup)
+#   - x-mcp FORBIDDEN (recipes are infrastructure, not user-facing tools)
+#   - x-as FORBIDDEN on steps (every step runs as $system)
+#   - x-ui FORBIDDEN on steps (no user-facing interactions)
+#
+# Example x-recipe block:
+#
+#   x-recipe:
+#     purpose: test-fixture              # test-fixture | demo-fixture | dev-fixture
+#     extends: [minimal-customer]        # Single-inheritance composition chain
+#     idempotent: true                   # Running twice produces same result
+#     estimatedDurationMs: 800           # Informational, for test scheduling
+#     scope: scenario                    # scenario | session (session deferred)
+#
+# The recipe's outputs become available in scenarios via $setup.outputs.X.
+# See samples/recipe-samples.yaml for the full recipe template.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# DEPRECATED SCENARIO REFERENCE
+# ---------------------------------------------------------------------------
+# There is NO standalone x-deprecated extension. Deprecation metadata lives
+# INSIDE x-version. See handbook §4.2 and §10.
+#
+# Example of a deprecated scenario's x-version block:
+#
+#   x-version:
+#     current: 1
+#     status: deprecated
+#     deprecatedAt: "2026-06-01"
+#     replacedBy: request-refund-v2
+#     removalDate: "2026-12-01"
+#
+# When status is 'deprecated':
+#   - deprecatedAt and replacedBy are REQUIRED
+#   - removalDate is optional (target date for removal)
+#   - The scenario still runs in CI but is flagged for migration
+# ---------------------------------------------------------------------------
