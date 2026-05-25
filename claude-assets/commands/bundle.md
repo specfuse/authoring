@@ -1,5 +1,7 @@
 Bundle the API specifications into single files for code generation.
 
+*Enforces: (general — no single handbook)*
+
 ## OpenAPI Bundle
 
 Run:
