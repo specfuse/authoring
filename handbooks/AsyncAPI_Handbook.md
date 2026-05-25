@@ -31,12 +31,12 @@ This handbook defines the rules, conventions, and patterns for designing asynchr
 
 ### 0.1 Spec Version
 
-All async specifications use **AsyncAPI 3.0.0**. The root entry point is `api/specs/v3/asyncapi.yaml`.
+All async specifications use **AsyncAPI 3.0.0**. The root entry point is `api/specs/v1/asyncapi.yaml`.
 
 ### 0.2 File Organization
 
 ```
-api/specs/v3/
+api/specs/v1/
 ├── asyncapi.yaml                    # Root entry (references all domains)
 ├── async-common/                    # Shared async components
 │   ├── message-traits/
@@ -116,7 +116,7 @@ The spec **does not** dictate generated class names, namespaces, file layout, or
 {project}.events
 ```
 
-Where `{project}` is a short literal token chosen per project (e.g., `acme`, `hello-orders`) and configured once in the project's overlay. All domain event messages are published to this one topic. Routing between consumers is done by subscription filters over the Label property (see §0.8), not by topic splitting. The shared topic is defined in `api/specs/v3/async-common/channels/application-events.yaml` and referenced by every event-publishing operation and every event-receiving operation.
+Where `{project}` is a short literal token chosen per project (e.g., `acme`, `hello-orders`) and configured once in the project's overlay. All domain event messages are published to this one topic. Routing between consumers is done by subscription filters over the Label property (see §0.8), not by topic splitting. The shared topic is defined in `api/specs/v1/async-common/channels/application-events.yaml` and referenced by every event-publishing operation and every event-receiving operation.
 
 **Scheduled-trigger addresses remain per-domain:**
 
@@ -387,7 +387,7 @@ The predicate is evaluated by generator-emitted service code against `EntityEntr
 Each event-emitting entity has exactly one `{Entity}Snapshot` definition, **reused across all of its events** (Created/Updated/Deleted/state transitions). Snapshots live in a dedicated `events/` folder peer to `models/`:
 
 ```
-api/specs/v3/domains/{domain}/
+api/specs/v1/domains/{domain}/
 ├── models/                                # API-shaped resources
 ├── events/                                # event-shaped resources (snapshots, contexts)
 │   ├── {Entity}Snapshot.yaml              # one per event-emitting entity
@@ -422,7 +422,7 @@ api/specs/v3/domains/{domain}/
 
 **Snapshot dual-version coexistence:** when a breaking change forces a bump, the previous snapshot shape stays available so deprecated event messages can still deserialize. The convention (rename existing → `*V1.yaml`, author new under canonical name; deprecated event messages flip `$ref` to the versioned file; delete both after `removalDate`) is documented in `Vendor_Extensions.md §12.2 x-version`.
 
-**Example** (`api/specs/v3/domains/customer/events/CustomerSnapshot.yaml`):
+**Example** (`api/specs/v1/domains/customer/events/CustomerSnapshot.yaml`):
 
 ```yaml
 type: object
@@ -546,7 +546,7 @@ Dead-letter channels are NOT explicitly defined in the spec — they are infrast
 
 **Shared event channel** — the one channel every event-topic operation binds to:
 
-`api/specs/v3/async-common/channels/application-events.yaml`:
+`api/specs/v1/async-common/channels/application-events.yaml`:
 
 ```yaml
 address: '{project}.events'
@@ -1195,7 +1195,7 @@ Everything else should `$ref` into `domains/{domain}/models/`.
 Every OpenAPI write operation (POST/PUT/PATCH/DELETE) declares `x-emits` with the events it publishes on success:
 
 ```yaml
-# api/specs/v3/domains/order/operations/submit-order.yaml
+# api/specs/v1/domains/order/operations/submit-order.yaml
 post:
   operationId: submitOrder
   x-emits:
@@ -1208,7 +1208,7 @@ post:
 Every `on-*` receive operation that publishes events via `emit-*` send operations declares `x-emits` to link them:
 
 ```yaml
-# api/specs/v3/domains/customer/async-operations/on-customer-created.yaml
+# api/specs/v1/domains/customer/async-operations/on-customer-created.yaml
 x-emits:
   - event: CustomerProfile.Enriched
     description: Published when AI-driven profile enrichment finishes

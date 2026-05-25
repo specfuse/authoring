@@ -38,7 +38,7 @@ This handbook defines authoritative rules for designing REST APIs and OpenAPI sp
 ### Directory Structure
 
 ```
-api/specs/v3/
+api/specs/v1/
 ├── openapi.yaml                    # Main spec file (references all domains)
 ├── common/                         # Shared components
 │   ├── parameters/

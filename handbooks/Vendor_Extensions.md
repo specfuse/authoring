@@ -1187,7 +1187,7 @@ The two extensions are independent and may coexist on the same operation if both
 **Canonical example**:
 
 ```yaml
-# api/specs/v3/domains/order/operations/submit-my-order.yaml
+# api/specs/v1/domains/order/operations/submit-my-order.yaml
 post:
   operationId: submitMyOrder
   summary: Submit Placed Order

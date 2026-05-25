@@ -123,7 +123,7 @@ The >= 80% threshold forces a conscious decision: "yes, this really needs to be 
 ### 3.1 Directory Structure
 
 ```
-api/specs/v3/
+api/specs/v1/
 ├── openapi.yaml
 ├── asyncapi.yaml
 ├── domains/
