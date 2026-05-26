@@ -1,0 +1,340 @@
+# =============================================================================
+# Specfuse Arazzo Spectral Ruleset
+# =============================================================================
+# Enforces Specfuse conventions for Arazzo 1.0.1 scenario and recipe files.
+# Authoritative reference: handbooks/Arazzo_Handbook.md
+#
+# This ruleset validates:
+#   - Document-level extensions (x-version, x-domain, x-emits guard)
+#   - Workflow-level extensions (x-actors, x-setup, x-mcp, x-recipe)
+#   - Step-level extensions (x-as, x-async, x-ui)
+#   - Cross-concern rules (recipe/scenario exclusion, file homogeneity)
+#
+# DEFERRED RULE: arazzo-scenario-step-overlap (>=80% operationId sequence
+# overlap between scenarios in the same domain) is a CROSS-FILE check.
+# Spectral operates on single documents. Projects implement that check in
+# their own validate-arazzo script.
+#
+# FORMAT NOTE: This ruleset does not extend spectral:arazzo. Rules use
+# explicit JSONPath targeting and are format-agnostic. Project-side CLI
+# invocation should select Arazzo files by glob pattern.
+#
+# Generalization notes for items lifted from the RestoManager source:
+# - All rule IDs renamed from rm-arazzo-* to specfuse-arazzo-* (per
+#   compatibility.md §1).
+# - specfuse-arazzo-actors-role-shape: replaces the original
+#   rm-arazzo-actors-role-enum which pinned the closed RM role set
+#   (Authenticated/Admin/CompanyAdmin/RestaurantAdmin/RestaurantManager/
+#   Employee). The kit rule enforces only the PascalCase identifier
+#   shape; the project's overlay constrains the closed value set
+#   against common/enums.yaml#/Role.
+# - specfuse-arazzo-domain-shape: replaces the original
+#   rm-arazzo-domain-enum which enumerated the 17 RM domain values.
+#   The kit rule enforces only the kebab-case shape; the project's
+#   overlay constrains the closed value set against the project's
+#   domain list.
+# =============================================================================
+
+# Custom JavaScript functions live in ./functions (relative to this ruleset).
+# Each function file must be named {functionName}.js and export the function
+# via `module.exports` (Spectral 6 loads them as CommonJS modules).
+functions:
+  - arazzoRecipeScenarioExclusion
+  - arazzoAsActorExists
+  - arazzoUiSelectorBinding
+  - arazzoSetupForbiddenInRecipes
+  - arazzoFileHomogeneity
+
+rules:
+
+  # ===========================================================================
+  # GROUP A -- Document-level extension shapes
+  # Handbook references: Section 4.1, 4.2, 4.3, 10, 13 Do NOT #1
+  # ===========================================================================
+
+  specfuse-arazzo-version-required:
+    description: "Every Arazzo document must declare x-version at the root"
+    message: "Document is missing 'x-version'. Add x-version with 'current' (integer) and 'status' (draft|stable|deprecated). See Arazzo Handbook §4.2."
+    severity: error
+    given: $
+    then:
+      field: x-version
+      function: truthy
+
+  specfuse-arazzo-version-status:
+    description: "x-version.status must be one of: draft, stable, deprecated"
+    message: "x-version.status '{{value}}' is not valid. Must be: draft, stable, or deprecated."
+    severity: error
+    given: $.x-version.status
+    then:
+      function: enumeration
+      functionOptions:
+        values:
+          - draft
+          - stable
+          - deprecated
+
+  specfuse-arazzo-version-deprecation-metadata:
+    description: "When x-version.status is deprecated, deprecatedAt and replacedBy are required"
+    message: "x-version has status 'deprecated' but is missing required deprecation metadata. Add 'deprecatedAt' (ISO date) and 'replacedBy' (successor file stem). See Arazzo Handbook §4.2."
+    severity: error
+    given: $.x-version
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          if:
+            properties:
+              status:
+                const: deprecated
+          then:
+            required:
+              - deprecatedAt
+              - replacedBy
+
+  specfuse-arazzo-version-deprecation-removal-date:
+    description: "When x-version.status is deprecated, removalDate is recommended"
+    message: "x-version has status 'deprecated' but 'removalDate' is not set. Consider adding a target removal date for the deprecated version. See Arazzo Handbook §4.2."
+    severity: warn
+    given: $.x-version
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          if:
+            properties:
+              status:
+                const: deprecated
+          then:
+            required:
+              - removalDate
+
+  specfuse-arazzo-domain-required:
+    description: "Every Arazzo document must declare x-domain at the root"
+    message: "Document is missing 'x-domain'. Add x-domain with one of the project's declared domain names (or the reserved 'cross-domain' value for files under scenarios/cross-domain/). See Arazzo Handbook §4.3."
+    severity: error
+    given: $
+    then:
+      field: x-domain
+      function: truthy
+
+  # GENERALIZATION: the original rm-arazzo-domain-enum enumerated the 17 RM
+  # domain values. The kit-level rule enforces only the kebab-case shape;
+  # projects constrain the closed value set against their declared domain
+  # list via an overlay.
+  specfuse-arazzo-domain-shape:
+    description: "x-domain must be a kebab-case identifier. The closed value-set (the project's domain list) is project-defined and enforced by a project overlay."
+    message: "x-domain '{{value}}' must be kebab-case (e.g., 'order', 'customer', 'cross-domain')."
+    severity: error
+    given: $.x-domain
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+
+  specfuse-arazzo-emits-forbidden:
+    description: "x-emits is forbidden at document root in Arazzo files (collision guard)"
+    message: "x-emits at document root is not allowed in Arazzo files. Use x-async.emit on individual steps instead. Top-level x-emits is reserved for OpenAPI and AsyncAPI operations. See Arazzo Handbook §13, Do NOT #1."
+    severity: error
+    given: $
+    then:
+      field: x-emits
+      function: falsy
+
+  # ===========================================================================
+  # GROUP B -- Workflow-level extensions
+  # Handbook references: Section 4.6, 4.7, 4.8, 7, 11
+  # ===========================================================================
+
+  # GENERALIZATION: the original rm-arazzo-actors-role-enum pinned values
+  # to the RM closed role set. The kit rule below enforces only the
+  # PascalCase shape; the project's overlay constrains the closed value
+  # set against common/enums.yaml#/Role.
+  specfuse-arazzo-actors-role-shape:
+    description: "x-actors role must be a PascalCase identifier. The closed value-set (the project's role enum) is project-defined and enforced by a project overlay."
+    message: "Actor role '{{value}}' must be a PascalCase identifier (e.g., 'Admin', 'Customer'). The kit enforces shape only; the project's overlay constrains the closed value set."
+    severity: error
+    given: $.x-actors[*].role
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[A-Z][A-Za-z0-9]*$"
+
+  specfuse-arazzo-setup-recipe-required:
+    description: "When x-setup is present, the 'recipe' field is required"
+    message: "x-setup is missing 'recipe'. Specify the recipe file stem (e.g., recipe: basic-two-customers-one-order). See Arazzo Handbook §4.7."
+    severity: error
+    given: $.x-setup
+    then:
+      field: recipe
+      function: truthy
+
+  specfuse-arazzo-mcp-exposed-required:
+    description: "When x-mcp is present, the 'exposed' field is required"
+    message: "x-mcp is missing 'exposed'. Set exposed: true to expose as an MCP tool, or exposed: false to opt out. See Arazzo Handbook §4.8."
+    severity: error
+    given: $.x-mcp
+    then:
+      field: exposed
+      function: defined
+
+  specfuse-arazzo-mcp-fields-when-exposed:
+    description: "When x-mcp.exposed is true, toolName and description are required"
+    message: "x-mcp.exposed is true but 'toolName' and/or 'description' are missing. Both are required when a scenario is exposed as an MCP tool. See Arazzo Handbook §4.8."
+    severity: error
+    given: $.x-mcp
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          if:
+            properties:
+              exposed:
+                const: true
+          then:
+            required:
+              - toolName
+              - description
+
+  specfuse-arazzo-mcp-toolname-format:
+    description: "x-mcp.toolName must be kebab-case"
+    message: "x-mcp.toolName '{{value}}' must be kebab-case (e.g., 'place-order', 'get-order-status')."
+    severity: error
+    given: $.x-mcp.toolName
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+
+  specfuse-arazzo-recipe-scenario-exclusion:
+    description: "x-recipe must not coexist with scenario-only extensions (x-actors, x-mcp, x-setup, x-ui)"
+    message: "{{error}}"
+    severity: error
+    given: $
+    then:
+      function: arazzoRecipeScenarioExclusion
+
+  specfuse-arazzo-recipe-purpose-enum:
+    description: "x-recipe.purpose must be one of: test-fixture, demo-fixture, dev-fixture"
+    message: "x-recipe.purpose '{{value}}' is not valid. Must be: test-fixture, demo-fixture, or dev-fixture. See Arazzo Handbook §7.2."
+    severity: error
+    given: $.x-recipe.purpose
+    then:
+      function: enumeration
+      functionOptions:
+        values:
+          - test-fixture
+          - demo-fixture
+          - dev-fixture
+
+  specfuse-arazzo-recipe-scope-enum:
+    description: "x-recipe.scope must be one of: scenario, session"
+    message: "x-recipe.scope '{{value}}' is not valid. Must be: scenario or session. See Arazzo Handbook §7.2."
+    severity: error
+    given: $.x-recipe.scope
+    then:
+      function: enumeration
+      functionOptions:
+        values:
+          - scenario
+          - session
+
+  # ===========================================================================
+  # GROUP C -- Step-level extensions
+  # Handbook references: Section 5.1, 5.2, 5.3, 6.1, 6.2
+  # ===========================================================================
+
+  specfuse-arazzo-as-format:
+    description: "x-as must be a $-prefixed actor reference"
+    message: "x-as '{{value}}' does not match the required format. Must be a $-prefixed actor key (e.g., '$manager', '$customer'). See Arazzo Handbook §5.1."
+    severity: error
+    given: $.workflows[*].steps[*].x-as
+    then:
+      function: pattern
+      functionOptions:
+        match: "^\\$[a-zA-Z][a-zA-Z0-9_]*$"
+
+  specfuse-arazzo-as-actor-exists:
+    description: "x-as must reference an actor declared in x-actors"
+    message: "{{error}}"
+    severity: error
+    given: $.workflows[*].steps[*]
+    then:
+      function: arazzoAsActorExists
+
+  specfuse-arazzo-async-event-format:
+    description: "x-async event names must match {Entity}.{Action} PascalCase format"
+    message: "Event name '{{value}}' does not match {Entity}.{Action} PascalCase format (e.g., 'Order.Created', 'Customer.Updated'). Both segments must start with an uppercase letter. See Arazzo Handbook §6.1."
+    severity: error
+    given:
+      - $.workflows[*].steps[*].x-async.emit[*].event
+      - $.workflows[*].steps[*].x-async.await.event
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[A-Z][A-Za-z0-9]*\\.[A-Z][A-Za-z0-9]*$"
+
+  specfuse-arazzo-async-timeout-format:
+    description: "x-async timeout values must be ISO 8601 durations"
+    message: "Timeout '{{value}}' is not a valid ISO 8601 duration. Use format like PT10S, PT1M, PT2H. See Arazzo Handbook §6.2."
+    severity: error
+    given:
+      - $.workflows[*].steps[*].x-async.emit[*].timeout
+      - $.workflows[*].steps[*].x-async.await.timeout
+      - $.workflows[*].steps[*].x-async.poll.timeout
+    then:
+      function: pattern
+      functionOptions:
+        match: "^P([0-9]+[YMWD])*(T([0-9]+[HMS])+)?$"
+
+  specfuse-arazzo-async-poll-interval-format:
+    description: "x-async.poll.interval must be an ISO 8601 duration"
+    message: "Poll interval '{{value}}' is not a valid ISO 8601 duration. Use format like PT2S, PT5S. See Arazzo Handbook §6.2."
+    severity: error
+    given: $.workflows[*].steps[*].x-async.poll.interval
+    then:
+      function: pattern
+      functionOptions:
+        match: "^P([0-9]+[YMWD])*(T([0-9]+[HMS])+)?$"
+
+  specfuse-arazzo-ui-platform-enum:
+    description: "x-ui.platform must be one of: web, mobile, any"
+    message: "x-ui.platform '{{value}}' is not valid. Must be: web, mobile, or any. See Arazzo Handbook §5.3."
+    severity: error
+    given: $.workflows[*].steps[*].x-ui.platform
+    then:
+      function: enumeration
+      functionOptions:
+        values:
+          - web
+          - mobile
+          - any
+
+  specfuse-arazzo-ui-selector-binding:
+    description: "x-ui selectors must reference valid action ids in the same step"
+    message: "{{error}}"
+    severity: error
+    given: $.workflows[*].steps[*]
+    then:
+      function: arazzoUiSelectorBinding
+
+  # ===========================================================================
+  # GROUP D -- Cross-concern validation
+  # Handbook references: Section 3.3, 7.4, 8.2
+  # ===========================================================================
+
+  specfuse-arazzo-setup-forbidden-in-recipes:
+    description: "$setup expression references are forbidden in recipe files"
+    message: "{{error}}"
+    severity: error
+    given: $
+    then:
+      function: arazzoSetupForbiddenInRecipes
+
+  specfuse-arazzo-file-homogeneity:
+    description: "All workflows in a file must be the same category (all recipes or all scenarios)"
+    message: "{{error}}"
+    severity: error
+    given: $
+    then:
+      function: arazzoFileHomogeneity
