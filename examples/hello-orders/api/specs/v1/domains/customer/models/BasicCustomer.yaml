@@ -1,0 +1,13 @@
+type: object
+description: Lightweight Customer projection used in list responses.
+required: [id]
+properties:
+  id:
+    type: string
+    format: uuid
+  firstName:
+    type: string
+  lastName:
+    type: string
+  status:
+    $ref: './CustomerStatus.yaml'

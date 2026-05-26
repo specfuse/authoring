@@ -1,0 +1,32 @@
+post:
+  operationId: createCustomer
+  tags: [Customers]
+  summary: Create a customer in a tenant
+  x-roles: [Admin, Manager]
+  x-scopes: [customers.write]
+  x-emits:
+    - event: Customer.Created
+      description: Emitted when a new customer is successfully created
+  parameters:
+    - $ref: '../../../common/parameters/path.yaml#/tenantId'
+    - $ref: '../../../common/parameters/pagination.yaml#/validateOnly'
+  security: [{ bearerAuth: [] }]
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../models/NewCustomer.yaml'
+  responses:
+    '201':
+      description: Created
+      headers:
+        Location:    { schema: { type: string, format: uri } }
+        API-Version: { schema: { type: string } }
+      content:
+        application/json:
+          schema:
+            $ref: '../models/Customer.yaml'
+    '400': { $ref: '../../../common/responses/errors.yaml#/BadRequestError' }
+    '401': { $ref: '../../../common/responses/errors.yaml#/UnauthorizedError' }
+    '403': { $ref: '../../../common/responses/errors.yaml#/ForbiddenError' }

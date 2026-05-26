@@ -1,0 +1,6 @@
+type: string
+description: Lifecycle status of a Customer.
+enum:
+  - active
+  - inactive
+  - suspended

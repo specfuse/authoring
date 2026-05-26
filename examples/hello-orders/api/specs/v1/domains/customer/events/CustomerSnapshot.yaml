@@ -1,0 +1,24 @@
+type: object
+description: Frozen snapshot of a Customer at the moment of an event.
+x-snapshot-pii-acknowledged:
+  firstName: "Order-management consumers display customer names in audit logs and operator UIs."
+  lastName:  "Order-management consumers display customer names in audit logs and operator UIs."
+  email:     "Notification workers send order confirmations to the customer's email address."
+required: [id, tenantId, firstName, lastName, status]
+properties:
+  id:
+    type: string
+    format: uuid
+  tenantId:
+    type: string
+    format: uuid
+  firstName:
+    type: string
+  lastName:
+    type: string
+  email:
+    type: string
+    format: email
+    nullable: true
+  status:
+    $ref: '../models/CustomerStatus.yaml'

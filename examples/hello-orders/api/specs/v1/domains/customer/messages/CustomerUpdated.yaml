@@ -1,0 +1,27 @@
+name: CustomerUpdated
+title: Customer Updated
+summary: Emitted when a customer's tracked fields change without a state transition.
+contentType: application/json
+traits:
+  - $ref: '../../../async-common/message-traits/common.yaml#/auditableEvent'
+x-message-category: event
+x-label:
+  entity: Customer
+  action: Updated
+x-version:
+  current: 1
+  status: stable
+x-partition-key:
+  property: customerId
+  scope: aggregate
+payload:
+  type: object
+  required: [customerId, before, after]
+  properties:
+    customerId:
+      type: string
+      format: uuid
+    before:
+      $ref: '../events/CustomerSnapshot.yaml'
+    after:
+      $ref: '../events/CustomerSnapshot.yaml'

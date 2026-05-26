@@ -1,0 +1,25 @@
+get:
+  operationId: listCustomers
+  tags: [Customers]
+  summary: List customers in a tenant
+  description: Paginated list of customers scoped to a tenant.
+  x-roles: [Admin, Manager, Customer]
+  x-scopes: [customers.read]
+  parameters:
+    - $ref: '../../../common/parameters/path.yaml#/tenantId'
+    - $ref: '../../../common/parameters/pagination.yaml#/page'
+    - $ref: '../../../common/parameters/pagination.yaml#/pageSize'
+    - $ref: '../../../common/parameters/pagination.yaml#/sort'
+  security: [{ bearerAuth: [] }]
+  responses:
+    '200':
+      description: OK
+      headers:
+        API-Version: { schema: { type: string } }
+      content:
+        application/json:
+          schema:
+            $ref: '../models/CustomerList.yaml'
+    '400': { $ref: '../../../common/responses/errors.yaml#/BadRequestError' }
+    '401': { $ref: '../../../common/responses/errors.yaml#/UnauthorizedError' }
+    '403': { $ref: '../../../common/responses/errors.yaml#/ForbiddenError' }

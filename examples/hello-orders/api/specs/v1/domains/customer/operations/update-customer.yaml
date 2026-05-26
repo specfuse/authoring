@@ -1,0 +1,35 @@
+patch:
+  operationId: updateCustomer
+  tags: [Customers]
+  summary: Update a customer
+  x-roles: [Admin, Manager]
+  x-scopes: [customers.write]
+  x-emits:
+    - event: Customer.Updated
+      description: Emitted when a customer's tracked fields change
+  parameters:
+    - $ref: '../../../common/parameters/path.yaml#/customerId'
+    - $ref: '../../../common/parameters/pagination.yaml#/If-Match'
+    - $ref: '../../../common/parameters/pagination.yaml#/validateOnly'
+  security: [{ bearerAuth: [] }]
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../models/UpdateCustomer.yaml'
+  responses:
+    '200':
+      description: OK
+      headers:
+        Location:    { schema: { type: string, format: uri } }
+        API-Version: { schema: { type: string } }
+      content:
+        application/json:
+          schema:
+            $ref: '../models/Customer.yaml'
+    '400': { $ref: '../../../common/responses/errors.yaml#/BadRequestError' }
+    '401': { $ref: '../../../common/responses/errors.yaml#/UnauthorizedError' }
+    '403': { $ref: '../../../common/responses/errors.yaml#/ForbiddenError' }
+    '404': { $ref: '../../../common/responses/errors.yaml#/NotFoundError' }
+    '412': { $ref: '../../../common/responses/errors.yaml#/PreconditionFailedError' }

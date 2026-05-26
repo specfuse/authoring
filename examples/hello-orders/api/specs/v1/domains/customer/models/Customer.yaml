@@ -1,0 +1,41 @@
+type: object
+description: A customer aggregate within a tenant.
+x-entity:
+  type: aggregate
+  belongsTo:
+    allOf: [Tenant]
+  hasMany: [Order]
+  searchableProperties: [firstName, lastName, email]
+  aiAccess:
+    operations: [read]
+    # readableProperties omitted → every non-encrypted top-level field
+    reason: >
+      Order-management agents read customer profiles to provide context
+      when reviewing or annotating orders. No write surface.
+required: [id, tenantId, createdAt, updatedAt, firstName, lastName, status]
+properties:
+  id:
+    type: string
+    format: uuid
+  tenantId:
+    type: string
+    format: uuid
+  createdAt:
+    type: string
+    format: date-time
+  updatedAt:
+    type: string
+    format: date-time
+  firstName:
+    type: string
+    x-classification: [pii]
+  lastName:
+    type: string
+    x-classification: [pii]
+  email:
+    type: string
+    format: email
+    nullable: true
+    x-classification: [pii]
+  status:
+    $ref: './CustomerStatus.yaml'

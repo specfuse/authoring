@@ -1,0 +1,12 @@
+action: send
+channel:
+  $ref: '../../../async-common/channels/application-events.yaml'
+tags:
+  - name: Customer
+summary: Publish Customer.Created event
+description: |
+  Publishing declaration for Customer.Created. Wired by the generator into the
+  createCustomer REST operation (which declares x-emits: Customer.Created).
+  Not a worker — emit-* operations are declarations, not handlers.
+messages:
+  - $ref: '../messages/CustomerCreated.yaml'

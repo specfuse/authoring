@@ -1,0 +1,13 @@
+type: object
+description: Partial-update body for a Customer. All fields optional.
+additionalProperties: false
+properties:
+  firstName:
+    type: string
+  lastName:
+    type: string
+  email:
+    type: string
+    format: email
+  status:
+    $ref: './CustomerStatus.yaml'
