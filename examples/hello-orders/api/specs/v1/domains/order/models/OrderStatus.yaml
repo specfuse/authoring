@@ -1,0 +1,5 @@
+type: string
+description: Lifecycle status of an Order. Only `draft` → `placed` is supported in the hello-orders example.
+enum:
+  - draft
+  - placed

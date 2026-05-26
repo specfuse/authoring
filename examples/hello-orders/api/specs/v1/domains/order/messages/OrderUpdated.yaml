@@ -1,0 +1,27 @@
+name: OrderUpdated
+title: Order Updated
+summary: Emitted when an order's tracked fields change without a state transition.
+contentType: application/json
+traits:
+  - $ref: '../../../async-common/message-traits/common.yaml#/auditableEvent'
+x-message-category: event
+x-label:
+  entity: Order
+  action: Updated
+x-version:
+  current: 1
+  status: stable
+x-partition-key:
+  property: orderId
+  scope: aggregate
+payload:
+  type: object
+  required: [orderId, before, after]
+  properties:
+    orderId:
+      type: string
+      format: uuid
+    before:
+      $ref: '../events/OrderSnapshot.yaml'
+    after:
+      $ref: '../events/OrderSnapshot.yaml'

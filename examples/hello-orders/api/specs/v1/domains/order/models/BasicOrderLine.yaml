@@ -1,0 +1,13 @@
+type: object
+description: Lightweight OrderLine projection used in list responses.
+required: [id, description, quantity, unitPriceMinor]
+properties:
+  id:
+    type: string
+    format: uuid
+  description:
+    type: string
+  quantity:
+    type: integer
+  unitPriceMinor:
+    type: integer

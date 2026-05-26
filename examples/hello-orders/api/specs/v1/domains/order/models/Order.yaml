@@ -1,0 +1,54 @@
+type: object
+description: An order aggregate. Belongs to a Tenant and a Customer.
+x-entity:
+  type: aggregate
+  belongsTo:
+    allOf: [Tenant, Customer]
+  hasMany: [OrderLine]
+  filterableProperties: [status, customerId]
+  aiAccess:
+    operations: [read, create, update]
+    writableProperties:
+      - status
+      - notes
+      - currency
+      - customerId
+      - tenantId
+    immutableOnUpdate:
+      - customerId
+      - tenantId
+    ownedBy: shared
+    reason: >
+      Order-management agents draft orders, annotate them, and may promote
+      drafts to placed on behalf of the customer. Humans (managers, customers)
+      remain authoritative; tenant and customer scope cannot be reparented.
+required: [id, tenantId, customerId, createdAt, updatedAt, status, currency]
+properties:
+  id:
+    type: string
+    format: uuid
+  tenantId:
+    type: string
+    format: uuid
+  customerId:
+    type: string
+    format: uuid
+  createdAt:
+    type: string
+    format: date-time
+  updatedAt:
+    type: string
+    format: date-time
+  status:
+    $ref: './OrderStatus.yaml'
+  currency:
+    type: string
+    description: ISO 4217 currency code.
+    example: USD
+  notes:
+    type: string
+    nullable: true
+  placedAt:
+    type: string
+    format: date-time
+    nullable: true

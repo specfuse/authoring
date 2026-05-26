@@ -1,0 +1,18 @@
+type: object
+description: Lightweight Order projection used in list responses.
+required: [id, status]
+properties:
+  id:
+    type: string
+    format: uuid
+  customerId:
+    type: string
+    format: uuid
+  status:
+    $ref: './OrderStatus.yaml'
+  currency:
+    type: string
+  placedAt:
+    type: string
+    format: date-time
+    nullable: true

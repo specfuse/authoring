@@ -1,0 +1,24 @@
+type: object
+description: Frozen snapshot of an Order at the moment of an event.
+required: [id, tenantId, customerId, status, currency]
+properties:
+  id:
+    type: string
+    format: uuid
+  tenantId:
+    type: string
+    format: uuid
+  customerId:
+    type: string
+    format: uuid
+  status:
+    $ref: '../models/OrderStatus.yaml'
+  currency:
+    type: string
+  notes:
+    type: string
+    nullable: true
+  placedAt:
+    type: string
+    format: date-time
+    nullable: true

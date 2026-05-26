@@ -1,0 +1,22 @@
+type: object
+description: Request body for adding a line item to an Order.
+required: [description, quantity, unitPriceMinor]
+properties:
+  description:
+    type: string
+    x-sample:
+      provider: faker
+      path: commerce.productName
+  quantity:
+    type: integer
+    minimum: 1
+    x-sample:
+      provider: fixed
+      value: 1
+  unitPriceMinor:
+    type: integer
+    minimum: 0
+    description: Price per unit in minor currency units (e.g., cents).
+    x-sample:
+      provider: fixed
+      value: 9999

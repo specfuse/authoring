@@ -1,0 +1,36 @@
+patch:
+  operationId: updateOrder
+  tags: [Orders]
+  summary: Update an order
+  description: Partial update of non-status order fields. State transitions go through `placeOrder`.
+  x-roles: [Admin, Manager]
+  x-scopes: [orders.write]
+  x-emits:
+    - event: Order.Updated
+      description: Emitted when an order's tracked fields change without a state transition
+  parameters:
+    - $ref: '../../../common/parameters/path.yaml#/orderId'
+    - $ref: '../../../common/parameters/pagination.yaml#/If-Match'
+    - $ref: '../../../common/parameters/pagination.yaml#/validateOnly'
+  security: [{ bearerAuth: [] }]
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../models/UpdateOrder.yaml'
+  responses:
+    '200':
+      description: OK
+      headers:
+        Location:    { schema: { type: string, format: uri } }
+        API-Version: { schema: { type: string } }
+      content:
+        application/json:
+          schema:
+            $ref: '../models/Order.yaml'
+    '400': { $ref: '../../../common/responses/errors.yaml#/BadRequestError' }
+    '401': { $ref: '../../../common/responses/errors.yaml#/UnauthorizedError' }
+    '403': { $ref: '../../../common/responses/errors.yaml#/ForbiddenError' }
+    '404': { $ref: '../../../common/responses/errors.yaml#/NotFoundError' }
+    '412': { $ref: '../../../common/responses/errors.yaml#/PreconditionFailedError' }

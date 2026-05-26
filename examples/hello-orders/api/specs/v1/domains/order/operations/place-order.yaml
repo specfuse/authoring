@@ -1,0 +1,34 @@
+post:
+  operationId: placeOrder
+  tags: [Orders]
+  summary: Place a draft order
+  description: Lifecycle action — transitions a draft order to `placed`. Emits `Order.Placed`.
+  x-roles: [Admin, Manager, Customer]
+  x-scopes: [orders.write]
+  x-emits:
+    - event: Order.Placed
+      description: Emitted on the draft → placed state transition
+  parameters:
+    - $ref: '../../../common/parameters/path.yaml#/orderId'
+    - $ref: '../../../common/parameters/pagination.yaml#/If-Match'
+  security: [{ bearerAuth: [] }]
+  responses:
+    '200':
+      description: OK — the order is now in `placed` status
+      headers:
+        Location:    { schema: { type: string, format: uri } }
+        API-Version: { schema: { type: string } }
+      content:
+        application/json:
+          schema:
+            $ref: '../models/Order.yaml'
+    '401': { $ref: '../../../common/responses/errors.yaml#/UnauthorizedError' }
+    '403': { $ref: '../../../common/responses/errors.yaml#/ForbiddenError' }
+    '404': { $ref: '../../../common/responses/errors.yaml#/NotFoundError' }
+    '409':
+      description: Conflict — the order is not in a state that can be placed (e.g., already placed)
+      content:
+        application/json:
+          schema:
+            $ref: '../../../common/responses/errors.yaml#/Error'
+    '412': { $ref: '../../../common/responses/errors.yaml#/PreconditionFailedError' }

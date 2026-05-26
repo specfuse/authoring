@@ -1,0 +1,13 @@
+type: object
+description: Request body for creating an Order. New orders start in `draft` status.
+required: [currency]
+properties:
+  currency:
+    type: string
+    description: ISO 4217 currency code.
+    example: USD
+    x-sample:
+      provider: fixed
+      value: USD
+  notes:
+    type: string

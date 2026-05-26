@@ -1,0 +1,8 @@
+type: object
+description: Partial-update body for an Order. The `status` field is not updated here — use the lifecycle action `placeOrder` for state transitions.
+additionalProperties: false
+properties:
+  currency:
+    type: string
+  notes:
+    type: string

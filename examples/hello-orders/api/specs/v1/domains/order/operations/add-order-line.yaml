@@ -1,0 +1,40 @@
+post:
+  operationId: addOrderLine
+  tags: [OrderLines]
+  summary: Add a line item to an order
+  description: Adds a new OrderLine to the order. Allowed only while the order is in `draft` status.
+  x-roles: [Admin, Manager, Customer]
+  x-scopes: [orders.write]
+  x-emits:
+    - event: OrderLine.Created
+      description: Emitted when a line item is added to an order
+  parameters:
+    - $ref: '../../../common/parameters/path.yaml#/orderId'
+    - $ref: '../../../common/parameters/pagination.yaml#/validateOnly'
+  security: [{ bearerAuth: [] }]
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../models/NewOrderLine.yaml'
+  responses:
+    '201':
+      description: Created
+      headers:
+        Location:    { schema: { type: string, format: uri } }
+        API-Version: { schema: { type: string } }
+      content:
+        application/json:
+          schema:
+            $ref: '../models/OrderLine.yaml'
+    '400': { $ref: '../../../common/responses/errors.yaml#/BadRequestError' }
+    '401': { $ref: '../../../common/responses/errors.yaml#/UnauthorizedError' }
+    '403': { $ref: '../../../common/responses/errors.yaml#/ForbiddenError' }
+    '404': { $ref: '../../../common/responses/errors.yaml#/NotFoundError' }
+    '409':
+      description: Conflict — order is not in a state that accepts new lines
+      content:
+        application/json:
+          schema:
+            $ref: '../../../common/responses/errors.yaml#/Error'

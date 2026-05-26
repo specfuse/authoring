@@ -1,0 +1,11 @@
+action: send
+channel:
+  $ref: '../../../async-common/channels/application-events.yaml'
+tags:
+  - name: Order
+summary: Publish OrderLine.Created event
+description: |
+  Publishing declaration for OrderLine.Created. Wired by the generator into
+  the addOrderLine REST operation (which declares x-emits: OrderLine.Created).
+messages:
+  - $ref: '../messages/OrderLineCreated.yaml'

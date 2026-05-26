@@ -1,0 +1,40 @@
+type: object
+description: A line item under an Order. Belongs to its Order aggregate.
+x-entity:
+  type: entity
+  belongsTo:
+    allOf: [Order]
+  aiAccess:
+    operations: [read, create]
+    writableProperties:
+      - description
+      - quantity
+      - unitPriceMinor
+      - orderId
+    immutableOnUpdate:
+      - orderId
+    ownedBy: shared
+    reason: >
+      Order-management agents add line items to draft orders on behalf of
+      the customer. No update or delete — once added, a line is replaced
+      by deleting and re-adding (out of scope for this example).
+required: [id, orderId, createdAt, description, quantity, unitPriceMinor]
+properties:
+  id:
+    type: string
+    format: uuid
+  orderId:
+    type: string
+    format: uuid
+  createdAt:
+    type: string
+    format: date-time
+  description:
+    type: string
+  quantity:
+    type: integer
+    minimum: 1
+  unitPriceMinor:
+    type: integer
+    description: Price per unit in minor currency units (e.g., cents).
+    minimum: 0

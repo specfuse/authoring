@@ -1,0 +1,25 @@
+name: OrderLineCreated
+title: Order Line Created
+summary: Emitted when a line item is added to an order.
+contentType: application/json
+traits:
+  - $ref: '../../../async-common/message-traits/common.yaml#/auditableEvent'
+x-message-category: event
+x-label:
+  entity: OrderLine
+  action: Created
+x-version:
+  current: 1
+  status: stable
+x-partition-key:
+  property: orderLineId
+  scope: aggregate
+payload:
+  type: object
+  required: [orderLineId, after]
+  properties:
+    orderLineId:
+      type: string
+      format: uuid
+    after:
+      $ref: '../events/OrderLineSnapshot.yaml'

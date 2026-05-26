@@ -1,0 +1,13 @@
+action: send
+channel:
+  $ref: '../../../async-common/channels/application-events.yaml'
+tags:
+  - name: Order
+summary: Publish Order.Placed event
+description: |
+  Publishing declaration for Order.Placed (state-transition event). Wired by
+  the generator into the placeOrder REST operation. The producer pipeline
+  evaluates x-trigger-when before SaveChangesAsync; on match, Order.Placed
+  fires and Order.Updated is suppressed.
+messages:
+  - $ref: '../messages/OrderPlaced.yaml'

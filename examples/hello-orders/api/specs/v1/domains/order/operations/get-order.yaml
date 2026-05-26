@@ -1,0 +1,22 @@
+get:
+  operationId: getOrder
+  tags: [Orders]
+  summary: Get an order
+  x-roles: [Admin, Manager, Customer]
+  x-scopes: [orders.read]
+  parameters:
+    - $ref: '../../../common/parameters/path.yaml#/orderId'
+  security: [{ bearerAuth: [] }]
+  responses:
+    '200':
+      description: OK
+      headers:
+        ETag:        { schema: { type: string } }
+        API-Version: { schema: { type: string } }
+      content:
+        application/json:
+          schema:
+            $ref: '../models/Order.yaml'
+    '401': { $ref: '../../../common/responses/errors.yaml#/UnauthorizedError' }
+    '403': { $ref: '../../../common/responses/errors.yaml#/ForbiddenError' }
+    '404': { $ref: '../../../common/responses/errors.yaml#/NotFoundError' }

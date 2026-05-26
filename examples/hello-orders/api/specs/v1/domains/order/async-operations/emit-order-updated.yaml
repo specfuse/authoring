@@ -1,0 +1,13 @@
+action: send
+channel:
+  $ref: '../../../async-common/channels/application-events.yaml'
+tags:
+  - name: Order
+summary: Publish Order.Updated event
+description: |
+  Publishing declaration for Order.Updated. Wired by the generator into the
+  updateOrder REST operation (which declares x-emits: Order.Updated).
+  Suppressed when the save also triggers a state-transition event (e.g.,
+  Order.Placed) — mutual-exclusivity rule.
+messages:
+  - $ref: '../messages/OrderUpdated.yaml'

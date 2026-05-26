@@ -1,0 +1,22 @@
+type: object
+description: Paginated list of orders.
+required: [totalItemsCount, pageCount, page, pageSize, data]
+properties:
+  totalItemsCount: { type: integer }
+  pageCount:       { type: integer }
+  page:            { type: integer }
+  pageSize:        { type: integer }
+  hasPrev:         { type: boolean }
+  hasNext:         { type: boolean }
+  links:
+    type: object
+    properties:
+      self:  { type: string, format: uri }
+      first: { type: string, format: uri }
+      prev:  { type: string, format: uri }
+      next:  { type: string, format: uri }
+      last:  { type: string, format: uri }
+  data:
+    type: array
+    items:
+      $ref: './BasicOrder.yaml'

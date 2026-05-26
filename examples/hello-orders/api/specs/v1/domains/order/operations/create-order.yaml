@@ -1,0 +1,33 @@
+post:
+  operationId: createOrder
+  tags: [Orders]
+  summary: Create an order for a customer
+  description: Creates a new Order in `draft` status. Use `placeOrder` to transition it to `placed`.
+  x-roles: [Admin, Manager]
+  x-scopes: [orders.write]
+  x-emits:
+    - event: Order.Created
+      description: Emitted when a new order is successfully created (always in draft status)
+  parameters:
+    - $ref: '../../../common/parameters/path.yaml#/customerId'
+    - $ref: '../../../common/parameters/pagination.yaml#/validateOnly'
+  security: [{ bearerAuth: [] }]
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../models/NewOrder.yaml'
+  responses:
+    '201':
+      description: Created
+      headers:
+        Location:    { schema: { type: string, format: uri } }
+        API-Version: { schema: { type: string } }
+      content:
+        application/json:
+          schema:
+            $ref: '../models/Order.yaml'
+    '400': { $ref: '../../../common/responses/errors.yaml#/BadRequestError' }
+    '401': { $ref: '../../../common/responses/errors.yaml#/UnauthorizedError' }
+    '403': { $ref: '../../../common/responses/errors.yaml#/ForbiddenError' }

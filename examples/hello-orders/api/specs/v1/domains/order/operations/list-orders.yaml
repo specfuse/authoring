@@ -1,0 +1,24 @@
+get:
+  operationId: listOrders
+  tags: [Orders]
+  summary: List orders for a customer
+  x-roles: [Admin, Manager, Customer]
+  x-scopes: [orders.read]
+  parameters:
+    - $ref: '../../../common/parameters/path.yaml#/customerId'
+    - $ref: '../../../common/parameters/pagination.yaml#/page'
+    - $ref: '../../../common/parameters/pagination.yaml#/pageSize'
+    - $ref: '../../../common/parameters/pagination.yaml#/sort'
+  security: [{ bearerAuth: [] }]
+  responses:
+    '200':
+      description: OK
+      headers:
+        API-Version: { schema: { type: string } }
+      content:
+        application/json:
+          schema:
+            $ref: '../models/OrderList.yaml'
+    '400': { $ref: '../../../common/responses/errors.yaml#/BadRequestError' }
+    '401': { $ref: '../../../common/responses/errors.yaml#/UnauthorizedError' }
+    '403': { $ref: '../../../common/responses/errors.yaml#/ForbiddenError' }
