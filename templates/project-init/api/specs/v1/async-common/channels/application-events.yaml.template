@@ -1,0 +1,26 @@
+# =============================================================================
+# Shared event topic — single channel for ALL domain events in {ProjectName}.
+# =============================================================================
+# See AsyncAPI Handbook §1.5 and §3.2 for the rationale behind a single shared
+# topic with subscription filters over the Label property.
+#
+# This channel's `messages` map MUST list every event message in the project.
+# Add a one-line $ref entry here when authoring a new event message.
+# Spectral rule `asyncapi-channel-message-completeness` enforces this.
+
+address: '{project}.events'
+description: |
+  Single shared topic for every domain event. Consumers subscribe with
+  SQL-style filters over the Label property ({Entity}.{Action} format).
+
+messages: {}
+  # Example entries (add as you author event messages):
+  #
+  # customerCreated:
+  #   $ref: '../../domains/customer/messages/CustomerCreated.yaml'
+  #
+  # orderSubmitted:
+  #   $ref: '../../domains/order/messages/OrderSubmitted.yaml'
+
+x-domain: shared
+x-channel-type: event-topic

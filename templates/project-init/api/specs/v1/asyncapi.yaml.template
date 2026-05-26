@@ -1,0 +1,39 @@
+asyncapi: 3.0.0
+
+info:
+  title: {ProjectName} AsyncAPI
+  description: |
+    Async specifications for {ProjectName} — domain events and scheduled jobs.
+    See `handbooks/AsyncAPI_Handbook.md` in the spec-authoring-kit for the
+    authoritative rules; this file is the project's AsyncAPI root.
+  version: 1.0.0
+
+# Tags — one per domain (PascalCase). Match the OpenAPI tags.
+tags:
+  - name: TODO
+    description: Replace with one entry per domain (e.g., Customers, Orders, etc.)
+
+# Channels and operations — references resolve to per-domain files.
+# The shared event topic ({project}.events) is defined in
+# async-common/channels/application-events.yaml.
+channels:
+  applicationEvents:
+    $ref: './async-common/channels/application-events.yaml'
+
+# Add receive/send operation references as you author async-operations:
+#
+#   operations:
+#     onCustomerCreated:
+#       $ref: './domains/customer/async-operations/on-customer-created.yaml'
+#
+# See samples/message-samples.yaml in the kit for canonical patterns.
+operations: {}
+
+components:
+  messageTraits:
+    auditableEvent:   { $ref: './async-common/message-traits/common.yaml#/auditableEvent' }
+    commonHeaders:    { $ref: './async-common/message-traits/common.yaml#/commonHeaders' }
+
+  operationTraits:
+    reliableDelivery: { $ref: './async-common/operation-traits/common.yaml#/reliableDelivery' }
+    standardDelivery: { $ref: './async-common/operation-traits/common.yaml#/standardDelivery' }

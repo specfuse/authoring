@@ -1,0 +1,24 @@
+# =============================================================================
+# Response headers shared across operations.
+# =============================================================================
+
+Location:
+  schema:
+    type: string
+    format: uri
+  description: Canonical URL of the affected resource (returned on POST/PUT/PATCH).
+
+ETag:
+  schema:
+    type: string
+  description: Strong validator for optimistic concurrency control.
+
+API-Version:
+  schema:
+    type: string
+  description: API major.minor version that served this response.
+
+X-Request-Id:
+  schema:
+    type: string
+  description: Server-echoed request ID for correlation.

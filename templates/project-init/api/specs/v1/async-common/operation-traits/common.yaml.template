@@ -1,0 +1,20 @@
+# =============================================================================
+# Shared operation traits — delivery guarantees and retry policies.
+# =============================================================================
+# See AsyncAPI Handbook §4.4 (x-delivery). Workers reference these traits to
+# pick up delivery guarantees. The two starter traits below cover the typical
+# cases; add more (e.g., bestEffortDelivery) as needed.
+
+reliableDelivery:
+  x-delivery:
+    guarantee: atLeastOnce
+    maxRetries: 5
+    retryBackoff: exponential
+    deadLetterOnFailure: true
+
+standardDelivery:
+  x-delivery:
+    guarantee: atLeastOnce
+    maxRetries: 3
+    retryBackoff: linear
+    deadLetterOnFailure: true

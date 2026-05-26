@@ -39,7 +39,7 @@ Run sequentially. Stop at any **gate** that asks for user confirmation; surface 
 **If omitted (autonomous mint):**
 
 1. Verify `../orchestrator/features/` exists. If not, STOP:
-   > Orchestrator repo not found at `../orchestrator/features/`. Cannot mint correlation ID. Confirm the sibling-path layout matches `{project}App/{orchestrator,<project>-specs}/`.
+   > Orchestrator repo not found at `../orchestrator/features/`. Cannot mint correlation ID. Confirm the sibling-path layout matches `<project>App/{orchestrator,<project>-specs}/`.
 2. Read `../orchestrator/shared/schemas/feature-frontmatter.schema.json`. If unreachable, STOP with the same shape of message.
 3. Glob `../orchestrator/features/FEAT-{currentYear}-*.md`. Extract the largest `NNNN`. Pick the next ordinal (or `0001` if none). Per-year-resetting per `correlation-ids.md`.
 4. Set `correlationId = FEAT-<year>-<NNNN>`.

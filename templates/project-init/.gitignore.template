@@ -1,0 +1,14 @@
+# Generator outputs
+/output/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

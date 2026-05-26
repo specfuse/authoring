@@ -1,0 +1,135 @@
+# {ProjectName}
+
+This is a Specfuse project — spec-first API design with OpenAPI 3.0.3 + AsyncAPI 3.0.0 + Arazzo 1.0.1, driving code generation across backend, frontend, and worker artifacts.
+
+---
+
+## Authoritative rules
+
+All API, async, scenario, and AI-access design in this project MUST comply with the [Specfuse spec-authoring kit](https://github.com/clabonte/spec-authoring-kit). The kit's handbooks are the source of truth; this `CLAUDE.md` only documents project-specific overlays and conventions on top of them.
+
+When designing specs, read the relevant handbook first:
+
+| Topic | Handbook |
+|---|---|
+| REST API design (paths, models, HTTP contract, errors) | `<kit>/handbooks/API_Handbook.md` |
+| AsyncAPI events, scheduled jobs, snapshots, workers | `<kit>/handbooks/AsyncAPI_Handbook.md` |
+| Arazzo scenarios and setup recipes | `<kit>/handbooks/Arazzo_Handbook.md` |
+| Vendor extensions (`x-entity`, `x-emits`, `x-label`, etc.) | `<kit>/handbooks/Vendor_Extensions.md` |
+| AI agent access policy (tier framework) | `<kit>/handbooks/AI_Access_Policy_Framework.md` |
+
+Canonical samples to copy from:
+
+- `<kit>/samples/endpoint-samples.yaml`
+- `<kit>/samples/message-samples.yaml`
+- `<kit>/samples/scenario-samples.yaml`
+- `<kit>/samples/recipe-samples.yaml`
+
+Replace `<kit>` with the path where the kit is cloned (typically `../spec-authoring-kit` if cloned as a sibling).
+
+---
+
+## Project-specific overlays
+
+These conventions are specific to {ProjectName} and supplement (never contradict) the kit's handbooks.
+
+### Project token
+
+Channel addresses in this project use the prefix `{project}`. The shared event topic is `{project}.events`; scheduled-trigger channels are `{project}.{domain}.jobs`.
+
+### Domain list
+
+Active domains in this project:
+
+- `{initial-domain}` — (one-line description of what this domain owns)
+
+Add new domains here as the project grows. The Spectral validator loads this list to enforce `x-domain` values on AsyncAPI channels and Arazzo workflows.
+
+### Role enum
+
+The project's closed role enum is defined in [`api/specs/v1/common/enums.yaml#/Role`](api/specs/v1/common/enums.yaml). All `x-roles` declarations on secured endpoints must use values from this enum.
+
+Starter shape (edit `enums.yaml` to add the roles your project actually needs):
+
+- `Admin` — system administrator (full access)
+- `Manager` — tenant-level manager
+- `Customer` — end-user with self-service access
+- `Authenticated` — pre-business-role flows (signup, invitation acceptance, etc.)
+
+### AI access policy
+
+The project's per-entity AI access tier assignments are documented in `api/docs/{ProjectName}-ai-access-policy.md` (copy from `<kit>/templates/ai-access-policy-template.md`). Every entity with `x-entity` must be assigned to a tier (0 = no access, 1 = read-only, 2 = collaborative, 3 = AI-owned). See `<kit>/handbooks/AI_Access_Policy_Framework.md` for tier semantics.
+
+### Flow documentation
+
+Each domain with async specifications has flow documentation under `api/docs/flows/{domain}/`. Flow docs are the primary resource for product managers and developers to understand how the system works end-to-end. Use Mermaid sequence diagrams for visual clarity.
+
+---
+
+## Project structure
+
+```
+api/
+├── docs/                                   # Flow docs, AI access policy, project overlays
+└── specs/v1/
+    ├── openapi.yaml                        # REST API root
+    ├── asyncapi.yaml                       # AsyncAPI root
+    ├── common/                             # Shared OpenAPI components
+    │   ├── enums.yaml                      # Project role enum + shared enums
+    │   ├── parameters/
+    │   ├── responses/
+    │   ├── headers/
+    │   └── securitySchemes/
+    ├── async-common/                       # Shared async components
+    │   ├── channels/
+    │   │   └── application-events.yaml     # Shared event topic ({project}.events)
+    │   ├── message-traits/
+    │   └── operation-traits/
+    └── domains/
+        └── {initial-domain}/               # One folder per bounded context
+            ├── models/                     # OpenAPI schemas (entities + derivatives)
+            ├── operations/                 # REST operation files
+            ├── events/                     # Event snapshots + context shapes
+            ├── messages/                   # AsyncAPI event/job message files
+            ├── channels/                   # Scheduled-trigger channels (event topic is shared)
+            ├── async-operations/           # on-* / run-* / emit-* operations
+            └── scenarios/                  # Arazzo scenario files (*.arazzo.yaml)
+```
+
+Cross-cutting Arazzo recipes and scenarios live under `api/specs/v1/scenarios/` (see the Arazzo handbook §3.1 for the full directory layout).
+
+---
+
+## Claude Code workflow
+
+This project's `.claude/agents/` and `.claude/commands/` are copies of the kit's `claude-assets/`. To start designing:
+
+| Task | Command |
+|---|---|
+| Design a new REST endpoint | (no kit command yet — author by hand following `<kit>/handbooks/API_Handbook.md`) |
+| Design a new async flow (events, scheduled jobs) | `/design-async` |
+| Design a new Arazzo scenario | `/design-scenario` |
+| Design a new setup recipe | `/design-recipe` |
+| Validate scenario files | `/validate-scenarios` |
+| Validate AsyncAPI specs | `/validate-async` |
+| List existing scenarios | `/list-scenarios` |
+| Bundle specs for the generator | `/bundle` |
+| Generate code from specs | `/generate` |
+
+See `<kit>/claude-assets/commands/` for the full command list with descriptions.
+
+When the kit ships updated agents/commands, refresh this project's copies:
+
+```bash
+<kit>/templates/project-init/init.sh --refresh-assets $(pwd)
+```
+
+---
+
+## Generator configuration
+
+The Specfuse generator reads `{ProjectName}-project.json` at the project root. That file specifies target language(s), output directories, and language-specific code-generation settings. The spec files themselves remain language-agnostic.
+
+---
+
+*Last updated: project bootstrap*

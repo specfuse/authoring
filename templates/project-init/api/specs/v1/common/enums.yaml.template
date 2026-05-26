@@ -1,0 +1,35 @@
+# =============================================================================
+# Project enums shared across OpenAPI operations.
+# =============================================================================
+# Add domain-specific enums here as needed. Per the API Handbook (§5, §14)
+# and Vendor Extensions (§3.1), the project's closed Role enum lives here
+# and is the source of truth for all x-roles declarations.
+
+# -----------------------------------------------------------------------------
+# Role — project's closed role enum.
+# -----------------------------------------------------------------------------
+# Replace with the project's actual roles. Every x-roles declaration on a
+# secured endpoint must reference one of these values.
+#
+# Recommended convention: include `Authenticated` for pre-business-role flows
+# (signup, invitation acceptance) where the caller has a valid token but no
+# business role yet.
+Role:
+  type: string
+  enum:
+    - Admin           # System administrator — full access
+    - Manager         # Tenant-level manager
+    - Customer        # End-user with self-service access
+    - Authenticated   # Pre-business-role flows (signup, invitation acceptance)
+
+# -----------------------------------------------------------------------------
+# CurrencyCode — ISO 4217 codes preserved exactly.
+# -----------------------------------------------------------------------------
+# Replace with the currencies the project actually supports.
+CurrencyCode:
+  type: string
+  x-enum-case: preserve     # ISO codes must not be re-cased by the generator
+  enum:
+    - USD
+    - EUR
+    - GBP

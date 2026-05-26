@@ -1,0 +1,58 @@
+openapi: 3.0.3
+
+info:
+  title: {ProjectName} API
+  description: |
+    REST API for {ProjectName}. See `handbooks/API_Handbook.md` in the spec-authoring-kit
+    for the authoritative rules; this file is the project's OpenAPI root.
+  version: 1.0.0
+  contact:
+    name: TODO
+
+servers:
+  - url: https://api.{project}.example/v1
+    description: TODO — replace with the project's real server URL(s)
+
+# Tags are declared at the root and referenced from operation files.
+# Add one entry per domain. Tag names are PascalCase.
+tags:
+  - name: TODO
+    description: Replace with one entry per domain (e.g., Customers, Orders, etc.)
+
+# Path operations — references resolve to domain operation files.
+# Add path entries as you design new endpoints. Pattern:
+#
+#   /v1/{resource}/{resourceId}:
+#     get:
+#       $ref: './domains/{domain}/operations/get-{resource}.yaml#/get'
+#
+# See samples/endpoint-samples.yaml in the kit for canonical patterns.
+paths: {}
+
+components:
+  securitySchemes:
+    bearerAuth:
+      $ref: './common/securitySchemes/auth.yaml#/bearerAuth'
+
+  parameters:
+    page:           { $ref: './common/parameters/pagination.yaml#/page' }
+    pageSize:       { $ref: './common/parameters/pagination.yaml#/pageSize' }
+    sort:           { $ref: './common/parameters/pagination.yaml#/sort' }
+    validateOnly:   { $ref: './common/parameters/pagination.yaml#/validateOnly' }
+    If-Match:       { $ref: './common/parameters/pagination.yaml#/If-Match' }
+
+  responses:
+    UnauthorizedError:        { $ref: './common/responses/errors.yaml#/UnauthorizedError' }
+    ForbiddenError:           { $ref: './common/responses/errors.yaml#/ForbiddenError' }
+    NotFoundError:            { $ref: './common/responses/errors.yaml#/NotFoundError' }
+    BadRequestError:          { $ref: './common/responses/errors.yaml#/BadRequestError' }
+    ConflictError:            { $ref: './common/responses/errors.yaml#/ConflictError' }
+    PreconditionRequiredError:{ $ref: './common/responses/errors.yaml#/PreconditionRequiredError' }
+    PreconditionFailedError:  { $ref: './common/responses/errors.yaml#/PreconditionFailedError' }
+
+  schemas:
+    Error: { $ref: './common/responses/errors.yaml#/Error' }
+    Role:  { $ref: './common/enums.yaml#/Role' }
+
+security:
+  - bearerAuth: []

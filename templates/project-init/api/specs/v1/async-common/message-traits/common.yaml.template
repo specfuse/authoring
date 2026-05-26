@@ -1,0 +1,63 @@
+# =============================================================================
+# Shared message traits — applied via `traits` on AsyncAPI message files.
+# =============================================================================
+# See AsyncAPI Handbook §0.8 (envelope and Label conventions). The
+# `auditableEvent` trait stamps the canonical envelope fields on every
+# event message; `commonHeaders` is for scheduled-job messages that do
+# not need the full event envelope.
+
+auditableEvent:
+  name: auditableEvent
+  headers:
+    type: object
+    required: [eventId, correlationId, aggregateId, aggregateType, eventVersion, producedAt, tenantId]
+    properties:
+      eventId:
+        type: string
+        format: uuid
+        description: Unique identifier for this event instance.
+      correlationId:
+        type: string
+        format: uuid
+        description: Correlation ID linking this event to the originating request.
+      causationId:
+        type: string
+        format: uuid
+        description: ID of the event that caused this one (for tracing chains).
+      aggregateId:
+        type: string
+        format: uuid
+        description: Primary key of the aggregate this event concerns.
+      aggregateType:
+        type: string
+        description: PascalCase entity name (matches `x-label.entity`).
+      aggregateVersion:
+        type: integer
+        description: Version of the aggregate after this event.
+      eventVersion:
+        type: integer
+        description: Schema version of this event message (matches `x-version.current`).
+      producedAt:
+        type: string
+        format: date-time
+      tenantId:
+        type: string
+        format: uuid
+        description: Tenant scope (envelope ApplicationProperty for routing).
+
+commonHeaders:
+  name: commonHeaders
+  headers:
+    type: object
+    required: [eventId, producedAt]
+    properties:
+      eventId:
+        type: string
+        format: uuid
+      producedAt:
+        type: string
+        format: date-time
+      tenantId:
+        type: string
+        format: uuid
+        description: Optional tenant scope (present for perTenant scheduled jobs).

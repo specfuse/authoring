@@ -1,0 +1,36 @@
+# =============================================================================
+# Path parameters shared across operations.
+# =============================================================================
+# Add per-resource path parameters here as you add domains. Pattern:
+#
+#   {resource}Id:
+#     name: {resource}Id
+#     in: path
+#     required: true
+#     schema: { type: string, format: uuid }
+#
+# Example for a Tenant + Customer + Order hierarchy:
+
+tenantId:
+  name: tenantId
+  in: path
+  required: true
+  schema:
+    type: string
+    format: uuid
+
+customerId:
+  name: customerId
+  in: path
+  required: true
+  schema:
+    type: string
+    format: uuid
+
+# Add more as the project grows:
+#
+# orderId:
+#   name: orderId
+#   in: path
+#   required: true
+#   schema: { type: string, format: uuid }
