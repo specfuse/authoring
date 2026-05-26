@@ -1,0 +1,27 @@
+# =============================================================================
+# Shared event topic — single channel for ALL hello-orders domain events.
+# =============================================================================
+# See AsyncAPI Handbook §1.5 and §3.2. Every event message in the project
+# MUST be listed in the messages map below.
+
+address: 'helloorders.events'
+description: |
+  Single shared topic for every domain event in hello-orders. Consumers
+  subscribe with SQL-style filters over the Label property ({Entity}.{Action}).
+
+messages:
+  customerCreated:
+    $ref: '../../domains/customer/messages/CustomerCreated.yaml'
+  customerUpdated:
+    $ref: '../../domains/customer/messages/CustomerUpdated.yaml'
+  orderCreated:
+    $ref: '../../domains/order/messages/OrderCreated.yaml'
+  orderUpdated:
+    $ref: '../../domains/order/messages/OrderUpdated.yaml'
+  orderPlaced:
+    $ref: '../../domains/order/messages/OrderPlaced.yaml'
+  orderLineCreated:
+    $ref: '../../domains/order/messages/OrderLineCreated.yaml'
+
+x-domain: shared
+x-channel-type: event-topic

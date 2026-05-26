@@ -1,0 +1,44 @@
+asyncapi: 3.0.0
+
+info:
+  title: hello-orders AsyncAPI
+  description: |
+    Async specifications for the hello-orders example project — domain events.
+    No scheduled jobs in this example. See `handbooks/AsyncAPI_Handbook.md` in
+    the spec-authoring-kit for the authoritative rules.
+  version: 1.0.0
+
+tags:
+  - name: Customer
+    description: Customer domain events
+  - name: Order
+    description: Order domain events (Order aggregate + OrderLine entity)
+
+channels:
+  applicationEvents:
+    $ref: './async-common/channels/application-events.yaml'
+
+# Publishing declarations (emit-*) — one per event message.
+# Linked to OpenAPI write operations via x-emits (event = {Entity}.{Action}).
+operations:
+  emitCustomerCreated:
+    $ref: './domains/customer/async-operations/emit-customer-created.yaml'
+  emitCustomerUpdated:
+    $ref: './domains/customer/async-operations/emit-customer-updated.yaml'
+  emitOrderCreated:
+    $ref: './domains/order/async-operations/emit-order-created.yaml'
+  emitOrderUpdated:
+    $ref: './domains/order/async-operations/emit-order-updated.yaml'
+  emitOrderPlaced:
+    $ref: './domains/order/async-operations/emit-order-placed.yaml'
+  emitOrderLineCreated:
+    $ref: './domains/order/async-operations/emit-order-line-created.yaml'
+
+components:
+  messageTraits:
+    auditableEvent:   { $ref: './async-common/message-traits/common.yaml#/auditableEvent' }
+    commonHeaders:    { $ref: './async-common/message-traits/common.yaml#/commonHeaders' }
+
+  operationTraits:
+    reliableDelivery: { $ref: './async-common/operation-traits/common.yaml#/reliableDelivery' }
+    standardDelivery: { $ref: './async-common/operation-traits/common.yaml#/standardDelivery' }

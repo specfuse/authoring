@@ -1,0 +1,112 @@
+# =============================================================================
+# Standard error responses.
+# =============================================================================
+# Reference these from operation files via $ref. See API Handbook §2 and §11.
+
+Error:
+  type: object
+  required: [code, message]
+  properties:
+    id:
+      type: string
+      format: uuid
+      description: Unique identifier for this error instance (for tracking)
+    code:
+      type: string
+      description: Machine-readable error code (snake_case)
+      example: invalid_page_size
+    message:
+      type: string
+      description: Human-readable error message (localized via Accept-Language)
+    field:
+      type: string
+      description: Field name that caused the error (for validation errors)
+    status:
+      type: integer
+      description: HTTP status code
+    retryable:
+      type: boolean
+      description: Whether this error can be retried
+    retryAfter:
+      type: integer
+      description: Seconds to wait before retrying (if retryable)
+    details:
+      type: object
+      description: Additional context-specific error details
+    requestId:
+      type: string
+      description: Request ID for correlation
+    timestamp:
+      type: string
+      format: date-time
+
+UnauthorizedError:
+  description: The authentication token is missing or expired
+  headers:
+    WWW-Authenticate:
+      schema: { type: string }
+  content:
+    application/json:
+      schema:
+        $ref: '#/Error'
+
+ForbiddenError:
+  description: >
+    The caller is authenticated but lacks the required role/scope/tenant context
+    for this endpoint.
+  content:
+    application/json:
+      schema:
+        $ref: '#/Error'
+
+NotFoundError:
+  description: The requested resource does not exist
+  content:
+    application/json:
+      schema:
+        $ref: '#/Error'
+
+BadRequestError:
+  description: The request body or parameters failed validation
+  content:
+    application/json:
+      schema:
+        type: array
+        items:
+          $ref: '#/Error'
+
+ConflictError:
+  description: >
+    Business rule violation prevents the operation (NOT for concurrency control —
+    see PreconditionFailedError for ETag mismatches). See API Handbook §2.1.
+  content:
+    application/json:
+      schema:
+        $ref: '#/Error'
+
+PreconditionRequiredError:
+  description: An `If-Match` header is required for this operation but was not provided
+  content:
+    application/json:
+      schema:
+        $ref: '#/Error'
+
+PreconditionFailedError:
+  description: >
+    The `If-Match` ETag did not match the resource's current state.
+    Response includes the current resource for AI-agent merge-and-retry.
+  headers:
+    ETag:
+      schema: { type: string }
+  content:
+    application/json:
+      schema:
+        type: object
+        properties:
+          errors:
+            type: array
+            items:
+              $ref: '#/Error'
+          currentResource:
+            description: Current state of the resource (for merge-and-retry)
+            type: object

@@ -1,0 +1,58 @@
+# =============================================================================
+# Shared message traits — applied via `traits` on AsyncAPI message files.
+# =============================================================================
+
+auditableEvent:
+  name: auditableEvent
+  headers:
+    type: object
+    required: [eventId, correlationId, aggregateId, aggregateType, eventVersion, producedAt, tenantId]
+    properties:
+      eventId:
+        type: string
+        format: uuid
+        description: Unique identifier for this event instance.
+      correlationId:
+        type: string
+        format: uuid
+        description: Correlation ID linking this event to the originating request.
+      causationId:
+        type: string
+        format: uuid
+        description: ID of the event that caused this one (for tracing chains).
+      aggregateId:
+        type: string
+        format: uuid
+        description: Primary key of the aggregate this event concerns.
+      aggregateType:
+        type: string
+        description: PascalCase entity name (matches `x-label.entity`).
+      aggregateVersion:
+        type: integer
+        description: Version of the aggregate after this event.
+      eventVersion:
+        type: integer
+        description: Schema version of this event message (matches `x-version.current`).
+      producedAt:
+        type: string
+        format: date-time
+      tenantId:
+        type: string
+        format: uuid
+        description: Tenant scope (envelope ApplicationProperty for routing).
+
+commonHeaders:
+  name: commonHeaders
+  headers:
+    type: object
+    required: [eventId, producedAt]
+    properties:
+      eventId:
+        type: string
+        format: uuid
+      producedAt:
+        type: string
+        format: date-time
+      tenantId:
+        type: string
+        format: uuid

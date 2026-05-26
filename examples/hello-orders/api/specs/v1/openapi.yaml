@@ -1,0 +1,104 @@
+openapi: 3.0.3
+
+info:
+  title: hello-orders API
+  description: |
+    REST API for the hello-orders example project. See `handbooks/API_Handbook.md`
+    in the spec-authoring-kit for the authoritative rules; this file is the
+    project's OpenAPI root.
+  version: 1.0.0
+  contact:
+    name: spec-authoring-kit
+
+servers:
+  - url: https://api.helloorders.example/v1
+    description: Illustrative — hello-orders is an example project, not a deployable service
+
+tags:
+  - name: Customers
+    description: Customer aggregate operations
+  - name: Orders
+    description: Order aggregate + lifecycle operations
+  - name: OrderLines
+    description: OrderLine entity (child of Order aggregate)
+
+paths:
+  /v1/tenants/{tenantId}/customers:
+    get:
+      $ref: './domains/customer/operations/list-customers.yaml#/get'
+    post:
+      $ref: './domains/customer/operations/create-customer.yaml#/post'
+  /v1/customers/{customerId}:
+    get:
+      $ref: './domains/customer/operations/get-customer.yaml#/get'
+    patch:
+      $ref: './domains/customer/operations/update-customer.yaml#/patch'
+
+  /v1/customers/{customerId}/orders:
+    get:
+      $ref: './domains/order/operations/list-orders.yaml#/get'
+    post:
+      $ref: './domains/order/operations/create-order.yaml#/post'
+  /v1/orders/{orderId}:
+    get:
+      $ref: './domains/order/operations/get-order.yaml#/get'
+    patch:
+      $ref: './domains/order/operations/update-order.yaml#/patch'
+  /v1/orders/{orderId}/place:
+    post:
+      $ref: './domains/order/operations/place-order.yaml#/post'
+
+  /v1/orders/{orderId}/lines:
+    get:
+      $ref: './domains/order/operations/list-order-lines.yaml#/get'
+    post:
+      $ref: './domains/order/operations/add-order-line.yaml#/post'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      $ref: './common/securitySchemes/auth.yaml#/bearerAuth'
+
+  parameters:
+    page:           { $ref: './common/parameters/pagination.yaml#/page' }
+    pageSize:       { $ref: './common/parameters/pagination.yaml#/pageSize' }
+    sort:           { $ref: './common/parameters/pagination.yaml#/sort' }
+    validateOnly:   { $ref: './common/parameters/pagination.yaml#/validateOnly' }
+    If-Match:       { $ref: './common/parameters/pagination.yaml#/If-Match' }
+    tenantId:       { $ref: './common/parameters/path.yaml#/tenantId' }
+    customerId:     { $ref: './common/parameters/path.yaml#/customerId' }
+    orderId:        { $ref: './common/parameters/path.yaml#/orderId' }
+
+  responses:
+    UnauthorizedError:        { $ref: './common/responses/errors.yaml#/UnauthorizedError' }
+    ForbiddenError:           { $ref: './common/responses/errors.yaml#/ForbiddenError' }
+    NotFoundError:            { $ref: './common/responses/errors.yaml#/NotFoundError' }
+    BadRequestError:          { $ref: './common/responses/errors.yaml#/BadRequestError' }
+    ConflictError:            { $ref: './common/responses/errors.yaml#/ConflictError' }
+    PreconditionRequiredError:{ $ref: './common/responses/errors.yaml#/PreconditionRequiredError' }
+    PreconditionFailedError:  { $ref: './common/responses/errors.yaml#/PreconditionFailedError' }
+
+  schemas:
+    Error: { $ref: './common/responses/errors.yaml#/Error' }
+    Role:  { $ref: './common/enums.yaml#/Role' }
+
+    Customer:               { $ref: './domains/customer/models/Customer.yaml' }
+    BasicCustomer:          { $ref: './domains/customer/models/BasicCustomer.yaml' }
+    NewCustomer:            { $ref: './domains/customer/models/NewCustomer.yaml' }
+    UpdateCustomer:         { $ref: './domains/customer/models/UpdateCustomer.yaml' }
+    CustomerList:           { $ref: './domains/customer/models/CustomerList.yaml' }
+    CustomerStatus:         { $ref: './domains/customer/models/CustomerStatus.yaml' }
+
+    Order:                  { $ref: './domains/order/models/Order.yaml' }
+    BasicOrder:             { $ref: './domains/order/models/BasicOrder.yaml' }
+    NewOrder:               { $ref: './domains/order/models/NewOrder.yaml' }
+    UpdateOrder:            { $ref: './domains/order/models/UpdateOrder.yaml' }
+    OrderList:              { $ref: './domains/order/models/OrderList.yaml' }
+    OrderStatus:            { $ref: './domains/order/models/OrderStatus.yaml' }
+
+    OrderLine:              { $ref: './domains/order/models/OrderLine.yaml' }
+    BasicOrderLine:         { $ref: './domains/order/models/BasicOrderLine.yaml' }
+    NewOrderLine:           { $ref: './domains/order/models/NewOrderLine.yaml' }
+
+security:
+  - bearerAuth: []

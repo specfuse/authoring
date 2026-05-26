@@ -1,0 +1,14 @@
+# =============================================================================
+# Authentication / authorization schemes.
+# =============================================================================
+# See API Handbook §5. The role enum is defined in common/enums.yaml#/Role.
+
+bearerAuth:
+  type: http
+  scheme: bearer
+  bearerFormat: JWT
+  description: |
+    Bearer JWT (RS256). For the hello-orders example, the iss/aud claims are
+    not specified — this is illustrative, not deployable. Real projects map
+    token role claims to the Role enum (common/enums.yaml#/Role) at the
+    gateway or auth middleware layer.

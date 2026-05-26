@@ -1,0 +1,17 @@
+# =============================================================================
+# Shared operation traits — delivery guarantees and retry policies.
+# =============================================================================
+
+reliableDelivery:
+  x-delivery:
+    guarantee: atLeastOnce
+    maxRetries: 5
+    retryBackoff: exponential
+    deadLetterOnFailure: true
+
+standardDelivery:
+  x-delivery:
+    guarantee: atLeastOnce
+    maxRetries: 3
+    retryBackoff: linear
+    deadLetterOnFailure: true
