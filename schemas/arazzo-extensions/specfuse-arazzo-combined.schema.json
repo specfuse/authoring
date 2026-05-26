@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.specfuse.dev/arazzo/specfuse-arazzo-combined.schema.json",
+  "title": "Specfuse Arazzo Extensions (Combined)",
+  "description": "Composed schema that attaches all Specfuse vendor extensions to the correct Arazzo document, workflow, and step paths. Validates extension properties only — Arazzo native structure is validated by the Arazzo 1.0.1 JSON Schema separately. NOTE: the x-domain value-set is project-defined (declare it in the project's overlay or its Spectral ruleset). This schema enforces the kebab-case shape of x-domain but not the closed list of valid values. See Arazzo Handbook §4-§7.",
+  "type": "object",
+  "required": ["x-version", "x-domain"],
+  "properties": {
+    "x-version": {
+      "$ref": "x-version.schema.json",
+      "description": "Lifecycle and status metadata. Required on all Arazzo documents."
+    },
+    "x-domain": {
+      "$ref": "#/$defs/domain",
+      "description": "Owning domain. Required on all Arazzo documents."
+    },
+    "x-doc": {
+      "$ref": "x-doc.schema.json#/$defs/workflowDoc",
+      "description": "Document-level documentation metadata"
+    },
+    "x-mcp": {
+      "$ref": "x-mcp.schema.json",
+      "description": "MCP tool exposure declaration. Only valid on scenario documents."
+    },
+    "x-actors": {
+      "$ref": "x-actors.schema.json",
+      "description": "Actor declarations. Required on scenario documents, forbidden on recipe documents."
+    },
+    "x-setup": {
+      "$ref": "x-setup.schema.json",
+      "description": "Recipe reference for test fixture provisioning. Only valid on scenario documents."
+    },
+    "x-recipe": {
+      "$ref": "x-recipe.schema.json",
+      "description": "Recipe metadata. Presence marks the document as a recipe; absence marks it as a scenario."
+    },
+    "workflows": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/workflowExtensions"
+      },
+      "description": "Arazzo workflows with Specfuse step-level extensions"
+    }
+  },
+  "if": {
+    "required": ["x-recipe"],
+    "description": "Document contains x-recipe — apply recipe rules"
+  },
+  "then": {
+    "$ref": "#/$defs/recipeDocumentRules"
+  },
+  "else": {
+    "$ref": "#/$defs/scenarioDocumentRules"
+  },
+  "$defs": {
+    "domain": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+      "description": "Owning domain. Must be kebab-case. The kit validates the shape only; the closed value-set is project-defined (declared in the project's Spectral overlay or in a project-local domain enum). The reserved value 'cross-domain' is conventionally allowed for files under scenarios/cross-domain/."
+    },
+    "dateToken": {
+      "type": "string",
+      "pattern": "^@(now|today)(([+-]\\d+(y|mo|w|d|h|m|s))*)(@[A-Za-z]+/[A-Za-z_]+)?$",
+      "description": "Relative date token resolved at runtime by Specfuse. Syntax: @<anchor>[+-<offset>][@<IANA-timezone>]. Examples: @today+3d, @now-1h30m, @today+2w@America/Montreal"
+    },
+    "eventName": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Za-z0-9]*\\.[A-Z][A-Za-z0-9]*$",
+      "description": "Event name in {Entity}.{Action} PascalCase format, matching AsyncAPI x-label"
+    },
+    "actorRef": {
+      "type": "string",
+      "pattern": "^\\$[a-zA-Z][a-zA-Z0-9_]*$",
+      "description": "Reference to an actor defined in x-actors, using the $actorName convention"
+    },
+    "recipeDocumentRules": {
+      "description": "Rules for recipe documents: x-actors, x-setup, and x-mcp are forbidden. Steps must not use x-as or x-ui.",
+      "not": {
+        "anyOf": [
+          { "required": ["x-actors"] },
+          { "required": ["x-setup"] },
+          { "required": ["x-mcp"] }
+        ]
+      },
+      "properties": {
+        "workflows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/recipeWorkflowExtensions"
+          },
+          "description": "Recipe workflows with recipe-specific step constraints"
+        }
+      }
+    },
+    "scenarioDocumentRules": {
+      "description": "Rules for scenario documents: x-actors is required. x-recipe is forbidden. Steps must use x-as.",
+      "required": ["x-actors"],
+      "not": {
+        "required": ["x-recipe"]
+      },
+      "properties": {
+        "workflows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/scenarioWorkflowExtensions"
+          },
+          "description": "Scenario workflows with scenario-specific step constraints"
+        }
+      }
+    },
+    "workflowExtensions": {
+      "type": "object",
+      "description": "Extension properties on an Arazzo workflow object",
+      "properties": {
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stepExtensions"
+          },
+          "description": "Workflow steps with Specfuse extension properties"
+        }
+      }
+    },
+    "scenarioWorkflowExtensions": {
+      "type": "object",
+      "description": "Scenario workflow: steps must carry x-as",
+      "properties": {
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/scenarioStepExtensions"
+          },
+          "description": "Scenario steps requiring x-as actor binding"
+        }
+      }
+    },
+    "recipeWorkflowExtensions": {
+      "type": "object",
+      "description": "Recipe workflow: steps must not carry x-as, x-ui, or x-async",
+      "properties": {
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/recipeStepExtensions"
+          },
+          "description": "Recipe steps with restricted extension set (x-doc only)"
+        }
+      }
+    },
+    "stepExtensions": {
+      "type": "object",
+      "description": "All possible step-level extensions (for generic validation without recipe/scenario context)",
+      "properties": {
+        "x-as": {
+          "$ref": "x-as.schema.json",
+          "description": "Actor performing this step"
+        },
+        "x-async": {
+          "$ref": "x-async.schema.json",
+          "description": "Async event-driven interactions for this step"
+        },
+        "x-ui": {
+          "$ref": "x-ui.schema.json",
+          "description": "UI automation hints for this step"
+        },
+        "x-doc": {
+          "$ref": "x-doc.schema.json#/$defs/stepDoc",
+          "description": "Step-level documentation metadata"
+        }
+      }
+    },
+    "scenarioStepExtensions": {
+      "type": "object",
+      "required": ["x-as"],
+      "description": "Scenario step extensions: x-as is required",
+      "properties": {
+        "x-as": {
+          "$ref": "x-as.schema.json",
+          "description": "Actor performing this step. Required on all scenario steps."
+        },
+        "x-async": {
+          "$ref": "x-async.schema.json",
+          "description": "Async event-driven interactions for this step"
+        },
+        "x-ui": {
+          "$ref": "x-ui.schema.json",
+          "description": "UI automation hints for this step"
+        },
+        "x-doc": {
+          "$ref": "x-doc.schema.json#/$defs/stepDoc",
+          "description": "Step-level documentation metadata"
+        }
+      }
+    },
+    "recipeStepExtensions": {
+      "type": "object",
+      "description": "Recipe step extensions: x-as, x-ui, and x-async are forbidden. Only x-doc is allowed.",
+      "not": {
+        "anyOf": [
+          { "required": ["x-as"] },
+          { "required": ["x-ui"] },
+          { "required": ["x-async"] }
+        ]
+      },
+      "properties": {
+        "x-doc": {
+          "$ref": "x-doc.schema.json#/$defs/stepDoc",
+          "description": "Step-level documentation metadata"
+        }
+      }
+    }
+  }
+}

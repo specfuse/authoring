@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.specfuse.dev/arazzo/x-mcp.schema.json",
+  "title": "x-mcp",
+  "description": "Declares whether an Arazzo scenario workflow is exposed as an MCP tool for AI orchestrators. Inputs and outputs are derived from the workflow — not redeclared here. Optional on scenario workflows, forbidden on recipes. See Arazzo Handbook §4.8 and §11.",
+  "type": "object",
+  "required": ["exposed"],
+  "properties": {
+    "exposed": {
+      "type": "boolean",
+      "description": "Explicit opt-in for MCP tool exposure. Default: false"
+    },
+    "toolName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+      "description": "kebab-case tool name, globally unique across all scenarios in the repo. Required when exposed is true."
+    },
+    "description": {
+      "type": "string",
+      "description": "MCP-facing description of what the tool does. Required when exposed is true."
+    },
+    "requiresActorAuth": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether the tool requires actor authentication context. Default: true"
+    },
+    "safeForAutoInvoke": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether an AI agent can invoke this without human confirmation. Default: false. Only mark true for read-only, low-risk scenarios."
+    }
+  },
+  "additionalProperties": false,
+  "if": {
+    "properties": {
+      "exposed": {
+        "const": true,
+        "description": "Matches when exposed is true to enforce conditional requirements"
+      }
+    }
+  },
+  "then": {
+    "required": ["exposed", "toolName", "description"]
+  }
+}

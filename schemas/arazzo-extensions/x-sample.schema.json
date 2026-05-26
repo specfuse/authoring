@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.specfuse.dev/arazzo/x-sample.schema.json",
+  "title": "x-sample",
+  "description": "Model-level annotation on OpenAPI schema properties for realistic data generation. Consumed by recipes (seed data), OpenAPI docs (realistic examples), mock servers, and dev/demo fixtures. See API Handbook §10 and Vendor Extensions §6.3.",
+  "type": "object",
+  "required": ["provider"],
+  "properties": {
+    "provider": {
+      "type": "string",
+      "enum": ["faker", "fixed", "template"],
+      "description": "Data generation strategy: 'faker' uses faker library paths, 'fixed' uses a literal value, 'template' uses a format string"
+    },
+    "path": {
+      "type": "string",
+      "description": "Faker method path (e.g., 'person.firstName'). Required when provider is 'faker'."
+    },
+    "locale": {
+      "type": "string",
+      "description": "Locale for data generation (e.g., 'fr-CA'). Defaults to tenant locale when omitted."
+    },
+    "format": {
+      "type": ["string", "null"],
+      "description": "Template string for the 'template' provider, or null. Supports interpolation of other faker paths."
+    }
+  },
+  "additionalProperties": false,
+  "if": {
+    "properties": {
+      "provider": {
+        "const": "faker",
+        "description": "Matches when provider is faker to require the path field"
+      }
+    }
+  },
+  "then": {
+    "required": ["provider", "path"]
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.specfuse.dev/arazzo/x-actors.schema.json",
+  "title": "x-actors",
+  "description": "Declares the actors who perform steps in an Arazzo scenario workflow. Each actor is bound to a role and optionally to a recipe-seeded entity. Required on scenario workflows, forbidden on recipes. See Arazzo Handbook §4.6. NOTE: the kit validates the structural shape (PascalCase role identifier); the closed role enum is project-defined and lives in the project's own Spectral overlay or in the project's `common/enums.yaml#/Role`.",
+  "type": "object",
+  "minProperties": 1,
+  "propertyNames": {
+    "pattern": "^[a-z][a-zA-Z0-9]*$",
+    "description": "Actor keys must be camelCase identifiers"
+  },
+  "additionalProperties": {
+    "$ref": "#/$defs/actor"
+  },
+  "$defs": {
+    "actorRole": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Za-z0-9]*$",
+      "description": "Role identifier in PascalCase. Must match a value declared in the project's role enum (e.g., `common/enums.yaml#/Role`). The kit does not bake in a closed role set — the project's own Spectral overlay enforces the value constraint."
+    },
+    "actor": {
+      "type": "object",
+      "required": ["role"],
+      "properties": {
+        "role": {
+          "$ref": "#/$defs/actorRole",
+          "description": "The actor's role identifier (PascalCase). Value must come from the project's role enum."
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of this actor's purpose in the scenario"
+        },
+        "ref": {
+          "type": "string",
+          "pattern": "^\\$setup\\.outputs\\.[a-zA-Z][a-zA-Z0-9]*$",
+          "description": "Binds the actor to a recipe-seeded entity via $setup.outputs.X expression"
+        }
+      },
+      "additionalProperties": false,
+      "description": "An actor participating in the scenario"
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.specfuse.dev/arazzo/x-recipe.schema.json",
+  "title": "x-recipe",
+  "description": "Marks an Arazzo workflow as a setup recipe and provides recipe-specific metadata. Presence of this extension is the recipe/scenario discriminator — there is no separate x-category field. See Arazzo Handbook §7.",
+  "type": "object",
+  "required": ["purpose"],
+  "properties": {
+    "purpose": {
+      "type": "string",
+      "enum": ["test-fixture", "demo-fixture", "dev-fixture"],
+      "description": "What the recipe provisions fixtures for"
+    },
+    "extends": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 6,
+      "description": "Single-inheritance composition chain of recipe file stems. Each entry extends the previous. Max chain depth: 6."
+    },
+    "idempotent": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether running the recipe twice produces the same result. Default: true"
+    },
+    "estimatedDurationMs": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Estimated execution time in milliseconds (informational, for test scheduling)"
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["scenario", "session"],
+      "default": "scenario",
+      "description": "Lifetime of the fixture. Default: scenario. Session scope deferred to Phase 5+."
+    }
+  },
+  "additionalProperties": false
+}

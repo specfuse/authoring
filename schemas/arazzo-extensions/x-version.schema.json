@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.specfuse.dev/arazzo/x-version.schema.json",
+  "title": "x-version",
+  "description": "Lifecycle and status metadata for Arazzo workflows. Unified shape shared across OpenAPI, AsyncAPI, and Arazzo pillars. Deprecation metadata lives inside this extension — there is no standalone x-deprecated. See Arazzo Handbook §4.2.",
+  "type": "object",
+  "required": ["current", "status"],
+  "properties": {
+    "current": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Schema version number, monotonically increasing"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "stable", "deprecated"],
+      "description": "Lifecycle status of this workflow version"
+    },
+    "deprecatedAt": {
+      "type": "string",
+      "format": "date",
+      "description": "ISO date when this version was deprecated. Required when status is 'deprecated'."
+    },
+    "replacedBy": {
+      "type": "string",
+      "description": "Successor scenario or recipe file stem (e.g., 'order-checkout-v2'). Required when status is 'deprecated'."
+    },
+    "removalDate": {
+      "type": "string",
+      "format": "date",
+      "description": "Target date for removing the deprecated version. Optional even when deprecated."
+    }
+  },
+  "additionalProperties": false,
+  "if": {
+    "properties": {
+      "status": {
+        "const": "deprecated",
+        "description": "Matches when status is deprecated to enforce additional required fields"
+      }
+    }
+  },
+  "then": {
+    "required": ["current", "status", "deprecatedAt", "replacedBy"]
+  }
+}

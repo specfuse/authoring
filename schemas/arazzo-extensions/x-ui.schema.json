@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.specfuse.dev/arazzo/x-ui.schema.json",
+  "title": "x-ui",
+  "description": "UI automation hints for Arazzo scenario steps. Consumed by the LLM-driven exploratory runner (reads actions[].text and expect) and Playwright test generator (reads selectors[].playwright). Each selector references an action by id for rename-safe binding. See Arazzo Handbook §5.3.",
+  "type": "object",
+  "required": ["actions"],
+  "properties": {
+    "platform": {
+      "type": "string",
+      "enum": ["web", "mobile", "any"],
+      "default": "any",
+      "description": "Target platform for this step. Default: any"
+    },
+    "page": {
+      "type": "string",
+      "description": "The page or route where this step takes place (e.g., '/orders/my-orders')"
+    },
+    "actions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/action"
+      },
+      "description": "Ordered list of user-facing actions for this step"
+    },
+    "expect": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Expected visual outcomes after the step completes"
+    },
+    "selectors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/selector"
+      },
+      "description": "Optional Playwright selector hints. Each selector references an action by its id."
+    },
+    "captureScreenshot": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether to capture a screenshot after this step. Default: false"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "action": {
+      "type": "object",
+      "required": ["id", "text"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+          "description": "Stable identifier for this action (kebab-case)"
+        },
+        "text": {
+          "type": "string",
+          "description": "Natural-language description for LLM agent and tutorial prose"
+        }
+      },
+      "additionalProperties": false,
+      "description": "A user-facing action within the step"
+    },
+    "selector": {
+      "type": "object",
+      "required": ["for", "playwright"],
+      "properties": {
+        "for": {
+          "type": "string",
+          "description": "Must reference an existing actions[].id in the same step. Dangling references are a Spectral error."
+        },
+        "playwright": {
+          "type": "string",
+          "description": "Playwright selector string (e.g., \"[data-testid='order-tile']\" or \"button:has-text('Confirm')\")"
+        }
+      },
+      "additionalProperties": false,
+      "description": "A Playwright selector hint bound to a specific action by its id"
+    }
+  }
+}

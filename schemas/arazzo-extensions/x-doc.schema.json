@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.specfuse.dev/arazzo/x-doc.schema.json",
+  "title": "x-doc",
+  "description": "Documentation metadata for Arazzo workflows and steps. Two variants: workflow-level (summary, personas, businessOutcome) and step-level (tutorialNote). The combined schema enforces which variant applies at each path. See Arazzo Handbook §4.5 and §5.4.",
+  "$defs": {
+    "workflowDoc": {
+      "type": "object",
+      "required": ["summary"],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "description": "One-paragraph PM-facing description of the workflow"
+        },
+        "personas": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "User personas involved in this workflow (informational)"
+        },
+        "businessOutcome": {
+          "type": "string",
+          "description": "Why this workflow matters to the business"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Workflow-level documentation metadata consumed by doc generator and tutorial renderer"
+    },
+    "stepDoc": {
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "tutorialNote": {
+          "type": "string",
+          "description": "Contextual note rendered in generated tutorial documentation"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Step-level documentation metadata for tutorial generation"
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/workflowDoc" },
+    { "$ref": "#/$defs/stepDoc" }
+  ]
+}

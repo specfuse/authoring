@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.specfuse.dev/arazzo/x-async.schema.json",
+  "title": "x-async",
+  "description": "Models event-driven interactions within an Arazzo scenario step. Provides three verbs: emit (assert event publication), await (wait for an event), and poll (poll a REST endpoint). A step may combine emit with either await or poll, but await and poll are mutually exclusive. See Arazzo Handbook §6.",
+  "type": "object",
+  "properties": {
+    "emit": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/emitItem"
+      },
+      "description": "One or more events the step is expected to publish"
+    },
+    "await": {
+      "$ref": "#/$defs/awaitBlock",
+      "description": "Passively wait for a single asynchronous event matching specified criteria"
+    },
+    "poll": {
+      "$ref": "#/$defs/pollBlock",
+      "description": "Poll a REST endpoint until a condition is met or timeout expires"
+    }
+  },
+  "additionalProperties": false,
+  "anyOf": [
+    { "required": ["emit"] },
+    { "required": ["await"] },
+    { "required": ["poll"] }
+  ],
+  "not": {
+    "required": ["await", "poll"],
+    "description": "await and poll are mutually exclusive within the same x-async block"
+  },
+  "$defs": {
+    "eventName": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Za-z0-9]*\\.[A-Z][A-Za-z0-9]*$",
+      "description": "Event name in {Entity}.{Action} PascalCase format, matching AsyncAPI x-label"
+    },
+    "emitItem": {
+      "type": "object",
+      "required": ["event"],
+      "properties": {
+        "event": {
+          "$ref": "#/$defs/eventName",
+          "description": "Event identity in {Entity}.{Action} format. Must match an AsyncAPI message's x-label."
+        },
+        "expect": {
+          "type": "object",
+          "description": "Partial payload match — key/value pairs to assert on the event payload"
+        },
+        "timeout": {
+          "type": "string",
+          "format": "duration",
+          "default": "PT10S",
+          "description": "ISO 8601 duration. Max wait time for the event to appear. Default: PT10S"
+        }
+      },
+      "additionalProperties": false,
+      "description": "An event the step is expected to publish"
+    },
+    "awaitBlock": {
+      "type": "object",
+      "required": ["event", "timeout"],
+      "properties": {
+        "event": {
+          "$ref": "#/$defs/eventName",
+          "description": "Event identity in {Entity}.{Action} format. Must match an AsyncAPI message's x-label."
+        },
+        "match": {
+          "type": "object",
+          "description": "Key/value pairs the event payload must match. Values may use runtime expressions."
+        },
+        "timeout": {
+          "type": "string",
+          "format": "duration",
+          "description": "ISO 8601 duration. Max wait time for the event."
+        },
+        "outputs": {
+          "type": "object",
+          "description": "Named outputs extracted from the matched event. Values use $message.payload.X or $message.headers.X expressions."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Wait for a single asynchronous event matching specified criteria"
+    },
+    "pollBlock": {
+      "type": "object",
+      "required": ["operationId", "until", "timeout"],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "description": "The OpenAPI operationId to call repeatedly"
+        },
+        "parameters": {
+          "type": "object",
+          "description": "Parameters for each poll request. Values may use runtime expressions."
+        },
+        "until": {
+          "type": "string",
+          "description": "Arazzo simple condition that must evaluate to true for polling to stop"
+        },
+        "interval": {
+          "type": "string",
+          "format": "duration",
+          "default": "PT2S",
+          "description": "ISO 8601 duration between poll attempts. Default: PT2S"
+        },
+        "timeout": {
+          "type": "string",
+          "format": "duration",
+          "description": "ISO 8601 duration. Max total polling time."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Poll a REST endpoint until a condition is met or timeout expires"
+    }
+  }
+}

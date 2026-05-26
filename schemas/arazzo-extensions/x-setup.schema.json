@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.specfuse.dev/arazzo/x-setup.schema.json",
+  "title": "x-setup",
+  "description": "Declares which setup recipe must run before a scenario workflow to provision required test fixtures. The recipe's outputs become available via the $setup.outputs.X expression root. Optional on scenario workflows, forbidden on recipes. See Arazzo Handbook §4.7.",
+  "type": "object",
+  "required": ["recipe"],
+  "properties": {
+    "recipe": {
+      "type": "string",
+      "description": "File stem of the recipe (e.g., 'basic-two-customers-one-order' resolves to 'basic-two-customers-one-order.recipe.yaml')"
+    },
+    "inputs": {
+      "type": "object",
+      "description": "Values passed to the recipe's workflow inputs. Supports date tokens (@today+3d, @now-1h, etc.) in values."
+    }
+  },
+  "additionalProperties": false
+}

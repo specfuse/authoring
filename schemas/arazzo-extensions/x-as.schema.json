@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.specfuse.dev/arazzo/x-as.schema.json",
+  "title": "x-as",
+  "description": "Identifies which actor performs a scenario step. The value must reference an actor defined in x-actors using the $actorName convention. Required on all scenario steps, forbidden on recipe steps. See Arazzo Handbook §5.1.",
+  "type": "string",
+  "pattern": "^\\$[a-zA-Z][a-zA-Z0-9_]*$"
+}
