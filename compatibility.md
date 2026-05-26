@@ -163,3 +163,31 @@ The kit collapsed the RM-specific two-level tenant model (`companyId` + `restaur
 | `openapi.yaml.template` missing path-param refs | commit `690db55` | The template defined `tenantId`/`customerId` in `common/parameters/path.yaml.template` but did not reference them from `components.parameters` in the OpenAPI root. Added refs so bootstrapped projects see the pattern. |
 
 These are kit-internal fixes and do not require generator coordination.
+
+---
+
+## Outstanding kit-side work
+
+These are gaps in the kit itself, separate from the generator-side follow-ups above. Each represents an enforcement promise the handbooks make that has no implementation today.
+
+### Three handbook-referenced Spectral rules with no implementation
+
+Surfaced during the schemas import (commits `78abc31`..`b146efa`) when verifying that every rule name mentioned in the handbooks resolves to a real Spectral rule in `schemas/spectral/`. The source RestoManager Spectral ruleset never implemented these three — the handbooks reference them as if they exist, but the enforcement code was aspirational.
+
+| Rule ID | Referenced in | What it should enforce |
+|---|---|---|
+| `specfuse-async-snapshot-version-coexistence` | `handbooks/Vendor_Extensions.md §12.2`, `handbooks/AsyncAPI_Handbook.md §2.3` | Deprecated event messages with a `replacedBy` pointing at a different version must `$ref` a versioned snapshot file (`*V{N}.yaml`); orphan versioned snapshot files with no deprecated referrer must be removed. |
+| `specfuse-async-subscription-name-mismatch` | `handbooks/Vendor_Extensions.md §12.3`, `handbooks/AsyncAPI_Handbook.md §4.3` | `x-subscription.name` must equal the operation file stem (e.g., file `on-order-submitted.yaml` → name `on-order-submitted`). Free-form kebab-case naming is no longer permitted. |
+| `specfuse-batch-operation-structure` | `handbooks/API_Handbook.md §16` (AI Integration Spectral rules) | Validates batch operation schemas (the `/{resources}:batch` POST pattern with `operations[]` array containing `oneOf` create/update/delete shapes). |
+
+**Action:** author the three rules as new entries in `schemas/spectral/specfuse-{openapi,asyncapi}.yaml`. Two are AsyncAPI rules (snapshot-version-coexistence, subscription-name-mismatch); one is an OpenAPI rule (batch-operation-structure). Each will likely need a custom function under `schemas/spectral/functions/` since the logic involves cross-file resolution (snapshot $refs) or file-name vs declared-name comparison (operation file stem).
+
+**Severity:** the handbooks make these promises today; until the rules ship, the promises are unenforced. New projects bootstrapped from the kit can violate these contracts and not know it. Worth landing before Phase 7 (smoke test of an imminent second project).
+
+### `x-action-class` and `x-trigger-mode` non-introduction
+
+The handbooks document `x-action-class` and `x-trigger-mode` as "not introduced" extensions whose semantics are inferred from message-name suffix (`*Created`/`*Updated`/`*Deleted`/state-transition) and payload `context` field presence respectively. The kit does not currently enforce that these extensions are NOT used — a project author could declare `x-action-class: stateTransition` on a message and the kit's rules would silently allow it.
+
+**Action:** add a single rule (`specfuse-async-non-introduced-extensions-forbidden`) that flags any use of `x-action-class`, `x-trigger-mode`, `x-pii`, `x-sensitive`, `x-deprecated`, `x-tags`, or `x-category` as a hard error pointing at the handbook section that explains why the extension isn't introduced. Pure structural check — no custom function needed.
+
+**Severity:** low — the kit's authoring path (Claude Code agents from `/design-*` commands) doesn't generate these extensions, so the gap is theoretical for kit-conformant projects. Adding the rule closes the gap for projects that author by hand.
