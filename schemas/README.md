@@ -41,7 +41,9 @@ rules:
   # Project-specific overlays go here (see "What the project must provide" below).
 ```
 
-The AsyncAPI and Arazzo rulesets reference custom Spectral functions (e.g., `asyncChannelMessageCompleteness`, `arazzoAsActorExists`). Those functions are not bundled in the kit yet — projects need to provide them at `functions/{functionName}.js` relative to the ruleset that loads them, or via Spectral's `functionsDir` config. Importing the JS implementations from the generator (or maintaining a kit-side copy) is on the Phase 7+ roadmap.
+The AsyncAPI and Arazzo rulesets reference 15 custom Spectral functions (e.g., `asyncChannelMessageCompleteness`, `arazzoAsActorExists`, `asyncTriggerWhenCoherence`). The kit bundles their implementations under [`spectral/functions/`](spectral/functions/). Spectral discovers them automatically because that directory is `./functions/` relative to each ruleset file — no `functionsDir` setting is required.
+
+If a project extends the kit's rulesets from a different working directory, ensure the relative `functions/` path still resolves, or set `functionsDir: <path-to-kit>/schemas/spectral/functions` explicitly in the project ruleset.
 
 ## What the project must provide (overlays)
 
