@@ -18,7 +18,7 @@ This document provides a comprehensive specification of all vendor extensions (`
 
 ### 1.1 x-entity
 
-**Purpose**: Defines entity types, relationships, and storage characteristics for domain modeling.
+**Purpose**: Defines entity types, relationships, and shape characteristics for domain modeling.
 
 **Scope**: Applied to main resource schemas (entities and aggregates)
 
@@ -36,6 +36,8 @@ x-entity:
   valueObjects: object           # Optional: Value object storage configuration
   aiAccess: object               # Optional: AI agent access policy (see 1.1.1). Absent = no AI access.
 ```
+
+> **Storage technology choices are not declared on `x-entity`.** Database engine, connection, schema name, and container name live in `project.json.persistence` — see `Project_File.md` §6. The `schema` property previously recognised on `x-entity` is **deprecated**; configure schema names through `persistence.entities.<EntityName>.schema` (relational descriptors only).
 
 **Entity Types**:
 - **`aggregate`**: Domain aggregate root
@@ -426,9 +428,86 @@ Customer:
 3. When a snapshot file references a property whose source entity carries `pii` or `sensitive`, the snapshot file MUST declare `x-snapshot-pii-acknowledged.{propertyName}` with a justification ≥ 20 chars (see §11.2).
 4. When `aiAccess.readableProperties` is omitted, properties classified `encrypted` are excluded from the implicit allow-set (existing rule 5 in §1.1.1, now driven by classification).
 
+### 1.6 x-content
+
+**Purpose**: Marks an entity property as **opaque payload** — data the system carries but does not query, filter, project, or paginate over. The persistence layer decides where to store it; the API may stream it, lazy-load it, or omit it from metadata reads.
+
+**Scope**: Applied to a property schema inside a main resource (`x-entity`). May appear on any property — scalars (typically `type: string` with `format: binary` or `format: byte`), structured payloads (free-form objects), or arrays of either.
+
+**Optional**: Yes. Default = the property is treated as queryable metadata.
+
+**Schema**:
+
+```yaml
+x-content: true
+```
+
+**Semantics**:
+
+- The property is **not** included in default list/projection DTOs (e.g., the generated `Basic{Entity}` shape used by paginated list endpoints).
+- The property is **not** auto-included in `aiAccess.readableProperties` when the latter is omitted (same safe-by-default treatment as `x-classification: [encrypted]`).
+- The persistence layer chooses storage based on the resolved `kind` in `project.json` — typically a JSON/JSONB column for `relational` entities, the document body itself for `document` entities, a separate blob for `hybrid` entities. The spec does not encode the choice.
+
+**Required for `kind: hybrid` entities**: a hybrid backend descriptor splits an entity into a queryable metadata side and an opaque content side. The split is driven by `x-content`: every property carrying `x-content: true` lands on the content side; every other property lands on the metadata side. A hybrid entity with no `x-content` property fails project-file load (`PERSISTENCE_HYBRID_NO_CONTENT` — see `Project_File.md` §6.6).
+
+**Validation rules**:
+
+1. A property marked `x-content: true` MUST NOT be `required: true`. Metadata reads must be allowed to omit the payload; a required-and-omitted field is a contract violation. Enforced at spec validation.
+2. `x-content` may only appear on property schemas inside an `x-entity` main resource. It is ignored on derivatives (`Basic*`, `New*`, `Update*`) and on value-object schemas.
+3. `x-content` and `x-classification: [encrypted]` may co-occur. Encryption applies to the opaque payload at rest.
+
+**Examples**:
+
+```yaml
+# Document entity with a binary body
+Document:
+  type: object
+  x-entity:
+    type: aggregate
+  properties:
+    id:
+      type: string
+      format: uuid
+    title:
+      type: string
+    contentType:
+      type: string
+    sizeBytes:
+      type: integer
+    body:
+      type: string
+      format: binary
+      x-content: true        # Lives on the content side under hybrid kind
+  required: [id, title, contentType, sizeBytes]
+                              # body is intentionally not required
+
+# Embedding vector — opaque to the system, large, not queryable
+Article:
+  type: object
+  x-entity:
+    type: aggregate
+  properties:
+    id:
+      type: string
+    summary:
+      type: string
+    embedding:
+      type: array
+      items: { type: number }
+      x-content: true
+```
+
+**Interactions**:
+
+- **`persistence` (`Project_File.md` §6)**: drives whether `x-content` becomes a separate column, a blob, or stays inline.
+- **`aiAccess` (§1.1.1)**: AI agents must explicitly list `x-content` properties in `readableProperties` to read them — they are excluded from the implicit allow-set.
+- **`Basic*` / list-projection DTOs**: the generator omits `x-content` properties from these shapes automatically. Authors do not need to duplicate the exclusion.
+
 ---
 
 ## 2. Value Object Storage Extensions
+
+> **`storage` patterns are hints, not directives.** The patterns below (`single_json`, `flatten`, `serialized`, `separate_table`, `collection_json`) were originally designed against a relational target. Under the multi-backend persistence model (`Project_File.md` §6), each backend kind honors the hints it can and reinterprets the rest: a `document` adapter typically ignores `flatten` (the whole entity is one document anyway); a pure-`blob` adapter accepts only `serialized`; a `relational` adapter honors every pattern. Authors should pick the hint that matches the *semantic intent* (one blob vs. flat columns vs. side table) and let the resolved backend decide the physical realisation.
 
 ### 2.1 valueObjects (within x-entity)
 
