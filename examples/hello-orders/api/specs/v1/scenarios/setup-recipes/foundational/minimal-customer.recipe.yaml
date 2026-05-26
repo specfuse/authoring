@@ -1,0 +1,83 @@
+# =============================================================================
+# minimal-customer.recipe.yaml — ROOT recipe for hello-orders
+# =============================================================================
+# This is the foundational recipe for the hello-orders example. The kit's
+# canonical chain starts at `minimal-tenant` (which calls a createTenant op),
+# but hello-orders deliberately omits Tenant and User operations to stay
+# tiny. The pragmatic compromise:
+#
+#   - Accept tenantId as an input with a fixed-fixture default UUID.
+#   - The recipe's single step calls createCustomer (a real OpenAPI op),
+#     keeping Arazzo's "workflows[].steps must be non-empty" rule satisfied
+#     and giving downstream recipes/scenarios a real customer to bind to.
+#   - No User/Auth/Token outputs — actor binding for scenarios uses the
+#     customerId directly as the principal reference; the Specfuse runtime's
+#     auth layer maps that to a Customer-role test token at runtime.
+#
+# This is intentionally simpler than the canonical minimal-tenant + minimal-
+# customer chain. A real project should use the full chain; this example
+# elides it to keep the regression net to ~50 files.
+# =============================================================================
+
+arazzo: "1.0.1"
+
+info:
+  title: "Minimal customer fixture (hello-orders)"
+  version: "1.0.0"
+
+sourceDescriptions:
+  - name: apiSpec
+    url: ../../../openapi.yaml
+    type: openapi
+
+x-version:
+  current: 1
+  status: draft
+
+x-domain: customer
+
+x-recipe:
+  purpose: test-fixture
+  # No `extends` — this is the root recipe for hello-orders.
+  idempotent: true
+  estimatedDurationMs: 400
+  scope: scenario
+
+workflows:
+  - workflowId: setup
+    summary: "Create one customer under a fixed-fixture tenant"
+
+    inputs:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          format: uuid
+          default: "00000000-0000-0000-0000-000000000001"
+          description: Fixed-fixture tenant UUID (hello-orders has no createTenant op).
+        firstName:
+          type: string
+          default: "Pat"
+        lastName:
+          type: string
+          default: "Riley"
+
+    steps:
+      - stepId: create-customer
+        operationId: createCustomer
+        parameters:
+          - name: tenantId
+            in: path
+            value: $inputs.tenantId
+        requestBody:
+          payload:
+            firstName: $inputs.firstName
+            lastName: $inputs.lastName
+        successCriteria:
+          - condition: $statusCode == 201
+        outputs:
+          customerId: $response.body#/id
+
+    outputs:
+      tenantId: $inputs.tenantId
+      customerId: $steps.create-customer.outputs.customerId

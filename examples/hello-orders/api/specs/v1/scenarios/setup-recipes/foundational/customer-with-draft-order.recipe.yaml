@@ -1,0 +1,63 @@
+# =============================================================================
+# customer-with-draft-order.recipe.yaml
+# =============================================================================
+# Extends minimal-customer. Inherits tenantId + customerId. Creates one Order
+# in draft status (the only status createOrder produces) so scenarios that
+# need an order-in-progress have one to place.
+# =============================================================================
+
+arazzo: "1.0.1"
+
+info:
+  title: "Customer with one draft order (hello-orders)"
+  version: "1.0.0"
+
+sourceDescriptions:
+  - name: apiSpec
+    url: ../../../openapi.yaml
+    type: openapi
+
+x-version:
+  current: 1
+  status: draft
+
+x-domain: order
+
+x-recipe:
+  purpose: test-fixture
+  extends:
+    - minimal-customer
+  idempotent: true
+  estimatedDurationMs: 800
+  scope: scenario
+
+workflows:
+  - workflowId: setup
+    summary: "Create one draft order for the inherited customer"
+
+    inputs:
+      type: object
+      properties:
+        currency:
+          type: string
+          default: "USD"
+
+    steps:
+      - stepId: create-order
+        operationId: createOrder
+        parameters:
+          - name: customerId
+            in: path
+            value: $steps.parent-setup.outputs.customerId
+        requestBody:
+          payload:
+            currency: $inputs.currency
+        successCriteria:
+          - condition: $statusCode == 201
+        outputs:
+          orderId: $response.body#/id
+
+    # Inherited from minimal-customer (not redeclared):
+    #   tenantId, customerId
+    outputs:
+      orderId: $steps.create-order.outputs.orderId

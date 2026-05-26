@@ -1,0 +1,134 @@
+# =============================================================================
+# place-order.arazzo.yaml — cross-domain scenario
+# =============================================================================
+# Customer adds a line item to their draft order, places it, and polls for
+# the placed status. Exercises:
+#   - x-actors / x-setup with recipe chain
+#   - x-async.emit on the addOrderLine and placeOrder steps
+#   - x-async.poll for final state confirmation
+#   - Cross-domain references (customer + order operations)
+# =============================================================================
+
+arazzo: "1.0.1"
+
+info:
+  title: "Customer places a draft order"
+  version: "1.0.0"
+
+sourceDescriptions:
+  - name: apiSpec
+    url: ../../openapi.yaml
+    type: openapi
+
+x-version:
+  current: 1
+  status: draft
+
+x-domain: cross-domain
+
+tags:
+  - critical-path
+
+x-doc:
+  summary: >-
+    A customer with an existing draft order adds one line item and places
+    the order. The system emits OrderLine.Created on the add step and
+    Order.Placed on the place step; the customer then polls until the order
+    reaches `placed` status.
+  personas:
+    - customer
+  businessOutcome: >-
+    Self-service order placement is the core happy path of the hello-orders
+    example domain.
+
+x-mcp:
+  exposed: false
+
+x-actors:
+  customer:
+    role: Customer
+    description: "The customer who owns the draft order"
+    ref: $setup.outputs.customerId
+
+x-setup:
+  recipe: customer-with-draft-order
+
+workflows:
+  - workflowId: customer-places-draft-order
+    summary: "Customer adds a line, places the order, polls for placed status"
+
+    steps:
+
+      # Step 1: Customer views their draft order
+      - stepId: view-draft-order
+        x-as: $customer
+        operationId: getOrder
+        parameters:
+          - name: orderId
+            in: path
+            value: $setup.outputs.orderId
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/status == 'draft'
+        outputs:
+          orderStatus: $response.body#/status
+
+      # Step 2: Customer adds one line item to the draft order
+      - stepId: add-line
+        x-as: $customer
+        operationId: addOrderLine
+        parameters:
+          - name: orderId
+            in: path
+            value: $setup.outputs.orderId
+        requestBody:
+          payload:
+            description: "Sample product"
+            quantity: 1
+            unitPriceMinor: 9999
+        successCriteria:
+          - condition: $statusCode == 201
+        outputs:
+          orderLineId: $response.body#/id
+        x-async:
+          emit:
+            - event: OrderLine.Created
+              expect:
+                orderLineId: $steps.add-line.outputs.orderLineId
+              timeout: PT10S
+
+      # Step 3: Customer places the order — draft → placed state transition
+      - stepId: place-the-order
+        x-as: $customer
+        operationId: placeOrder
+        parameters:
+          - name: orderId
+            in: path
+            value: $setup.outputs.orderId
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/status == 'placed'
+        x-async:
+          emit:
+            - event: Order.Placed
+              expect:
+                orderId: $setup.outputs.orderId
+              timeout: PT10S
+
+      # Step 4: Customer polls until the order's status is `placed`
+      # (status is already `placed` in step 3's response, but polling
+      # demonstrates the async-verify pattern from scenario-samples.yaml).
+      - stepId: poll-until-placed
+        x-as: $customer
+        x-async:
+          poll:
+            operationId: getOrder
+            parameters:
+              orderId: $setup.outputs.orderId
+            until: $response.body#/status == 'placed'
+            interval: PT2S
+            timeout: PT30S
+
+    outputs:
+      orderId: $setup.outputs.orderId
+      orderLineId: $steps.add-line.outputs.orderLineId
