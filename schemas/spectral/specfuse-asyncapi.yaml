@@ -1,0 +1,955 @@
+# =============================================================================
+# Specfuse AsyncAPI Spectral Ruleset (v2 — Simplified Pub-Sub Architecture)
+# =============================================================================
+# Enforces Specfuse conventions for AsyncAPI 3.0 specifications.
+# Authoritative reference: handbooks/AsyncAPI_Handbook.md
+#
+# The v2 async architecture is deliberately minimal:
+#   - Only two message categories: event, scheduledJob
+#   - Only two channel types: event-topic, scheduled-trigger
+#   - No commands, no sagas, no point-to-point queues
+#   - No language-specific fields in specs
+#
+# This ruleset validates the universal Specfuse conventions only.
+# Project-defined value sets (the project's channel-address prefix, the
+# project's closed domain list, the project's closed operation-tag list)
+# are NOT baked in here. Projects should extend this ruleset in their own
+# .spectral.yaml and add the project-specific overlays. See schemas/README.md.
+#
+# Generalization notes for items lifted from the RestoManager source:
+# - All rule IDs renamed from rm-async-* to specfuse-async-* (per
+#   compatibility.md §1). The asyncapi-* prefixed rules
+#   (asyncapi-channel-message-completeness,
+#   asyncapi-channel-message-orphan, asyncapi-subscription-filter-entity-cap)
+#   keep their generic prefix — handbooks/AsyncAPI_Handbook.md references
+#   them by that exact identifier.
+# - Channel-address rule (specfuse-async-channel-address-format): the
+#   original rm-async-channel-address-format required addresses to begin
+#   with the literal "restomanager." prefix. The kit removes the prefix
+#   constraint and enforces only the dot-separated-segments shape;
+#   projects pin their prefix via an overlay.
+# - Shared-event-topic rule (specfuse-async-event-topic-must-be-shared):
+#   the literal "restomanager.events" requirement is dropped from the
+#   kit-level rule. The kit retains the architectural invariant that all
+#   event-topic channels point at a single shared address — the rule now
+#   checks that all event-topic channels resolve to a single address per
+#   spec file (uniformity check), without prescribing the literal value.
+# - Domain enum (rm-async-channel-domain-kebab): kept kebab-case shape;
+#   no enumerated values were ever pinned in this specific rule.
+# - Operation tag canonical list (rm-async-operation-tag-name-canonical):
+#   replaced with specfuse-async-operation-tag-pascal — enforces the
+#   PascalCase shape only. The project's overlay enforces its closed
+#   value set (the 17 RM domains in PascalCase, or whatever the project
+#   declares).
+# - Note: handbooks reference specfuse-async-subscription-name-mismatch as
+#   the rule enforcing "subscription name = operation file stem". The
+#   source Spectral ruleset did NOT include a rule with this id — the
+#   check appears to have been planned but not implemented. Flagged in
+#   the import report; not invented here.
+# - Removed an inline comment block in the original ruleset that pointed
+#   at a now-stale validate-async-structure.sh script — that script is
+#   not part of the kit.
+# =============================================================================
+
+extends: "spectral:asyncapi"
+formats: [aas3_0]
+
+# Custom JavaScript functions live in ./functions (relative to this ruleset).
+# Each function file must be named {functionName}.js and export the function
+# via `module.exports` (Spectral 6 loads them as CommonJS modules).
+functions:
+  - asyncChannelMessageCompleteness
+  - asyncChannelMessageOrphan
+  - asyncSubscriptionFilterEntityCap
+  - asyncSubscriptionScopingMode
+  - asyncEventNameActionClass
+  - asyncTriggerWhenCoherence
+  - asyncContextCoherence
+  - asyncFirstAppearanceCreated
+  - asyncInboxDedupCoherence
+  - asyncAuditableEventEnvelopeShape
+
+overrides:
+  - files: ["**"]
+    rules:
+      # Disable built-in rules that conflict with our setup
+      asyncapi-3-tags: off
+
+rules:
+
+  # ===========================================================================
+  # CHANNEL RULES
+  # ===========================================================================
+
+  specfuse-async-channel-must-have-domain:
+    description: "Every channel must declare x-domain"
+    message: "Channel '{{path}}' is missing x-domain. All channels must declare their owning domain."
+    severity: error
+    given: $.channels[*]
+    then:
+      field: x-domain
+      function: truthy
+
+  specfuse-async-channel-domain-kebab:
+    description: "x-domain must be kebab-case"
+    message: "x-domain '{{value}}' must be kebab-case (e.g., 'order', 'customer')."
+    severity: error
+    given: $.channels[*].x-domain
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+
+  specfuse-async-channel-must-have-type:
+    description: "Every channel must declare x-channel-type"
+    message: "Channel '{{path}}' is missing x-channel-type."
+    severity: error
+    given: $.channels[*]
+    then:
+      field: x-channel-type
+      function: truthy
+
+  specfuse-async-channel-type-values:
+    description: "x-channel-type must be one of: event-topic, scheduled-trigger"
+    message: "x-channel-type '{{value}}' is not valid. v2 supports only: event-topic, scheduled-trigger. Commands, sagas, and queues are not part of the v2 architecture."
+    severity: error
+    given: $.channels[*].x-channel-type
+    then:
+      function: enumeration
+      functionOptions:
+        values:
+          - event-topic
+          - scheduled-trigger
+
+  specfuse-async-channel-address-required:
+    description: "Every channel must have an address"
+    message: "Channel '{{path}}' is missing an address."
+    severity: error
+    given: $.channels[*]
+    then:
+      field: address
+      function: truthy
+
+  # GENERALIZATION: the original rm-async-channel-address-format required
+  # addresses to start with the literal RestoManager prefix
+  # ("restomanager.{segment}(.{segment})*"). The kit removes the literal
+  # prefix and enforces only the dot-separated-lowercase-segments shape;
+  # projects pin their prefix (e.g., "{project}.{segment}(.{segment})*")
+  # via an overlay rule.
+  specfuse-async-channel-address-format:
+    description: "Channel address must use dot-separated lowercase segments (minimum two segments). The project's address prefix (e.g., '{project}.events') is project-defined and enforced by a project overlay."
+    message: "Channel address '{{value}}' must be dot-separated lowercase segments (e.g., 'project.events', 'project.scheduling.job-name'). Minimum two segments."
+    severity: error
+    given: $.channels[*].address
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9.-]*)+$"
+
+  # GENERALIZATION: the original rm-async-event-topic-must-be-shared rule
+  # required the literal "restomanager.events" address. The kit retains
+  # the architectural intent ("all event-topic channels in a project
+  # should share a single address") but does not pin the literal value.
+  # Projects override this rule in their overlay to enforce their
+  # specific shared-event-topic address. The kit-level rule below is
+  # commented out as a placeholder — uncomment in your project overlay
+  # with the correct literal address.
+  #
+  # specfuse-async-event-topic-must-be-shared:
+  #   description: "All event-topic channels must use the project's shared event-topic address."
+  #   message: "Channel address '{{value}}' is a per-domain event topic. Only the project's shared event-topic address is allowed for x-channel-type=event-topic."
+  #   severity: error
+  #   given: "$.channels[?(@['x-channel-type'] == 'event-topic')].address"
+  #   then:
+  #     function: pattern
+  #     functionOptions:
+  #       match: "^{project}\\.events$"
+
+  specfuse-async-channel-must-have-messages:
+    description: "Every channel must define at least one message"
+    message: "Channel '{{path}}' has no messages defined."
+    severity: error
+    given: $.channels[*]
+    then:
+      field: messages
+      function: truthy
+
+  specfuse-async-channel-must-have-description:
+    description: "Every channel should have a description"
+    message: "Channel '{{path}}' is missing a description."
+    severity: warn
+    given: $.channels[*]
+    then:
+      field: description
+      function: truthy
+
+  # Forbid removed channel-level extensions (v1 artifacts)
+  specfuse-async-channel-no-x-saga:
+    description: "x-saga is not part of the v2 architecture (sagas deferred)"
+    message: "x-saga at '{{path}}' is not allowed in v2. Sagas are deferred to a future phase. See AsyncAPI Handbook §1.4."
+    severity: error
+    given: $.channels[*]
+    then:
+      field: x-saga
+      function: falsy
+
+  # ===========================================================================
+  # MESSAGE RULES (universal)
+  # ===========================================================================
+
+  specfuse-async-message-must-have-name:
+    description: "Every message must have a name"
+    message: "Message at '{{path}}' is missing a name."
+    severity: error
+    given: $.channels[*].messages[*]
+    then:
+      field: name
+      function: truthy
+
+  specfuse-async-message-name-pascal:
+    description: "Message names must be PascalCase"
+    message: "Message name '{{value}}' must be PascalCase (e.g., 'OrderCreated')."
+    severity: error
+    given: $.channels[*].messages[*].name
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[A-Z][A-Za-z0-9]+$"
+
+  specfuse-async-message-must-have-category:
+    description: "Every message must declare x-message-category"
+    message: "Message '{{path}}' is missing x-message-category."
+    severity: error
+    given: $.channels[*].messages[*]
+    then:
+      field: x-message-category
+      function: truthy
+
+  specfuse-async-message-category-values:
+    description: "x-message-category must be: event or scheduledJob"
+    message: "x-message-category '{{value}}' is not valid. v2 supports only: event, scheduledJob. Commands and saga steps are not part of the v2 architecture."
+    severity: error
+    given: $.channels[*].messages[*].x-message-category
+    then:
+      function: enumeration
+      functionOptions:
+        values:
+          - event
+          - scheduledJob
+
+  specfuse-async-message-must-have-summary:
+    description: "Every message should have a summary"
+    message: "Message '{{path}}' is missing a summary."
+    severity: warn
+    given: $.channels[*].messages[*]
+    then:
+      field: summary
+      function: truthy
+
+  specfuse-async-message-must-have-payload:
+    description: "Every message must define a payload"
+    message: "Message '{{path}}' is missing a payload definition."
+    severity: error
+    given: $.channels[*].messages[*]
+    then:
+      field: payload
+      function: truthy
+
+  specfuse-async-message-content-type:
+    description: "Messages should declare contentType as application/json"
+    message: "Message '{{path}}' should declare contentType: application/json."
+    severity: warn
+    given: $.channels[*].messages[*]
+    then:
+      field: contentType
+      function: truthy
+
+  # Forbid removed message-level extensions (v1 artifacts)
+  specfuse-async-message-no-x-source-aggregate:
+    description: "x-source-aggregate is not part of the v2 architecture"
+    message: "x-source-aggregate at '{{path}}' is not allowed in v2. Use x-label.entity instead — it IS the aggregate link."
+    severity: error
+    given: $.channels[*].messages[*]
+    then:
+      field: x-source-aggregate
+      function: falsy
+
+  specfuse-async-message-no-x-target-aggregate:
+    description: "x-target-aggregate is not part of the v2 architecture"
+    message: "x-target-aggregate at '{{path}}' is not allowed in v2. Commands were removed — reframe as an event."
+    severity: error
+    given: $.channels[*].messages[*]
+    then:
+      field: x-target-aggregate
+      function: falsy
+
+  specfuse-async-message-no-x-event:
+    description: "x-event is not part of the v2 architecture"
+    message: "x-event at '{{path}}' is not allowed in v2. Event semantics come from x-message-category + x-label. The cross-spec link to OpenAPI is derived from x-emits on OpenAPI operations."
+    severity: error
+    given: $.channels[*].messages[*]
+    then:
+      field: x-event
+      function: falsy
+
+  specfuse-async-message-no-x-command:
+    description: "x-command is not part of the v2 architecture"
+    message: "x-command at '{{path}}' is not allowed in v2. Commands were removed — reframe as an event. See AsyncAPI Handbook §1.4."
+    severity: error
+    given: $.channels[*].messages[*]
+    then:
+      field: x-command
+      function: falsy
+
+  # Forbid removed v2.1 message-level extensions (event-system additions)
+  specfuse-async-message-no-x-action-class:
+    description: "x-action-class is not a valid extension. Action class is inferred from the message-name suffix (*Created/*Updated/*Deleted/state-transition). See AsyncAPI Handbook §2.3."
+    message: "x-action-class at '{{path}}' is not allowed. Remove it — the suffix on x-label.action drives the action class."
+    severity: error
+    given: $.channels[*].messages[*]
+    then:
+      field: x-action-class
+      function: falsy
+
+  specfuse-async-message-no-x-tenancy:
+    description: "x-tenancy is not a valid extension. Tenancy markers are derived from x-entity.belongsTo + project tenancy config. See AsyncAPI Handbook §2.8."
+    message: "x-tenancy at '{{path}}' is not allowed. Tenancy is declared via belongsTo on the entity's OpenAPI schema; the generator derives markers and envelope ApplicationProperties from it."
+    severity: error
+    given: $.channels[*].messages[*]
+    then:
+      field: x-tenancy
+      function: falsy
+
+  specfuse-async-message-no-x-trigger:
+    description: "x-trigger has been renamed to x-trigger-when."
+    message: "x-trigger at '{{path}}' is not allowed. Rename to x-trigger-when. See AsyncAPI Handbook §2.5."
+    severity: error
+    given: $.channels[*].messages[*]
+    then:
+      field: x-trigger
+      function: falsy
+
+  specfuse-async-message-no-x-snapshot:
+    description: "Inline x-snapshot is not allowed. Snapshots live in domains/{domain}/events/{Entity}Snapshot.yaml and are referenced via $ref."
+    message: "x-snapshot at '{{path}}' is not allowed. Move the snapshot to domains/{domain}/events/{Entity}Snapshot.yaml and reference it via $ref. See AsyncAPI Handbook §2.4."
+    severity: error
+    given: $.channels[*].messages[*]
+    then:
+      field: x-snapshot
+      function: falsy
+
+  # ===========================================================================
+  # MESSAGE LABEL RULES (x-label)
+  # ===========================================================================
+
+  specfuse-async-message-must-have-label:
+    description: "Every message must declare x-label for broker routing"
+    message: "Message '{{path}}' is missing x-label. Add x-label with entity and action."
+    severity: error
+    given: $.channels[*].messages[*]
+    then:
+      field: x-label
+      function: truthy
+
+  specfuse-async-label-must-have-entity:
+    description: "x-label must include entity"
+    message: "x-label at '{{path}}' is missing 'entity'. This is also the aggregate link — must match a PascalCase schema with x-entity in OpenAPI."
+    severity: error
+    given: $.channels[*].messages[*].x-label
+    then:
+      field: entity
+      function: truthy
+
+  specfuse-async-label-entity-pascal:
+    description: "x-label.entity must be PascalCase"
+    message: "x-label.entity '{{value}}' must be PascalCase."
+    severity: error
+    given: $.channels[*].messages[*].x-label.entity
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[A-Z][A-Za-z0-9]+$"
+
+  specfuse-async-label-must-have-action:
+    description: "x-label must include action"
+    message: "x-label at '{{path}}' is missing 'action'."
+    severity: error
+    given: $.channels[*].messages[*].x-label
+    then:
+      field: action
+      function: truthy
+
+  specfuse-async-label-action-pascal:
+    description: "x-label.action must be PascalCase"
+    message: "x-label.action '{{value}}' must be PascalCase."
+    severity: error
+    given: $.channels[*].messages[*].x-label.action
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[A-Z][A-Za-z0-9]+$"
+
+  # ===========================================================================
+  # MESSAGE VERSIONING RULES (x-version)
+  # ===========================================================================
+
+  specfuse-async-message-should-have-version:
+    description: "Every message should declare x-version"
+    message: "Message '{{path}}' is missing x-version. Add x-version with current and status."
+    severity: warn
+    given: $.channels[*].messages[*]
+    then:
+      field: x-version
+      function: truthy
+
+  specfuse-async-version-must-have-current:
+    description: "x-version must include current version number"
+    message: "x-version at '{{path}}' is missing 'current'."
+    severity: error
+    given: $.channels[*].messages[*].x-version
+    then:
+      field: current
+      function: truthy
+
+  specfuse-async-version-must-have-status:
+    description: "x-version must include status"
+    message: "x-version at '{{path}}' is missing 'status'."
+    severity: error
+    given: $.channels[*].messages[*].x-version
+    then:
+      field: status
+      function: truthy
+
+  specfuse-async-version-status-values:
+    description: "x-version.status must be: draft, stable, deprecated"
+    message: "x-version.status '{{value}}' is not valid. Must be: draft, stable, or deprecated."
+    severity: error
+    given: $.channels[*].messages[*].x-version.status
+    then:
+      function: enumeration
+      functionOptions:
+        values:
+          - draft
+          - stable
+          - deprecated
+
+  # ===========================================================================
+  # PARTITION KEY RULES (x-partition-key)
+  # ===========================================================================
+
+  specfuse-async-partition-key-must-have-property:
+    description: "x-partition-key must include property"
+    message: "x-partition-key at '{{path}}' is missing 'property'."
+    severity: error
+    given: $.channels[*].messages[*].x-partition-key
+    then:
+      field: property
+      function: truthy
+
+  specfuse-async-partition-key-property-camel:
+    description: "x-partition-key.property must be camelCase"
+    message: "x-partition-key.property '{{value}}' must be camelCase."
+    severity: error
+    given: $.channels[*].messages[*].x-partition-key.property
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[a-z][a-zA-Z0-9]*$"
+
+  # GENERALIZATION: the original rm-async-partition-key-scope-values
+  # enumerated RM-specific scope values (aggregate, tenant, restaurant).
+  # The kit retains the generic scopes (aggregate, tenant) which are
+  # universal; project-specific narrower scopes (e.g., restaurant, site,
+  # customer) should be added via a project overlay.
+  specfuse-async-partition-key-scope-values:
+    description: "x-partition-key.scope must be: aggregate or tenant. Project-specific narrower scopes can be added via a project overlay."
+    message: "x-partition-key.scope '{{value}}' is not valid. Universal values: aggregate, tenant. Add project-specific scopes via overlay."
+    severity: error
+    given: $.channels[*].messages[*].x-partition-key.scope
+    then:
+      function: enumeration
+      functionOptions:
+        values:
+          - aggregate
+          - tenant
+
+  # ===========================================================================
+  # SCHEDULED JOB EXTENSION VALUE RULES
+  # (Applied when x-scheduled-job exists on a message)
+  # ===========================================================================
+
+  specfuse-async-job-must-have-cron:
+    description: "x-scheduled-job must include cron expression"
+    message: "x-scheduled-job at '{{path}}' is missing 'cron'."
+    severity: error
+    given: $.channels[*].messages[*].x-scheduled-job
+    then:
+      field: cron
+      function: truthy
+
+  # GENERALIZATION: the original rm-async-job-scope-values enumerated
+  # RM-specific scopes (global, perCompany, perRestaurant). Kept the
+  # universal "global" plus a generic "perTenant". Projects should
+  # override this rule in their overlay to add their bespoke per-X
+  # scope values.
+  specfuse-async-job-scope-values:
+    description: "x-scheduled-job.scope must be: global or perTenant. Project-specific scopes (e.g., perCompany, perSite) can be added via a project overlay."
+    message: "x-scheduled-job.scope '{{value}}' is not valid. Universal values: global, perTenant."
+    severity: error
+    given: $.channels[*].messages[*].x-scheduled-job.scope
+    then:
+      function: enumeration
+      functionOptions:
+        values:
+          - global
+          - perTenant
+
+  specfuse-async-job-overlap-values:
+    description: "x-scheduled-job.overlap must be: skip, queue, cancelPrevious"
+    message: "x-scheduled-job.overlap '{{value}}' is not valid."
+    severity: error
+    given: $.channels[*].messages[*].x-scheduled-job.overlap
+    then:
+      function: enumeration
+      functionOptions:
+        values:
+          - skip
+          - queue
+          - cancelPrevious
+
+  # ===========================================================================
+  # OPERATION RULES
+  # ===========================================================================
+
+  # Note: x-worker is required on on-* (receive) and run-* (send) operations,
+  # but FORBIDDEN on emit-* (send) operations. Spectral JSONPath cannot filter
+  # by operation key name, so the precise per-prefix validation is left to
+  # project-side validation scripts.
+
+  # Forbid removed x-worker subfields (language-specific, derived by generator)
+  specfuse-async-worker-no-type:
+    description: "x-worker.type is not part of the v2 architecture"
+    message: "x-worker.type at '{{path}}' is not allowed in v2. The generator derives worker type from operation action + channel type."
+    severity: error
+    given: $.operations[*].x-worker
+    then:
+      field: type
+      function: falsy
+
+  specfuse-async-worker-no-handler-name:
+    description: "x-worker.handlerName is not part of the v2 architecture"
+    message: "x-worker.handlerName at '{{path}}' is not allowed in v2. The generator derives handler class names from the operation file name."
+    severity: error
+    given: $.operations[*].x-worker
+    then:
+      field: handlerName
+      function: falsy
+
+  specfuse-async-worker-no-namespace:
+    description: "x-worker.namespace is not part of the v2 architecture"
+    message: "x-worker.namespace at '{{path}}' is not allowed in v2. The generator derives namespaces from x-domain + language conventions. Specs must not dictate language."
+    severity: error
+    given: $.operations[*].x-worker
+    then:
+      field: namespace
+      function: falsy
+
+  specfuse-async-operation-must-have-channel:
+    description: "Every async operation must reference a channel"
+    message: "Operation '{{path}}' is missing a channel reference."
+    severity: error
+    given: $.operations[*]
+    then:
+      field: channel
+      function: truthy
+
+  specfuse-async-operation-must-have-action:
+    description: "Every async operation must declare an action"
+    message: "Operation '{{path}}' is missing 'action'."
+    severity: error
+    given: $.operations[*]
+    then:
+      field: action
+      function: truthy
+
+  specfuse-async-operation-action-values:
+    description: "Operation action must be send or receive"
+    message: "Operation action '{{value}}' must be 'send' or 'receive'."
+    severity: error
+    given: $.operations[*].action
+    then:
+      function: enumeration
+      functionOptions:
+        values:
+          - send
+          - receive
+
+  specfuse-async-operation-must-have-summary:
+    description: "Every operation should have a summary"
+    message: "Operation '{{path}}' is missing a summary."
+    severity: warn
+    given: $.operations[*]
+    then:
+      field: summary
+      function: truthy
+
+  specfuse-async-operation-must-have-tags:
+    description: "Every async operation must have exactly one tag identifying its domain"
+    message: "Operation '{{path}}' is missing tags. Add exactly one tag for the domain (e.g., tags: [{name: Order}])."
+    severity: error
+    given: $.operations[*]
+    then:
+      field: tags
+      function: truthy
+
+  # GENERALIZATION: the original rm-async-operation-tag-name-canonical
+  # enumerated the 17 RM domain tags (Company, Compliance, ...,
+  # WorkItem). The closed value-set is project-defined. The kit-level
+  # rule enforces only the PascalCase shape; the project's overlay
+  # constrains values to the project's declared domain list.
+  specfuse-async-operation-tag-pascal:
+    description: "Async operation tag must be a PascalCase identifier. The closed value-set (the project's domain list, e.g., Order/Customer/...) is project-defined and enforced by a project overlay. The code generator uses this tag to derive the owning DDD domain (PascalCase -> kebab-case)."
+    message: "Operation tag '{{value}}' must be PascalCase. The kit enforces shape only; the project's overlay constrains the closed set."
+    severity: error
+    given: $.operations[*].tags[*].name
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[A-Z][A-Za-z0-9]+$"
+
+  # Forbid removed operation-level extensions (v1 artifacts)
+  specfuse-async-operation-no-x-dispatches:
+    description: "x-dispatches is not part of the v2 architecture"
+    message: "x-dispatches at '{{path}}' is not allowed in v2. Use native AsyncAPI 'send' operations to declare messages published by a worker. See AsyncAPI Handbook §5.2."
+    severity: error
+    given: $.operations[*]
+    then:
+      field: x-dispatches
+      function: falsy
+
+  # ===========================================================================
+  # OBSERVABILITY RULES (x-observability)
+  # ===========================================================================
+
+  specfuse-async-observability-should-exist:
+    description: "Worker operations (on-* receive handlers and run-* scheduled dispatchers) should declare x-observability. Excludes emit-* operations, which are publishing declarations and not workers — observability lives on the consuming on-*/run-* operation that owns the publish via x-emits or x-scheduled-job."
+    message: "Operation '{{path}}' is a worker (has x-worker) but is missing x-observability. Add criticality and SLA thresholds."
+    severity: warn
+    given: $.operations[?(@['x-worker'])]
+    then:
+      field: x-observability
+      function: truthy
+
+  specfuse-async-observability-must-have-criticality:
+    description: "x-observability must include criticality"
+    message: "x-observability at '{{path}}' is missing 'criticality'."
+    severity: error
+    given: $.operations[*].x-observability
+    then:
+      field: criticality
+      function: truthy
+
+  specfuse-async-observability-criticality-values:
+    description: "x-observability.criticality must be: critical, high, medium, low (legacy `normal` rejected per v2.1 §0.9)"
+    message: "x-observability.criticality '{{value}}' is not valid. Allowed: critical, high, medium, low. Legacy `normal` was migrated to `medium` per v2.1 §0.9."
+    severity: error
+    given: $.operations[*].x-observability.criticality
+    then:
+      function: enumeration
+      functionOptions:
+        values:
+          - critical
+          - high
+          - medium
+          - low
+
+  specfuse-async-observability-tracing-values:
+    description: "x-observability.tracing must be: full, minimal, none"
+    message: "x-observability.tracing '{{value}}' is not valid."
+    severity: error
+    given: $.operations[*].x-observability.tracing
+    then:
+      function: enumeration
+      functionOptions:
+        values:
+          - full
+          - minimal
+          - none
+
+  # ===========================================================================
+  # SUBSCRIPTION RULES (on x-subscription when present)
+  # ===========================================================================
+
+  specfuse-async-subscription-must-have-name:
+    description: "x-subscription must include name"
+    message: "x-subscription at '{{path}}' is missing 'name'."
+    severity: error
+    given: $.operations[*].x-subscription
+    then:
+      field: name
+      function: truthy
+
+  specfuse-async-subscription-name-kebab:
+    description: "x-subscription.name must be kebab-case"
+    message: "x-subscription.name '{{value}}' must be kebab-case."
+    severity: error
+    given: $.operations[*].x-subscription.name
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+
+  specfuse-async-subscription-scoping-mode:
+    description: "x-subscription scoping must use derivation by default; the legacy authored 'filter' field is forbidden. Use requiredHeaders for declarative header-equality scoping or filterOverride (with description justification) for forward-compat patterns. Mutually exclusive."
+    message: "{{error}}"
+    severity: error
+    given: $.operations[*]
+    then:
+      function: asyncSubscriptionScopingMode
+
+  asyncapi-subscription-filter-entity-cap:
+    description: "Subscription filterOverride must cover at most 10 entity patterns. Derived filters are bounded by the cap on (entity, action) clauses elsewhere."
+    message: "{{error}}"
+    severity: error
+    given: $.operations[*].x-subscription.filterOverride
+    then:
+      function: asyncSubscriptionFilterEntityCap
+
+  specfuse-async-subscription-trigger-mode-values:
+    description: "x-trigger-mode must be: auto or explicit"
+    message: "x-trigger-mode '{{value}}' is not valid. Must be 'auto' (default — generator-emitted dispatcher) or 'explicit' (typed service method, required when payload.context is present)."
+    severity: error
+    given: $.channels[*].messages[*].x-trigger-mode
+    then:
+      function: enumeration
+      functionOptions:
+        values:
+          - auto
+          - explicit
+
+  # ===========================================================================
+  # CHANNEL ↔ OPERATION CROSS-REFERENCE RULES
+  # ===========================================================================
+  # These rules cross-check that operations and their bound channels agree on
+  # the set of messages. Enforcement at authoring time lets us add new shared
+  # channels later without any generator coupling.
+
+  asyncapi-channel-message-completeness:
+    description: "Every message an operation references must be declared on the bound channel's messages map"
+    message: "{{error}}"
+    severity: error
+    given: $.operations[*]
+    then:
+      function: asyncChannelMessageCompleteness
+
+  asyncapi-channel-message-orphan:
+    description: "Every message declared on a channel should be referenced by at least one operation"
+    message: "{{error}}"
+    severity: warn
+    given: $.channels[*].messages[*]
+    then:
+      function: asyncChannelMessageOrphan
+
+  # ===========================================================================
+  # AI/LLM WORKER RULES (on x-ai when present)
+  # ===========================================================================
+
+  specfuse-async-ai-must-have-enabled:
+    description: "x-ai must include enabled field"
+    message: "x-ai at '{{path}}' is missing 'enabled'."
+    severity: error
+    given: $.operations[*].x-ai
+    then:
+      field: enabled
+      function: truthy
+
+  specfuse-async-ai-must-have-task:
+    description: "x-ai must include task type"
+    message: "x-ai at '{{path}}' is missing 'task'."
+    severity: error
+    given: $.operations[*].x-ai
+    then:
+      field: task
+      function: truthy
+
+  specfuse-async-ai-task-values:
+    description: "x-ai.task must be a valid AI task type"
+    message: "x-ai.task '{{value}}' is not valid. Must be: generation, classification, extraction, summarization, analysis, translation, validation, or recommendation."
+    severity: error
+    given: $.operations[*].x-ai.task
+    then:
+      function: enumeration
+      functionOptions:
+        values:
+          - generation
+          - classification
+          - extraction
+          - summarization
+          - analysis
+          - translation
+          - validation
+          - recommendation
+
+  specfuse-async-ai-fallback-values:
+    description: "x-ai.fallback must be: skip, queue, default"
+    message: "x-ai.fallback '{{value}}' is not valid. Must be: skip, queue, or default."
+    severity: error
+    given: $.operations[*].x-ai.fallback
+    then:
+      function: enumeration
+      functionOptions:
+        values:
+          - skip
+          - queue
+          - default
+
+  specfuse-async-ai-must-have-entities:
+    description: "x-ai with enabled: true must declare entities (reads/creates/updates/deletes)"
+    message: "x-ai at '{{path}}' is enabled but missing 'entities'. Declare which entities the AI worker reads and writes."
+    severity: error
+    given: $.operations[*].x-ai[?(@.enabled == true)]
+    then:
+      field: entities
+      function: truthy
+
+  specfuse-async-ai-entities-shape:
+    description: "x-ai.entities must follow the required shape"
+    message: "x-ai.entities at '{{path}}' has an invalid shape."
+    severity: error
+    given: $.operations[*].x-ai.entities
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          type: object
+          additionalProperties: false
+          properties:
+            reads:
+              type: array
+              uniqueItems: true
+              items: { type: string, pattern: "^[A-Z][A-Za-z0-9]*$" }
+            creates:
+              type: array
+              uniqueItems: true
+              items: { type: string, pattern: "^[A-Z][A-Za-z0-9]*$" }
+            updates:
+              type: array
+              uniqueItems: true
+              items: { type: string, pattern: "^[A-Z][A-Za-z0-9]*$" }
+            deletes:
+              type: array
+              uniqueItems: true
+              items: { type: string, pattern: "^[A-Z][A-Za-z0-9]*$" }
+          anyOf:
+            - required: [reads]
+            - required: [creates]
+            - required: [updates]
+            - required: [deletes]
+
+  # ===========================================================================
+  # PAYLOAD QUALITY RULES
+  # ===========================================================================
+
+  specfuse-async-payload-camel-case-props:
+    description: "Message payload properties must be camelCase"
+    message: "Payload property '{{value}}' must be camelCase."
+    severity: error
+    given: $.channels[*].messages[*].payload.properties[*]~
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[a-z][a-zA-Z0-9]*$"
+
+  # ===========================================================================
+  # DELIVERY TRAIT RULES
+  # ===========================================================================
+
+  specfuse-async-delivery-guarantee-values:
+    description: "x-delivery.guarantee must be: atLeastOnce, atMostOnce, exactlyOnce"
+    message: "x-delivery.guarantee '{{value}}' is not valid."
+    severity: error
+    given: $..x-delivery.guarantee
+    then:
+      function: enumeration
+      functionOptions:
+        values:
+          - atLeastOnce
+          - atMostOnce
+          - exactlyOnce
+
+  specfuse-async-delivery-backoff-values:
+    description: "x-delivery.retryBackoff must be: linear, exponential"
+    message: "x-delivery.retryBackoff '{{value}}' is not valid."
+    severity: error
+    given: $..x-delivery.retryBackoff
+    then:
+      function: enumeration
+      functionOptions:
+        values:
+          - linear
+          - exponential
+
+  # ===========================================================================
+  # EVENT PAYLOAD ANATOMY RULES (v2.1)
+  # Action-class inference, x-trigger-when, Context, first-appearance.
+  # Severity is warn for discovery-oriented heuristics during the migration
+  # window; error for strict structural coherence rules.
+  # ===========================================================================
+
+  specfuse-async-event-name-action-class:
+    description: "The action verb's suffix on x-label.action determines the required payload shape: *Created -> after only; *Updated -> before+after; *Deleted -> before only; anything else (state transition) -> before+after. See AsyncAPI Handbook §2.3."
+    message: "{{error}}"
+    severity: warn
+    given: $.channels[*].messages[*]
+    then:
+      function: asyncEventNameActionClass
+
+  specfuse-async-trigger-when-coherence:
+    description: "x-trigger-when is required on state-transition events (action verb is anything other than *Created/*Updated/*Deleted) and forbidden on *Created/*Updated/*Deleted. Predicate must conform to the syntactic grammar — see AsyncAPI Handbook §2.5.1."
+    message: "{{error}}"
+    severity: error
+    given: $.channels[*].messages[*]
+    then:
+      function: asyncTriggerWhenCoherence
+
+  specfuse-async-context-coherence:
+    description: "The optional `context` payload property is allowed only on state-transition events; requires x-trigger-mode: explicit and a description ≥40 chars justifying the metadata is transient. See AsyncAPI Handbook §2.7."
+    message: "{{error}}"
+    severity: error
+    given: $.channels[*].messages[*]
+    then:
+      function: asyncContextCoherence
+
+  specfuse-async-first-appearance-uses-created:
+    description: "Heuristic: state-transition events whose x-trigger-when references no Before.* fields are likely first-appearance events disguised. First-appearance events MUST use the *Created suffix and capture the manner of creation as a snapshot field. See AsyncAPI Handbook §2.6. Promoted from warn to error per §0.9 #2."
+    message: "{{error}}"
+    severity: error
+    given: $.channels[*].messages[*]
+    then:
+      function: asyncFirstAppearanceCreated
+
+  # ===========================================================================
+  # WORKER COHERENCE RULES (idempotent × inboxDedup × delivery trait)
+  # ===========================================================================
+
+  specfuse-async-worker-inbox-dedup-coherence:
+    description: "x-worker.idempotent × x-worker.inboxDedup must combine coherently with the operation's delivery trait. See AsyncAPI Handbook §4.6."
+    message: "{{error}}"
+    severity: error
+    given: $.operations[*]
+    then:
+      function: asyncInboxDedupCoherence
+
+  # ===========================================================================
+  # AUDITABLE-EVENT ENVELOPE SHAPE
+  # Asserts every event message's auditableEvent trait carries the canonical
+  # envelope from EVENT_CONTRACT §2.1 (see handbooks/AsyncAPI_Handbook.md).
+  # ===========================================================================
+
+  specfuse-async-auditable-event-envelope-shape:
+    description: "auditableEvent message trait must carry the canonical envelope (eventId, correlationId, aggregateId, aggregateType, eventVersion, producedAt required; causationId/traceparent/tenantId/aggregateVersion/userId optional). See AsyncAPI Handbook (event-contract envelope section)."
+    message: "{{error}}"
+    severity: error
+    given: $.channels[*].messages[*].traits[*]
+    then:
+      function: asyncAuditableEventEnvelopeShape
