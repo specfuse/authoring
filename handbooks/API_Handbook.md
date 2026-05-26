@@ -1441,7 +1441,7 @@ Multiple consumers interpret `x-sample` annotations independently:
 
 When a request DTO property `$ref`s an enum schema whose **first declared literal** is a sentinel value the handler will reject (`unknown`, `unspecified`, `none`, `undefined`, `default`, `notSet`, or any domain-specific auto sentinel like `accrual` for a transaction-type enum, `pending` for an update-to-revoke flow, etc.), the property MUST carry a **DTO-local** `x-sample` with `provider: fixed` set to a valid non-sentinel literal.
 
-Why: the C# generator emits the enum's first literal as the field default in the generated request fake. If the handler validates against the sentinel, the happy-path functional test 400s before the work runs. The DTO-local `x-sample` overrides parent-entity inheritance for scalar enum fields (generator PR #389).
+Why: the C# generator emits the enum's first literal as the field default in the generated request fake. If the handler validates against the sentinel, the happy-path functional test 400s before the work runs. The DTO-local `x-sample` overrides parent-entity inheritance for scalar enum fields (see `provenance.md`).
 
 Canonical-shape examples:
 - An enum `AssignmentType: [person, role]` — `AssignRequest.assignmentType` carries `x-sample: { provider: fixed, format: "person" }`.
@@ -1452,7 +1452,7 @@ Authoring checklist for any new `New*`/`Update*`/`*Request` DTO with an enum pro
 1. Open the referenced enum schema; check the **first** literal.
 2. If the first literal is a sentinel a handler is likely to reject, add a DTO-local `x-sample` with a valid literal.
 3. Pick the literal that matches the DTO's most common intent (look at the DTO's `description` for guidance — e.g. "Typically used to revoke" → use `revoked`).
-4. Verify the chosen literal exists in the enum (otherwise the C# fake will emit a non-existent enum case; see generator issue #390).
+4. Verify the chosen literal exists in the enum (otherwise the C# fake will emit a non-existent enum case; see `provenance.md`).
 
 Sentinel name list to scan against (case-insensitive): `unknown`, `unspecified`, `none`, `undefined`, `default`, `notSet`, `unset`. Also flag domain-specific auto sentinels — the rule is "the value the handler treats as 'not really set,'" not the literal string `unknown`.
 
@@ -1673,7 +1673,7 @@ Address:
 
 `x-test-seed-value` opts a specific **non-`*Id`, non-enum string path parameter** into a deterministic, seed-aligned literal in the generator's happy-path functional test. Without it, the generator substitutes `Guid.NewGuid()` for the path param, and any endpoint whose backend transforms the param before lookup (hashing, normalizing, slugifying) will 404 before reaching the resolution code path.
 
-Introduced by clabonte/generator#395 (shipped in generator#400).
+Introduced to fix happy-path tests 404'ing on non-`*Id` string path params whose backend transforms the value before lookup (hash, slugify, normalize). See `provenance.md` for the reference generator's PR history.
 
 ### When to add `x-test-seed-value`
 
@@ -1734,7 +1734,7 @@ Adding `x-test-seed-value` to a spec is necessary but not sufficient. The consum
 - Negative tests (401/Forbidden): keep `Guid.NewGuid()` — those don't need to resolve to seeded data
 - Generated tests remain compile-clean whether the extension is present or absent
 
-**See also**: `Vendor_Extensions.md §6.4` (extension contract), generator PR clabonte/generator#400, bug clabonte/generator#395
+**See also**: `Vendor_Extensions.md §6.4` (extension contract), `provenance.md` (reference generator PR history)
 
 ---
 
@@ -1742,7 +1742,7 @@ Adding `x-test-seed-value` to a spec is necessary but not sufficient. The consum
 
 `x-membership-gated: true` narrows the generator's happy-path test theory by stripping the highest-privilege role (typically `Admin`) from the `[InlineData]` rows on endpoints whose handler runs a runtime **membership lookup** (channel member, group participant, thread participant, project collaborator, etc.) *after* the role gate. Without it, the privileged role passes `[RoleRequired]` in production but 403s in tests, because the seed fixture has no membership row for the global principal.
 
-Introduced by clabonte/generator#401 (shipped in generator#404).
+Introduced to fix happy-path tests that 403 when the test exercises a privileged role lacking a per-scope membership row in the seed fixture, even though `[RoleRequired]` would let it through in production. See `provenance.md`.
 
 ### When to add `x-membership-gated: true`
 
@@ -1785,7 +1785,7 @@ The accompanying YAML comment is **mandatory** — it documents what the handler
 - **No paired Backend work.** The seed fixture already populates membership rows for the non-privileged roles; the bug is purely the privileged role's absence.
 - **Boolean only.** Setting `x-membership-gated: false` is equivalent to omitting the extension. There's no "off" semantic to express.
 
-**See also**: `Vendor_Extensions.md §6.5` (extension contract), generator PR clabonte/generator#404, bug clabonte/generator#401
+**See also**: `Vendor_Extensions.md §6.5` (extension contract), `provenance.md` (reference generator PR history)
 
 ---
 
@@ -1793,7 +1793,7 @@ The accompanying YAML comment is **mandatory** — it documents what the handler
 
 `x-self-scoped: <role>` (or list of roles) narrows the generator's happy-path test theory to roles for which the seed fixture pre-populates a per-principal runtime row (typically the project's "end user" role row — `Customer`, `Member`, `Profile`, etc.; role names are project-specific). Without it, the test theory exercises roles that 404 because the handler calls `userRepository.FindByIdpUserId(...).Then(<RuntimeRow>).FirstOrDefault()` and the seeded user for those roles has no runtime row.
 
-Introduced by clabonte/generator#405 (shipped in generator#406).
+Introduced to fix happy-path tests 404'ing on `/me/*`-style endpoints when the exercised role has no per-principal runtime row in the seed fixture. See `provenance.md`.
 
 ### When to add `x-self-scoped`
 
@@ -1808,7 +1808,7 @@ The role values are project-specific — pick whichever role(s) the seed fixture
 
 ### When NOT to add it
 
-- Endpoint is `/me/<global>` and any authenticated user works (e.g. `/me/logout`). The existing path-based privileged-role strip (#396, automatic for `/me/*`) is sufficient.
+- Endpoint is `/me/<global>` and any authenticated user works (e.g. `/me/logout`). The existing path-based privileged-role strip (automatic for `/me/*` in the reference generator; see `provenance.md`) is sufficient.
 - Endpoint is membership-gated rather than identity-resolved — use `x-membership-gated`.
 - All roles in `x-roles` have the runtime row seeded — no narrowing needed.
 - `x-roles` already lists only the self-scoped role (e.g. `[Customer]`) — nothing to narrow.
@@ -1855,7 +1855,7 @@ post:
 
 Narrowing applies sequentially: `x-membership-gated` strips the privileged role → `x-self-scoped` keeps only Customer from the rest. Result: theory exercises only Customer.
 
-**See also**: `Vendor_Extensions.md §6.6` (extension contract), generator PR clabonte/generator#406, bug clabonte/generator#405
+**See also**: `Vendor_Extensions.md §6.6` (extension contract), `provenance.md` (reference generator PR history)
 
 ---
 
@@ -1863,7 +1863,7 @@ Narrowing applies sequentially: `x-membership-gated` strips the privileged role 
 
 `x-test-seed` overrides the C# expression used to resolve a **primary-key path parameter** in the generator's happy-path functional test, replacing the default `TestSeed.<Entity>Id` substitution with a consumer-provided seed-helper expression. Add it when several happy-path tests on the same primary-key path parameter have **mutually-exclusive preconditions** on entity fields — one needs `Status=Placed`, another needs `Status=Submitted`, another needs `Status=Cancelled`, etc. The shared `TestSeed.<Entity>` row cannot satisfy multiple incompatible preconditions at once, so the tests beyond the first fail at runtime without an override.
 
-Introduced by clabonte/generator#457 (shipped in generator#459). First adoption: lifecycle action endpoints on a domain aggregate with state-machine semantics (e.g., `/me/orders/{orderId}/{action}` for submit/cancel/fulfill).
+Introduced to support lifecycle-action endpoints on a domain aggregate with state-machine semantics (e.g., `/me/orders/{orderId}/{action}` for submit/cancel/fulfill), where multiple happy-path tests on the same `*Id` path param need mutually-exclusive entity-state preconditions that a single shared seed row cannot satisfy. See `provenance.md`.
 
 ### When to add `x-test-seed`
 
@@ -1946,7 +1946,7 @@ The two extensions are independent and may coexist on a single operation if it h
 - `AsAnonymous_*` and `WithForbiddenRole_*` tests → keep `TestSeed.<Entity>Id`
 - Generated tests remain compile-clean whether the extension is present or absent — but if present, the consumer helper must exist for the test to compile.
 
-**See also**: `Vendor_Extensions.md §6.7` (extension contract), generator PR clabonte/generator#459, bug clabonte/generator#457
+**See also**: `Vendor_Extensions.md §6.7` (extension contract), `provenance.md` (reference generator PR history)
 
 ---
 

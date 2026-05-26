@@ -986,7 +986,7 @@ properties:
 
 **Required**: No — opt-in per qualifying path parameter
 
-**Introduced**: generator support: clabonte/generator#400; bug context: clabonte/generator#395
+**Introduced**: see `provenance.md` for the reference generator's PR history and the originating bug.
 
 **Shape**:
 ```yaml
@@ -1024,7 +1024,7 @@ properties:
 
 **Rationale**: Primary-key (`*Id`) and enum-typed path params have unambiguous seed sources the generator can infer. Opaque transformed lookup keys (magic-link tokens, share codes, slugs, normalized usernames) do not — the plaintext in the URL is never the value stored in the database. Without a declarative opt-in, every such endpoint produces a happy-path test that 404s, masking real coverage gaps.
 
-**See also**: `API_Handbook.md §10.5` (authoring guide and qualification checklist), generator PR clabonte/generator#400
+**See also**: `API_Handbook.md §10.5` (authoring guide and qualification checklist), `provenance.md` (reference generator PR history)
 
 ---
 
@@ -1036,7 +1036,7 @@ properties:
 
 **Required**: No — opt-in per qualifying operation
 
-**Introduced**: generator support: clabonte/generator#404; bug context: clabonte/generator#401
+**Introduced**: see `provenance.md` for the reference generator's PR history and the originating bug.
 
 **Shape**:
 ```yaml
@@ -1070,7 +1070,7 @@ post:
 
 **Rationale**: The privileged "global" role is unscoped with no natural per-org row. Channel/group/thread/project membership checks are correct in production (they keep the privileged role out unless explicitly added as a member), but they break the test theory's assumption that every role in `x-roles` succeeds in the happy path. The extension declaratively signals this runtime-data constraint so the generator can narrow the theory without authors hand-maintaining `[InlineData]` overrides.
 
-**See also**: `API_Handbook.md §10.6` (authoring guide), generator PR clabonte/generator#404
+**See also**: `API_Handbook.md §10.6` (authoring guide), `provenance.md` (reference generator PR history)
 
 ---
 
@@ -1082,7 +1082,7 @@ post:
 
 **Required**: No — opt-in per qualifying operation
 
-**Introduced**: generator support: clabonte/generator#406; bug context: clabonte/generator#405
+**Introduced**: see `provenance.md` for the reference generator's PR history and the originating bug.
 
 **Shape — single seeded role**:
 ```yaml
@@ -1120,7 +1120,7 @@ x-self-scoped: [Customer, GuestCustomer]
 
 **Role values are project-specific**: The runtime row may be `Customer`, `Profile`, `Member`, etc. Pick whichever role(s) the seed fixture pre-populates the runtime row for in your project.
 
-**See also**: `API_Handbook.md §10.7` (authoring guide), generator PR clabonte/generator#406
+**See also**: `API_Handbook.md §10.7` (authoring guide), `provenance.md` (reference generator PR history)
 
 ---
 
@@ -1132,7 +1132,7 @@ x-self-scoped: [Customer, GuestCustomer]
 
 **Required**: No — opt-in per qualifying operation.
 
-**Introduced**: generator support: clabonte/generator#459; bug context: clabonte/generator#457
+**Introduced**: see `provenance.md` for the reference generator's PR history and the originating bug.
 
 **Shape**:
 ```yaml
@@ -1220,7 +1220,7 @@ Lifecycle-action endpoints are the canonical case: `submit`, `fulfill`, `cancel`
 
 **Rationale**: `TestSeed.<Entity>Id` is a single shared row populated once per test fixture. It works for any read or list endpoint, and for write endpoints whose only precondition is "row exists." It breaks down when several happy-path tests on the same primary-key path param need different field values on the row (one needs `Status=Placed`, another needs `Status=Submitted`, etc.). Mutating the shared row to satisfy one test would break every other test that depends on it. `x-test-seed` lets each operation declare its own seed source without polluting the shared fixture row.
 
-**See also**: `API_Handbook.md §10.8` (authoring guide), generator PR clabonte/generator#459, bug clabonte/generator#457
+**See also**: `API_Handbook.md §10.8` (authoring guide), `provenance.md` (reference generator PR history)
 
 ---
 

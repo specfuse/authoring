@@ -41,4 +41,4 @@ git clone git@github.com:clabonte/spec-authoring-kit.git
 # (init.sh to be added in Phase 5)
 ```
 
-See `compatibility.md` for the kit ↔ generator version matrix.
+See `compatibility.md` for the kit ↔ generator version matrix, and `provenance.md` for the bug-and-PR history that motivated each vendor extension.

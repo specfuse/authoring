@@ -10,9 +10,15 @@ argument-hint: <title> [--verify-only <issue-number>]
 
 *Enforces: (general — no single handbook)*
 
-File a GitHub issue in the `clabonte/generator` repository for the
-Specfuse Generator, then start a background monitor that polls every
-5 minutes for resolution.
+File a GitHub issue against the Specfuse Generator repository for this
+project, then start a background monitor that polls every 5 minutes for
+resolution.
+
+**Generator repo**: resolved at runtime from the `GENERATOR_REPO`
+environment variable (format: `<owner>/<repo>`). Set this in your
+project's `.envrc`, shell profile, or wherever your project keeps
+per-project env vars. Example: `export GENERATOR_REPO=acme/specfuse-generator`.
+If unset, the command stops and asks you to configure it.
 
 **Arguments:** `$ARGUMENTS`
 
@@ -26,9 +32,14 @@ Parse arguments:
 The macOS sandbox blocks Go's TLS certificate verification path,
 causing `gh` to fail in Claude Code.
 
-Resolve the token once at the start:
+Resolve the token and target repo once at the start:
 ```bash
 GH_TOKEN="${GH_TOKEN:-$(gh auth token 2>/dev/null || echo '')}"
+GENERATOR_REPO="${GENERATOR_REPO:-}"
+if [ -z "$GENERATOR_REPO" ]; then
+  echo "GENERATOR_REPO is not set. Export it as <owner>/<repo> (e.g. acme/specfuse-generator) and re-run." >&2
+  exit 1
+fi
 ```
 
 Standard headers for all requests:
@@ -50,7 +61,7 @@ Search existing open issues to avoid filing a duplicate:
 
 ```bash
 curl -s -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-  "https://api.github.com/repos/clabonte/generator/issues?labels=bug&state=open" \
+  "https://api.github.com/repos/${GENERATOR_REPO}/issues?labels=bug&state=open" \
   | jq '[.[] | {number, title}]'
 ```
 
@@ -65,7 +76,7 @@ Create a GitHub issue using the bug report template:
 ```bash
 curl -s -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
   -H "Content-Type: application/json" \
-  "https://api.github.com/repos/clabonte/generator/issues" \
+  "https://api.github.com/repos/${GENERATOR_REPO}/issues" \
   -d "$(jq -n \
     --arg title "[BUG] <short description>" \
     --arg body "$(cat <<'BODY'
@@ -130,7 +141,7 @@ Capture the issue number from the JSON response (`.number`) for Step 3.
 After filing (or finding a duplicate), start polling for resolution:
 
 ```bash
-bash .claude/scripts/monitor-generator-issue.sh <issue-number> clabonte/generator 300
+bash .claude/scripts/monitor-generator-issue.sh <issue-number> ${GENERATOR_REPO} 300
 ```
 
 Use the Bash tool with `run_in_background: true`. The monitor checks
@@ -148,7 +159,7 @@ notification), **automatically**:
 1. Read the issue comments to find the `## Resolution` details:
    ```bash
    curl -s -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-     "https://api.github.com/repos/clabonte/generator/issues/<N>/comments" | jq '.[].body'
+     "https://api.github.com/repos/${GENERATOR_REPO}/issues/<N>/comments" | jq '.[].body'
    ```
 2. Check if the generated files in this project have been updated.
 3. **If the generated files were updated** and match the expected
@@ -161,7 +172,7 @@ notification), **automatically**:
      # Add verification comment
      curl -s -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
        -H "Content-Type: application/json" \
-       "https://api.github.com/repos/clabonte/generator/issues/<N>/comments" \
+       "https://api.github.com/repos/${GENERATOR_REPO}/issues/<N>/comments" \
        -d "$(jq -n --arg body "## Verification (specs-agent)
 
      <describe what you tested and the result>" '{body: $body}')"
@@ -169,7 +180,7 @@ notification), **automatically**:
      # Close the issue
      curl -s -X PATCH -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
        -H "Content-Type: application/json" \
-       "https://api.github.com/repos/clabonte/generator/issues/<N>" \
+       "https://api.github.com/repos/${GENERATOR_REPO}/issues/<N>" \
        -d '{"state":"closed"}'
      ```
    - If fix is wrong: remove `status:resolved`, add `status:open`,
@@ -179,17 +190,17 @@ notification), **automatically**:
    ```bash
    # Update labels
    CURRENT_LABELS=$(curl -s -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-     "https://api.github.com/repos/clabonte/generator/issues/<N>/labels" | jq -r '.[].name')
+     "https://api.github.com/repos/${GENERATOR_REPO}/issues/<N>/labels" | jq -r '.[].name')
    NEW_LABELS=$(echo "$CURRENT_LABELS" | sed 's/status:resolved/status:open/' | jq -R . | jq -s .)
    curl -s -X PUT -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
      -H "Content-Type: application/json" \
-     "https://api.github.com/repos/clabonte/generator/issues/<N>/labels" \
+     "https://api.github.com/repos/${GENERATOR_REPO}/issues/<N>/labels" \
      -d "{\"labels\":$NEW_LABELS}"
 
    # Add comment
    curl -s -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
      -H "Content-Type: application/json" \
-     "https://api.github.com/repos/clabonte/generator/issues/<N>/comments" \
+     "https://api.github.com/repos/${GENERATOR_REPO}/issues/<N>/comments" \
      -d '{"body":"Generated files not yet updated in this project. Please regenerate."}'
    ```
 
@@ -206,7 +217,7 @@ When called with `--verify-only <N>`:
 1. Check the issue's labels and state:
    ```bash
    curl -s -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-     "https://api.github.com/repos/clabonte/generator/issues/<N>" \
+     "https://api.github.com/repos/${GENERATOR_REPO}/issues/<N>" \
      | jq '{labels: [.labels[].name], state: .state}'
    ```
 2. If the issue does not have `status:resolved` label: report the
