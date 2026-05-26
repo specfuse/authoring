@@ -1,19 +1,50 @@
 # Specfuse Spec-Authoring Kit
 
-The upstream contract for [Specfuse](https://github.com/Specfuse) projects. Defines the conventions, vendor extensions, and authoring workflows that the Specfuse code generator consumes to produce backend, frontend, and worker artifacts from OpenAPI + AsyncAPI + Arazzo specifications.
+The upstream contract for [Specfuse](https://github.com/Specfuse) projects. Defines the conventions, vendor extensions, and authoring workflows that the Specfuse code generator consumes to produce backend, frontend, and worker artifacts from OpenAPI 3.0.3 + AsyncAPI 3.0.0 + Arazzo 1.0.1 specifications.
 
-## What this kit provides
+## Quick start
 
-- **Handbooks** (`handbooks/`) — authoritative rules for REST, async, and behavioral spec authoring.
-- **Samples** (`samples/`) — canonical YAML templates for endpoints, messages, scenarios, and recipes.
-- **Schemas** (`schemas/`) — Spectral lint rules and JSON schemas for validation.
-- **Templates** (`templates/`) — `project-init/` skeleton for bootstrapping new Specfuse projects, plus an AI Access Policy template.
-- **Claude assets** (`claude-assets/`) — Claude Code agents, commands, and skills that automate authoring workflows.
-- **Bundled example** (`examples/hello-orders/`) — a small, complete, generic Specfuse project demonstrating the full surface and serving as the kit's regression net.
+Bootstrap a new Specfuse project from the kit's `project-init` template:
 
-## Status
+```bash
+git clone git@github.com:clabonte/spec-authoring-kit.git
+./spec-authoring-kit/templates/project-init/init.sh ~/projects/my-new-project
+```
 
-**Private, incubating.** This kit is currently hosted under `clabonte/spec-authoring-kit` while the first generalization pass is audited for leakage from its source project (RestoManager). It will transfer to `Specfuse/spec-authoring-kit` once the first external consumer has bootstrapped successfully and no source-project artifacts remain.
+You'll be prompted for the project name, the project token (channel-address prefix), and the initial domain. The script substitutes placeholders, copies the kit's Claude Code agents and commands into the new project's `.claude/`, and prints next steps.
+
+To refresh agents and commands in an existing project after a kit update:
+
+```bash
+./spec-authoring-kit/templates/project-init/init.sh --refresh-assets ~/projects/existing-project
+```
+
+See [`templates/project-init/README.md`](templates/project-init/README.md) for the full bootstrap reference and [`examples/hello-orders/`](examples/hello-orders/) for a complete worked example.
+
+## What's in the kit
+
+| Asset | Contents |
+|---|---|
+| **Handbooks** ([`handbooks/`](handbooks/)) | 6 authoritative documents: REST API, AsyncAPI, Arazzo, vendor extensions, AI access policy framework, and the generator's project file. Together these define the full spec-authoring contract. |
+| **Samples** ([`samples/`](samples/)) | 4 canonical YAML templates — endpoints, async messages, scenarios, recipes — that every authored file should pattern-match against. |
+| **Schemas** ([`schemas/`](schemas/)) | *(Forthcoming.)* Spectral lint rules and JSON Schemas for validation. |
+| **Templates** ([`templates/`](templates/)) | The `project-init/` skeleton with `init.sh` bootstrap script, plus the AI Access Policy template. |
+| **Claude assets** ([`claude-assets/`](claude-assets/)) | 5 Claude Code sub-agents and 20 slash commands (`/design-scenario`, `/design-async`, `/design-recipe`, etc.) that automate spec design. Copied into each project on bootstrap. |
+| **Bundled example** ([`examples/hello-orders/`](examples/hello-orders/)) | A 61-file complete Specfuse project — 2 domains, 3 entities, 1 state-transition event, 1 cross-domain scenario, 2 setup recipes, filled AI access policy, CI workflow. Serves as the kit's regression net. |
+
+## Where to start
+
+| You want to… | Read first | Then run |
+|---|---|---|
+| Bootstrap a new project | [`templates/project-init/README.md`](templates/project-init/README.md) | `init.sh <target-dir>` |
+| Design your first scenario | [`handbooks/Arazzo_Handbook.md`](handbooks/Arazzo_Handbook.md) | `/design-scenario` |
+| Author a new entity or endpoint | [`handbooks/API_Handbook.md`](handbooks/API_Handbook.md) + [`samples/endpoint-samples.yaml`](samples/endpoint-samples.yaml) | (no kit command yet — author by hand) |
+| Design an async event or scheduled job | [`handbooks/AsyncAPI_Handbook.md`](handbooks/AsyncAPI_Handbook.md) + [`samples/message-samples.yaml`](samples/message-samples.yaml) | `/design-async` |
+| Add a setup recipe | [`handbooks/Arazzo_Handbook.md`](handbooks/Arazzo_Handbook.md) §7 + [`samples/recipe-samples.yaml`](samples/recipe-samples.yaml) | `/design-recipe` |
+| Configure AI agent access | [`handbooks/AI_Access_Policy_Framework.md`](handbooks/AI_Access_Policy_Framework.md) + [`templates/ai-access-policy-template.md`](templates/ai-access-policy-template.md) | (copy template into project) |
+| Look up a `x-*` extension | [`handbooks/Vendor_Extensions.md`](handbooks/Vendor_Extensions.md) | — |
+| Configure the generator project file | [`handbooks/Project_File.md`](handbooks/Project_File.md) | — |
+| See a complete worked example | [`examples/hello-orders/README.md`](examples/hello-orders/README.md) | — |
 
 ## Relationship to other Specfuse repos
 
@@ -32,13 +63,13 @@ generator           orchestrator
 
 The kit is upstream of both: it defines *what* a Specfuse spec must look like. The generator consumes those specs to emit code. The orchestrator coordinates the multi-agent authoring workflow that produces those specs.
 
-## Quick start (placeholder — populated in Phase 5)
+## Status
 
-```bash
-# Clone the kit
-git clone git@github.com:clabonte/spec-authoring-kit.git
-# Bootstrap a new project from templates/project-init/
-# (init.sh to be added in Phase 5)
-```
+**Private, incubating** (`v0.2`). Phases 1–6 of the kit-extraction effort are complete: handbooks, samples, claude-assets, project-init template, and the bundled `hello-orders` example are all in place. Generator-side alignment items are tracked in [`compatibility.md`](compatibility.md#outstanding-generator-side-follow-ups).
 
-See `compatibility.md` for the kit ↔ generator version matrix, and `provenance.md` for the bug-and-PR history that motivated each vendor extension.
+The kit is currently hosted under `clabonte/spec-authoring-kit` while the first external consumer is bootstrapped and the content is audited for leakage from its source project. It will transfer to `Specfuse/spec-authoring-kit` once that audit is clean.
+
+## Additional references
+
+- [`compatibility.md`](compatibility.md) — kit ↔ generator version matrix and outstanding generator-side follow-ups.
+- [`provenance.md`](provenance.md) — bug-and-PR history that motivated each vendor extension. Kit-maintainer audit trail; external consumers do not need the referenced PRs to resolve.
