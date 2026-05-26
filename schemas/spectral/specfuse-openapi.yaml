@@ -1,0 +1,1042 @@
+# =============================================================================
+# Specfuse OpenAPI Spectral Ruleset
+# =============================================================================
+# Enforces Specfuse conventions for OpenAPI 3.x specifications.
+# Authoritative reference: handbooks/API_Handbook.md
+#
+# This ruleset validates the universal Specfuse conventions only. Value-set
+# constraints that are project-defined (the closed role enum, the project
+# domain list, project-specific URL path patterns) are NOT baked in here.
+# Projects should extend this ruleset in their own .spectral.yaml and add the
+# project-specific overlays. See schemas/README.md.
+#
+# Generalization notes for items lifted from the RestoManager source:
+# - All rule IDs renamed from rm-* to specfuse-* (compatibility.md §1).
+# - Closed role enum (Admin/CompanyAdmin/...) removed from
+#   specfuse-auth-roles-allowed: rule now enforces the structural
+#   PascalCase shape only. The project's overlay adds the closed value set.
+# - Path-pattern exclusions that named RestoManager-specific suffixes (e.g.,
+#   /dismiss, /access, /process, /errors on POST endpoints) were dropped:
+#   the rule still distinguishes resource-creation paths from action paths
+#   by the plural-noun heuristic. Projects with bespoke action verbs can
+#   add their own exclusions via an overlay.
+# - Illustrative event names in messages updated from RestoManager fixtures
+#   (e.g., StaffingPlan.Finalized) to generic order/customer vocabulary
+#   (e.g., Order.Created) to match examples/hello-orders/.
+# =============================================================================
+
+extends: "spectral:oas"
+formats: [oas3]
+rules:
+
+  # ===== Disabled / downgraded built-in rules =====
+  operation-tag-defined: off
+
+  # ===== Casing & naming =====
+  specfuse-path-casing:
+    description: "Paths must use camelCase segments (no hyphens/underscores); allow :operations and {params}."
+    severity: error
+    given: $.paths[*]~
+    then:
+      function: pattern
+      functionOptions:
+        # Matches: /segment, /camelCase, /{param}, /segment:operation
+        # Does NOT match: /kebab-case, /snake_case
+        match: "^(/([a-z][a-zA-Z0-9]*|\\{[a-z][a-zA-Z0-9]*\\})(:[a-z][a-zA-Z0-9]*)?)+$"
+
+  specfuse-schema-name-pascal:
+    description: "Schema (model) names must be PascalCase."
+    severity: error
+    given: $.components.schemas[*]~
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[A-Z][A-Za-z0-9]*$"
+
+  specfuse-prop-camel:
+    description: "Schema properties must be camelCase."
+    severity: error
+    given: $.components.schemas[*].properties[*]~
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[a-z][A-Za-z0-9]*$"
+
+  specfuse-enum-camel:
+    description: "Enum values must be camelCase (skipped when x-enum-case is declared)."
+    severity: error
+    given:
+      - $.components.schemas[?(!@["x-enum-case"] && @.enum)].enum[*]
+    then:
+      function: casing
+      functionOptions:
+        type: camel
+
+  specfuse-xenumcase-shape:
+    description: "x-enum-case must be one of the allowed formatting strategies."
+    severity: error
+    given: $.components.schemas[*]["x-enum-case"]
+    then:
+      function: enumeration
+      functionOptions:
+        values: ["preserve", "PascalCase", "camelCase", "snake_case", "kebab-case", "SCREAMING_SNAKE_CASE"]
+
+  specfuse-xenumcase-on-enums-only:
+    description: "x-enum-case must only be applied to schemas that define enum values."
+    severity: error
+    given: $.components.schemas[?(@["x-enum-case"] && !@.enum)]
+    then:
+      function: falsy
+      field: x-enum-case
+
+  specfuse-single-tag:
+    description: "Operations must have exactly one tag for clear API organization."
+    severity: error
+    given: $.paths[*][*].tags
+    then:
+      function: length
+      functionOptions:
+        min: 1
+        max: 1
+
+  # ===== Verbs & statuses =====
+  specfuse-post-201-location:
+    description: "Resource-creation POST must return 201 with Location header (operation paths ending in a plural noun)."
+    # NOTE: The RestoManager source excluded RM-specific action suffixes
+    # (/dismiss, /access, /process, /errors). Those exclusions were dropped
+    # during the generalization; projects with bespoke action endpoints can
+    # add their own exclusions via an overlay rule.
+    severity: error
+    given: $.paths[?(@property.match("/[a-z][a-zA-Z]+s$") && !@property.match("/bulk/") && !@property.match("/_system/"))].post.responses
+    then:
+      - field: "201"
+        function: truthy
+      - field: "201.headers.Location"
+        function: truthy
+
+  specfuse-put-patch-200-complete:
+    description: "PUT/PATCH must always return 200 with Location header and resource body."
+    severity: error
+    given: $.paths[*].[put,patch].responses
+    then:
+      - field: "200"
+        function: truthy
+      - field: "200.headers.Location"
+        function: truthy
+      - field: "200.content.application/json.schema"
+        function: truthy
+
+  specfuse-delete-204:
+    description: "DELETE must return 204."
+    severity: error
+    given: $.paths[*].delete.responses
+    then:
+      field: "204"
+      function: truthy
+
+  specfuse-415-when-request-body:
+    description: "Endpoints with requestBody should define 415."
+    severity: warn
+    given: $.paths[*][post,put,patch,delete][?(@.requestBody)]
+    then:
+      field: responses.415
+      function: truthy
+
+  specfuse-406-when-alt-accept:
+    description: "If multiple response media types are declared, include 406."
+    severity: warn
+    given: $.paths[*][get,post,put,patch,delete][?(@.responses && @.responses["200"] && @.responses["200"].content)]
+    then:
+      field: responses.406
+      function: truthy
+
+  # ===== Concurrency & ETags =====
+  specfuse-etag-on-get:
+    description: "GET of single mutable resources must document ETag response header (excludes list/collection endpoints)."
+    severity: warn
+    given: $.paths[?(@property.match("\\{[a-zA-Z]+\\}$") || @property.match("/current$") || @property.match("/settings$") || @property.match("/preferences$"))].get
+    then:
+      field: responses.200.headers.ETag
+      function: defined
+
+  specfuse-ifmatch-on-write:
+    description: "PUT/PATCH/DELETE must accept If-Match and define 412."
+    severity: error
+    given: $.paths[*].[put,patch,delete]
+    then:
+      - field: parameters
+        function: schema
+        functionOptions:
+          schema:
+            type: array
+            contains:
+              type: object
+              properties:
+                name: { const: "If-Match" }
+                in: { const: "header" }
+      - field: responses.412
+        function: truthy
+
+  specfuse-428-on-write:
+    description: "PUT/PATCH/DELETE must define 428 Precondition Required for missing If-Match."
+    severity: warn
+    given: $.paths[*].[put,patch,delete]
+    then:
+      field: responses.428
+      function: truthy
+
+  # ===== Predefined error responses (presence + correct $ref) =====
+  specfuse-401-required:
+    description: "Protected operations must declare 401."
+    severity: error
+    given: $.paths[*][get,post,put,patch,delete][?(@.security)]
+    then:
+      field: responses.401
+      function: truthy
+
+  specfuse-401-predefined:
+    description: "Protected operations must use components.responses.UnauthorizedError for 401."
+    severity: error
+    given: $.paths[*][get,post,put,patch,delete][?(@.security)].responses.401
+    then:
+      field: $ref
+      function: pattern
+      functionOptions:
+        match: "^#/components/responses/UnauthorizedError$"
+
+  specfuse-403-required:
+    description: "Protected operations must declare 403."
+    severity: error
+    given: $.paths[*][get,post,put,patch,delete][?(@.security)]
+    then:
+      field: responses.403
+      function: truthy
+
+  specfuse-403-predefined:
+    description: "Protected operations must use components.responses.ForbiddenError for 403."
+    severity: error
+    given: $.paths[*][get,post,put,patch,delete][?(@.security)].responses.403
+    then:
+      field: $ref
+      function: pattern
+      functionOptions:
+        match: "^#/components/responses/ForbiddenError$"
+
+  specfuse-404-required:
+    description: "Operations with {xxxId} path parameters must declare 404 Not Found."
+    severity: error
+    given: $.paths[?(@property.match("\\{[a-zA-Z0-9]+Id\\}"))][get,post,put,patch,delete]
+    then:
+      field: responses.404
+      function: truthy
+
+  specfuse-404-predefined:
+    description: "Operations with {xxxId} path parameters must use components.responses.NotFoundError for 404."
+    severity: error
+    given: $.paths[?(@property.match("\\{[a-zA-Z0-9]+Id\\}"))][get,post,put,patch,delete].responses.404
+    then:
+      field: $ref
+      function: pattern
+      functionOptions:
+        match: "^#/components/responses/NotFoundError$"
+
+  specfuse-400-required:
+    description: "Operations with requestBody must declare 400 Bad Request."
+    severity: error
+    given: $.paths[*][post,put,patch,delete][?(@.requestBody)]
+    then:
+      field: responses.400
+      function: truthy
+
+  specfuse-400-predefined:
+    description: "Operations with requestBody must use components.responses.BadRequestError for 400."
+    severity: error
+    given: $.paths[*][post,put,patch,delete][?(@.requestBody)].responses.400
+    then:
+      field: $ref
+      function: pattern
+      functionOptions:
+        match: "^#/components/responses/BadRequestError$"
+
+  # ===== Pagination Consistency =====
+  # NOTE: "If pagination params present -> response must be List" cannot be expressed in
+  # Spectral's JSONPath (no wildcard inside filter). Covered directionally by the rule below.
+
+  specfuse-list-response-requires-pagination-params:
+    description: "If response is {Resource}List, all pagination parameters (page, pageSize, sort) must be present."
+    severity: error
+    given: $.paths[*].get[?(@.responses && @.responses["200"])]
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          if:
+            properties:
+              responses:
+                properties:
+                  "200":
+                    properties:
+                      content:
+                        properties:
+                          application/json:
+                            properties:
+                              schema:
+                                properties:
+                                  $ref:
+                                    type: string
+                                    pattern: "List$"
+                                required: ["$ref"]
+                            required: ["schema"]
+                        required: ["application/json"]
+                    required: ["content"]
+                required: ["200"]
+            required: ["responses"]
+          then:
+            properties:
+              parameters:
+                type: array
+                allOf:
+                  - contains:
+                      type: object
+                      properties: { name: { const: "page" } }
+                      required: [name]
+                  - contains:
+                      type: object
+                      properties: { name: { const: "pageSize" } }
+                      required: [name]
+                  - contains:
+                      type: object
+                      properties: { name: { const: "sort" } }
+                      required: [name]
+            required: ["parameters"]
+
+  # ===== Security =====
+  specfuse-global-bearer:
+    description: "Global bearerAuth security scheme must be defined."
+    severity: error
+    given: $
+    then:
+      field: components.securitySchemes.bearerAuth
+      function: truthy
+
+  specfuse-protected-ops-require-security:
+    description: "Operations should declare security explicitly even when global security is set, for clarity and code-gen."
+    severity: hint
+    given: $.paths[*][get,post,put,patch,delete]
+    then:
+      field: security
+      function: defined
+
+  # ===== Authorization metadata =====
+  specfuse-auth-meta-present:
+    description: "Secured operations must declare x-roles and x-scopes."
+    severity: error
+    given: $.paths[*][get,post,put,patch,delete][?(@.security)]
+    then:
+      - field: x-roles
+        function: schema
+        functionOptions:
+          schema:
+            type: array
+            minItems: 1
+            items:
+              type: string
+      - field: x-scopes
+        function: schema
+        functionOptions:
+          schema:
+            type: array
+            minItems: 1
+            items:
+              type: string
+
+  # GENERALIZATION: original rm-auth-roles-allowed pinned the values to the
+  # RestoManager closed set (Admin/CompanyAdmin/RestaurantAdmin/RestaurantManager/
+  # Employee/Authenticated). Per compatibility.md #9 and the kit's stated
+  # position, the role enum is project-defined. This kit-level rule now
+  # enforces only the structural PascalCase identifier shape. Projects MUST
+  # add their own overlay rule constraining x-roles values to the closed set
+  # declared in their common/enums.yaml#/Role. See schemas/README.md.
+  specfuse-auth-roles-pascal:
+    description: "x-roles values must be PascalCase identifiers. The kit does not bake in the closed value-set — projects add an overlay rule that constrains values to their declared role enum."
+    severity: error
+    given: $.paths[*][get,post,put,patch,delete][?(@.security)]["x-roles"][*]
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[A-Z][A-Za-z0-9]*$"
+
+  specfuse-auth-scopes-pattern:
+    description: "x-scopes values should be camelCase segments separated by dots (e.g., orders.read)."
+    severity: warn
+    given: $.paths[*][get,post,put,patch,delete][?(@.security)]["x-scopes"][*]
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[a-z][a-zA-Z0-9]*(?:\\.[a-z][a-zA-Z0-9]*)*$"
+
+  # ===== Event Emission (AsyncAPI Integration) =====
+
+  specfuse-emits-required-on-writes:
+    description: "POST/PUT/PATCH/DELETE operations must declare x-emits listing the events they publish."
+    message: "Write operation '{{path}}' is missing x-emits. Declare the event(s) this operation publishes on success (see AsyncAPI Handbook §0.8)."
+    severity: error
+    given: $.paths[*].[post,put,patch,delete]
+    then:
+      field: x-emits
+      function: truthy
+
+  specfuse-emits-event-required:
+    description: "Each x-emits entry must have an event field in {Entity}.{Action} format."
+    message: "x-emits entry at '{{path}}' is missing 'event'."
+    severity: error
+    given: $.paths[*].[post,put,patch,delete].x-emits[*]
+    then:
+      field: event
+      function: truthy
+
+  specfuse-emits-event-format:
+    description: "x-emits event must follow {Entity}.{Action} format (PascalCase dot-separated)."
+    message: "x-emits event '{{value}}' must be in '{Entity}.{Action}' format (e.g., 'Order.Created')."
+    severity: error
+    given: $.paths[*].[post,put,patch,delete].x-emits[*].event
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[A-Z][A-Za-z0-9]+\\.[A-Z][A-Za-z0-9]+$"
+
+  # ===== AI Agent Integration (Phase 1: Core Foundations) =====
+  specfuse-validate-only-on-writes:
+    description: "POST/PUT/PATCH/DELETE operations must support validateOnly query parameter for AI agent integration."
+    severity: error
+    given: $.paths[*].[post,put,patch,delete]
+    then:
+      field: parameters
+      function: schema
+      functionOptions:
+        schema:
+          type: array
+          contains:
+            type: object
+            properties:
+              name: { const: "validateOnly" }
+              in: { const: "query" }
+              required: { const: false }
+              schema:
+                type: object
+                properties:
+                  type: { const: "boolean" }
+                  default: { const: false }
+
+  specfuse-idempotency-key-support:
+    description: "POST operations should support Idempotency-Key header for retry safety."
+    severity: warn
+    given: $.paths[*].post
+    then:
+      field: parameters
+      function: schema
+      functionOptions:
+        schema:
+          type: array
+          contains:
+            type: object
+            properties:
+              name: { const: "Idempotency-Key" }
+              in: { const: "header" }
+              required: { const: false }
+              schema:
+                type: object
+                properties:
+                  type: { const: "string" }
+                  format: { const: "uuid" }
+
+  specfuse-change-description-headers:
+    description: "Write operations should support change tracking headers for audit trails."
+    severity: hint
+    given: $.paths[*].[post,put,patch,delete]
+    then:
+      field: parameters
+      function: schema
+      functionOptions:
+        schema:
+          type: array
+          contains:
+            anyOf:
+              - properties:
+                  name: { const: "X-Change-Reason" }
+                  in: { const: "header" }
+              - properties:
+                  name: { const: "X-Agent-Id" }
+                  in: { const: "header" }
+
+  specfuse-conflict-response-details:
+    description: "409 Conflict responses should include detailed conflict information for AI agents."
+    severity: warn
+    given: $.paths[*][get,post,put,patch,delete].responses.409.content.application/json.schema
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          type: object
+          properties:
+            error: { }
+            currentVersion: { type: string }
+            conflictingFields:
+              type: array
+              items: { type: string }
+            currentResource: { }
+
+  # ===== Headers hygiene =====
+  specfuse-401-www-authenticate:
+    description: "401 should include WWW-Authenticate header."
+    severity: hint
+    given: $.paths[*][get,post,put,patch,delete].responses.401
+    then:
+      field: headers.WWW-Authenticate
+      function: defined
+
+  specfuse-405-allow:
+    description: "405 must include Allow header."
+    severity: warn
+    given: $.paths[*][get,post,put,patch,delete].responses.405
+    then:
+      field: headers.Allow
+      function: truthy
+
+  specfuse-ratelimit-headers:
+    description: "200 responses on rate-limited routes should include RateLimit-* headers."
+    severity: hint
+    given: $.paths[*].get.responses.200.headers
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          type: object
+          properties:
+            RateLimit-Limit: {}
+            RateLimit-Remaining: {}
+            RateLimit-Reset: {}
+
+  specfuse-retry-after-on-429-503:
+    description: "429/503 must include Retry-After."
+    severity: warn
+    given: $.paths[*][get,post,put,patch,delete].responses[?(@property=='429' || @property=='503')]
+    then:
+      field: headers.Retry-After
+      function: truthy
+
+  # ===== Versioning / deprecations =====
+  specfuse-api-version-header:
+    description: "All successful responses should include API-Version header for client awareness and debugging."
+    severity: hint
+    given: $.paths[*][get,post,put,patch,delete].responses[?(@property.match("^2\\d\\d$"))].headers
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          type: object
+          properties:
+            API-Version:
+              type: object
+              properties:
+                schema:
+                  type: object
+                  properties:
+                    type: { const: "string" }
+
+  # ===== Phase #1 naming suffixes =====
+  specfuse-resource-naming-convention:
+    description: "Resource-related schemas must follow naming: {Resource}, Basic{Resource}, New{Resource}, Update{Resource}, {Resource}List, {Resource}SearchRequest."
+    severity: error
+    given: $.components.schemas[?(@["x-entity"] || @property.match("^(Basic|New|Update)[A-Z]") || @property.match("[A-Z][a-zA-Z0-9]*(List|SearchRequest)$"))]~
+    then:
+      function: pattern
+      functionOptions:
+        match: "^([A-Z][A-Za-z0-9]*|Basic[A-Z][A-Za-z0-9]*|New[A-Z][A-Za-z0-9]*|Update[A-Z][A-Za-z0-9]*|[A-Z][A-Za-z0-9]*List|[A-Z][A-Za-z0-9]*SearchRequest)$"
+
+  specfuse-deprecated-suffixes:
+    description: "Avoid deprecated suffixes like Ref, Summary in schema names."
+    severity: warn
+    given: $.components.schemas[*]~
+    then:
+      function: pattern
+      functionOptions:
+        notMatch: "Ref$|Summary$"
+
+  # ===== x-entity placement & shape =====
+  specfuse-xentity-main-only:
+    description: "x-entity must not appear on derivative schemas (Basic*, New*, Update*, *List, *SearchRequest)."
+    severity: error
+    given: $.components.schemas[?((@property.match("^(Basic|New|Update)[A-Z]") || @property.match("[A-Z][a-zA-Z0-9]*(List|SearchRequest)$")) && @["x-entity"])]
+    then:
+      function: falsy
+      field: x-entity
+
+  specfuse-xentity-shape:
+    description: "x-entity must follow the required shape."
+    severity: error
+    given: $.components.schemas[?(@["x-entity"])]["x-entity"]
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          type: object
+          additionalProperties: false
+          required: ["type"]
+          properties:
+            type: { type: string, enum: ["entity","aggregate"] }
+            requiresPagination: { type: boolean, default: true }
+            hasMany:
+              type: array
+              uniqueItems: true
+              items: { type: string, pattern: "^[A-Z][A-Za-z0-9]*$" }
+            hasOne:
+              type: array
+              uniqueItems: true
+              items: { type: string, pattern: "^[A-Z][A-Za-z0-9]*$" }
+            belongsTo:
+              oneOf:
+                # Old syntax: simple array (deprecated but still supported)
+                - type: array
+                  uniqueItems: true
+                  items: { type: string, pattern: "^[A-Z][A-Za-z0-9]*$" }
+                # New syntax: structured cardinality
+                - type: object
+                  additionalProperties: false
+                  properties:
+                    allOf:
+                      type: array
+                      uniqueItems: true
+                      items: { type: string, pattern: "^[A-Z][A-Za-z0-9]*$" }
+                    oneOf:
+                      type: array
+                      uniqueItems: true
+                      items: { type: string, pattern: "^[A-Z][A-Za-z0-9]*$" }
+                    oneOrMore:
+                      type: array
+                      uniqueItems: true
+                      items: { type: string, pattern: "^[A-Z][A-Za-z0-9]*$" }
+                    zeroOrMore:
+                      type: array
+                      uniqueItems: true
+                      items: { type: string, pattern: "^[A-Z][A-Za-z0-9]*$" }
+                    optional:
+                      type: object
+                      additionalProperties: false
+                      properties:
+                        oneOf:
+                          type: array
+                          uniqueItems: true
+                          items: { type: string, pattern: "^[A-Z][A-Za-z0-9]*$" }
+                        oneOrMore:
+                          type: array
+                          uniqueItems: true
+                          items: { type: string, pattern: "^[A-Z][A-Za-z0-9]*$" }
+                        zeroOrMore:
+                          type: array
+                          uniqueItems: true
+                          items: { type: string, pattern: "^[A-Z][A-Za-z0-9]*$" }
+                    optionalLinks:
+                      type: object
+                      additionalProperties: false
+                      properties:
+                        oneOf:
+                          type: array
+                          uniqueItems: true
+                          items: { type: string, pattern: "^[A-Z][A-Za-z0-9]*$" }
+                        oneOrMore:
+                          type: array
+                          uniqueItems: true
+                          items: { type: string, pattern: "^[A-Z][A-Za-z0-9]*$" }
+                        zeroOrMore:
+                          type: array
+                          uniqueItems: true
+                          items: { type: string, pattern: "^[A-Z][A-Za-z0-9]*$" }
+            filterableProperties:
+              type: array
+              uniqueItems: true
+              items: { type: string, pattern: "^[a-z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)*$" }
+            searchableProperties:
+              type: array
+              uniqueItems: true
+              items: { type: string, pattern: "^[a-z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)*$" }
+            encryptedProperties:
+              type: array
+              uniqueItems: true
+              items: { type: string, pattern: "^[a-z][A-Za-z0-9]*$" }
+            aiAccess:
+              type: object
+              additionalProperties: false
+              required: [operations]
+              properties:
+                operations:
+                  type: array
+                  uniqueItems: true
+                  minItems: 1
+                  items: { type: string, enum: [read, create, update, delete] }
+                readableProperties:
+                  type: array
+                  uniqueItems: true
+                  items: { type: string, pattern: "^[a-z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)*$" }
+                writableProperties:
+                  type: array
+                  uniqueItems: true
+                  items: { type: string, pattern: "^[a-z][A-Za-z0-9]*$" }
+                immutableOnUpdate:
+                  type: array
+                  uniqueItems: true
+                  items: { type: string, pattern: "^[a-z][A-Za-z0-9]*$" }
+                ownedBy:
+                  type: string
+                  enum: [shared, ai, backend]
+                  default: shared
+                reason:
+                  type: string
+                  minLength: 1
+              allOf:
+                # When operations contains any write verb, writableProperties + reason are required
+                - if:
+                    properties:
+                      operations:
+                        contains: { enum: [create, update, delete] }
+                    required: [operations]
+                  then:
+                    required: [writableProperties, reason]
+                    properties:
+                      writableProperties:
+                        type: array
+                        minItems: 1
+
+  specfuse-belongsto-explicit-cardinality:
+    description: "belongsTo should use explicit cardinality (oneOf, allOf, oneOrMore, etc.) instead of simple array syntax for clarity"
+    severity: warn
+    given: $.components.schemas[?(@["x-entity"] && @["x-entity"].belongsTo)]["x-entity"].belongsTo
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          type: object
+          description: "Use structured cardinality (oneOf, allOf, optional, etc.) instead of array syntax"
+
+  specfuse-belongsto-entity-validation:
+    description: "Entities (type: entity) must have belongsTo defined to specify their aggregate context"
+    severity: error
+    given: $.components.schemas[?(@["x-entity"])]["x-entity"]
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          if:
+            properties:
+              type: { const: "entity" }
+            required: [type]
+          then:
+            required: [belongsTo]
+
+  # ===== x-value-object validation =====
+  specfuse-xvalueobject-shape:
+    description: "x-value-object must follow the required shape."
+    severity: error
+    given: $.components.schemas[*]["x-value-object"]
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          type: object
+          additionalProperties: false
+          required: ["defaultStorage"]
+          properties:
+            defaultStorage:
+              type: string
+              enum: ["collection_json", "single_json", "flatten", "serialized", "separate_table"]
+            defaultQueryable:
+              oneOf:
+                - type: boolean
+                - type: array
+                  uniqueItems: true
+                  items: { type: string, pattern: "^[a-z][A-Za-z0-9]*$" }
+            defaultPropertyPrefix:
+              type: string
+              pattern: "^[a-z][A-Za-z0-9]*_?$"
+            immutable:
+              type: boolean
+              default: true
+            comparable:
+              type: boolean
+              default: true
+            generateBuilder:
+              type: boolean
+              default: false
+            validationRules:
+              type: array
+              items:
+                type: object
+                required: ["rule", "message"]
+                properties:
+                  rule: { type: string }
+                  message: { type: string }
+                  severity: { type: string, enum: ["error", "warning", "info"] }
+            customSerializers:
+              type: array
+              uniqueItems: true
+              items: { type: string }
+
+  specfuse-xvalueobject-not-main-resource:
+    description: "x-value-object should not be used on main resources (schemas with x-entity); value objects are embedded types."
+    severity: warn
+    given: $.components.schemas[?(@["x-entity"] && @["x-value-object"])]
+    then:
+      function: falsy
+      field: x-value-object
+
+  specfuse-xvalueobject-no-xentity:
+    description: "Schemas with x-value-object should not have x-entity; value objects are not entities."
+    severity: error
+    given: $.components.schemas[?(@["x-value-object"] && @["x-entity"])]
+    then:
+      function: falsy
+      field: x-entity
+
+  # ===== Schema design rules =====
+  specfuse-no-embedded-objects:
+    description: "Properties must not define embedded objects; use $ref to separate schemas instead."
+    severity: error
+    given: $.components.schemas[*].properties[*][?(@ && @.type=="object" && @.properties)]
+    then:
+      function: falsy
+
+  specfuse-no-inline-enums:
+    description: "Properties must not define inline enums; use $ref to separate enum schemas instead."
+    severity: error
+    given: $.components.schemas[*].properties[*][?(@ && @.enum)]
+    then:
+      function: falsy
+
+  specfuse-no-inline-objects:
+    description: "Properties must not define inline objects; use $ref to separate object schemas instead."
+    severity: error
+    given: $.components.schemas[*].properties[*][?(@ && @.type === 'object' && @.properties)]
+    then:
+      function: falsy
+
+  # ===== HTTP response correctness =====
+  specfuse-409-on-delete:
+    description: "DELETE operations should define 409 for business rule conflicts."
+    severity: warn
+    given: $.paths[*].delete.responses
+    then:
+      field: "409"
+      function: truthy
+
+  specfuse-409-on-put-patch:
+    description: "PUT/PATCH operations should define 409 for state transition and business rule conflicts."
+    severity: warn
+    given: $.paths[*].[put,patch].responses
+    then:
+      field: "409"
+      function: truthy
+
+  specfuse-delete-204-no-body:
+    description: "DELETE 204 response must not define response body content."
+    severity: error
+    given: $.paths[*].delete.responses.204
+    then:
+      field: content
+      function: falsy
+
+  specfuse-put-patch-no-204:
+    description: "PUT/PATCH must return 200, never 204."
+    severity: error
+    given: $.paths[*].[put,patch].responses
+    then:
+      field: "204"
+      function: falsy
+
+  # ===== Banned parameter names =====
+  specfuse-no-q-param:
+    description: "Use 'search' instead of 'q' for free-text search."
+    severity: error
+    given: $.paths[*][get,post,put,patch,delete].parameters[*]
+    then:
+      field: name
+      function: pattern
+      functionOptions:
+        notMatch: "^q$"
+
+  specfuse-no-sortby-sortorder:
+    description: "Use 'sort' instead of 'sortBy' or 'sortOrder'."
+    severity: error
+    given: $.paths[*][get,post,put,patch,delete].parameters[*]
+    then:
+      field: name
+      function: pattern
+      functionOptions:
+        notMatch: "^(sortBy|sortOrder)$"
+
+  # ===== Main resource required fields =====
+  specfuse-main-resource-has-id:
+    description: "Main resources (schemas with x-entity) must have 'id' property."
+    severity: error
+    given: $.components.schemas[?(@["x-entity"])]
+    then:
+      field: properties.id
+      function: truthy
+
+  specfuse-main-resource-has-createdAt:
+    description: "Main resources (schemas with x-entity) must have 'createdAt' property."
+    severity: error
+    given: $.components.schemas[?(@["x-entity"])]
+    then:
+      field: properties.createdAt
+      function: truthy
+
+  specfuse-main-resource-has-updatedAt:
+    description: "Main resources (schemas with x-entity) must have 'updatedAt' property."
+    severity: error
+    given: $.components.schemas[?(@["x-entity"])]
+    then:
+      field: properties.updatedAt
+      function: truthy
+
+  # ===== New{Resource} forbidden fields =====
+  specfuse-new-resource-no-id:
+    description: "New{Resource} (create) schemas must not include 'id' property."
+    severity: error
+    given: $.components.schemas[?(@property.match("^New[A-Z]"))].properties
+    then:
+      field: id
+      function: falsy
+
+  specfuse-new-resource-no-createdAt:
+    description: "New{Resource} (create) schemas must not include 'createdAt' property."
+    severity: error
+    given: $.components.schemas[?(@property.match("^New[A-Z]"))].properties
+    then:
+      field: createdAt
+      function: falsy
+
+  specfuse-new-resource-no-updatedAt:
+    description: "New{Resource} (create) schemas must not include 'updatedAt' property."
+    severity: error
+    given: $.components.schemas[?(@property.match("^New[A-Z]"))].properties
+    then:
+      field: updatedAt
+      function: falsy
+
+  # ===== x-sample data generation annotations =====
+  # Validates x-sample vendor extension on OpenAPI schema properties.
+  # Reference: handbooks/API_Handbook.md §10, handbooks/Vendor_Extensions.md §6.3,
+  #            JSON Schema: schemas/arazzo-extensions/x-sample.schema.json
+
+  # --- Group A: Structural validation ---
+
+  specfuse-x-sample-valid-provider:
+    description: "x-sample provider must be one of: faker, fixed, template."
+    message: "x-sample provider '{{value}}' is not valid. Must be: faker, fixed, or template. See API Handbook §10.3."
+    severity: error
+    given: $.components.schemas[*].properties[*].x-sample.provider
+    then:
+      function: enumeration
+      functionOptions:
+        values:
+          - faker
+          - fixed
+          - template
+
+  specfuse-x-sample-faker-requires-path:
+    description: "x-sample with provider 'faker' must include a 'path' field."
+    message: "x-sample with provider 'faker' is missing 'path'. Specify a faker method path (e.g., person.firstName). See API Handbook §10.3."
+    severity: error
+    given: $.components.schemas[*].properties[*].x-sample
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          if:
+            properties:
+              provider: { const: "faker" }
+            required: [provider]
+          then:
+            required: [path]
+
+  specfuse-x-sample-no-unknown-fields:
+    description: "x-sample must only contain known fields: provider, path, locale, format."
+    message: "x-sample contains unknown fields. Only 'provider', 'path', 'locale', and 'format' are allowed. See Vendor Extensions §6.3."
+    severity: error
+    given: $.components.schemas[*].properties[*].x-sample
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          type: object
+          additionalProperties: false
+          properties:
+            provider: {}
+            path: {}
+            locale: {}
+            format: {}
+
+  specfuse-x-sample-fixed-requires-format:
+    description: "x-sample with provider 'fixed' must include a 'format' field."
+    message: "x-sample with provider 'fixed' is missing 'format'. Specify the literal value to use. See API Handbook §10.3."
+    severity: error
+    given: $.components.schemas[*].properties[*].x-sample
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          if:
+            properties:
+              provider: { const: "fixed" }
+            required: [provider]
+          then:
+            required: [format]
+
+  specfuse-x-sample-template-requires-format:
+    description: "x-sample with provider 'template' must include a 'format' field."
+    message: "x-sample with provider 'template' is missing 'format'. Specify a template string with {{faker.path}} interpolation. See API Handbook §10.3."
+    severity: error
+    given: $.components.schemas[*].properties[*].x-sample
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          if:
+            properties:
+              provider: { const: "template" }
+            required: [provider]
+          then:
+            required: [format]
+
+  # --- Group B: Placement validation ---
+
+  specfuse-x-sample-no-server-generated:
+    description: "x-sample must not be placed on server-generated properties (id, createdAt, updatedAt)."
+    message: "x-sample is forbidden on server-generated properties. Remove x-sample from id, createdAt, or updatedAt. See API Handbook §10.2."
+    severity: error
+    given:
+      - $.components.schemas[*].properties.id.x-sample
+      - $.components.schemas[*].properties.createdAt.x-sample
+      - $.components.schemas[*].properties.updatedAt.x-sample
+    then:
+      function: falsy
+
+  specfuse-x-sample-property-level-only:
+    description: "x-sample must be placed on individual properties, not on the schema itself."
+    message: "x-sample found at schema level. Move x-sample to individual properties within the schema. See API Handbook §10.2."
+    severity: error
+    given: $.components.schemas[*].x-sample
+    then:
+      function: falsy
+
+  # --- Group C: Content validation ---
+
+  specfuse-x-sample-faker-path-format:
+    description: "x-sample faker path should use dot-notation starting with a known category."
+    message: "Faker path '{{value}}' does not start with a recognized category. Expected one of: person, internet, phone, location, company, date, string, lorem, number. See API Handbook §10.4."
+    severity: warn
+    given: $.components.schemas[*].properties[*].x-sample.path
+    then:
+      function: pattern
+      functionOptions:
+        match: "^(person|internet|phone|location|company|date|string|lorem|number)\\."
