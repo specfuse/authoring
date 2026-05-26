@@ -35,11 +35,16 @@ components:
       $ref: './common/securitySchemes/auth.yaml#/bearerAuth'
 
   parameters:
+    # Pagination + common query/header params
     page:           { $ref: './common/parameters/pagination.yaml#/page' }
     pageSize:       { $ref: './common/parameters/pagination.yaml#/pageSize' }
     sort:           { $ref: './common/parameters/pagination.yaml#/sort' }
     validateOnly:   { $ref: './common/parameters/pagination.yaml#/validateOnly' }
     If-Match:       { $ref: './common/parameters/pagination.yaml#/If-Match' }
+    # Path params — add one entry per resource-id you introduce.
+    # Starter examples from common/parameters/path.yaml:
+    tenantId:       { $ref: './common/parameters/path.yaml#/tenantId' }
+    customerId:     { $ref: './common/parameters/path.yaml#/customerId' }
 
   responses:
     UnauthorizedError:        { $ref: './common/responses/errors.yaml#/UnauthorizedError' }
@@ -47,7 +52,7 @@ components:
     NotFoundError:            { $ref: './common/responses/errors.yaml#/NotFoundError' }
     BadRequestError:          { $ref: './common/responses/errors.yaml#/BadRequestError' }
     ConflictError:            { $ref: './common/responses/errors.yaml#/ConflictError' }
-    PreconditionRequiredError:{ $ref: './common/responses/errors.yaml#/PreconditionRequiredError' }
+    PreconditionRequiredError: { $ref: './common/responses/errors.yaml#/PreconditionRequiredError' }
     PreconditionFailedError:  { $ref: './common/responses/errors.yaml#/PreconditionFailedError' }
 
   schemas:
