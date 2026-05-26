@@ -1,0 +1,80 @@
+# =============================================================================
+# example-regen.yml — regression net for the bundled hello-orders example
+# =============================================================================
+# This workflow re-validates the spec-authoring-kit's bundled example project
+# at examples/hello-orders/ on every PR. If a handbook or template change
+# breaks the example, the PR fails.
+#
+# Today this is a STARTER workflow — YAML syntax validation only. The real
+# validation surface will grow as the kit's toolchain ships:
+#
+#   - Spectral linting against the kit's rulesets (once they ship)
+#   - Full spec bundling (once the bundler integration ships)
+#   - End-to-end generator regeneration + diff (once the generator ships)
+#
+# When those land, expand the `validate` job below. Until then, YAML
+# parseability is the floor.
+# =============================================================================
+
+name: example-regen
+
+on:
+  pull_request:
+    paths:
+      - 'examples/hello-orders/**'
+      - 'handbooks/**'
+      - 'samples/**'
+      - 'templates/**'
+      - '.github/workflows/example-regen.yml'
+  push:
+    branches:
+      - main
+
+jobs:
+  validate:
+    name: Validate hello-orders example
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PyYAML
+        run: pip install --quiet pyyaml
+
+      - name: Validate every YAML file under examples/hello-orders/api/
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import glob
+          import sys
+          import yaml
+
+          files = sorted(glob.glob('examples/hello-orders/api/**/*.yaml', recursive=True))
+          if not files:
+              print('FAIL: no YAML files found under examples/hello-orders/api/')
+              sys.exit(1)
+
+          errors = []
+          for f in files:
+              try:
+                  with open(f) as fh:
+                      # safe_load_all handles multi-document files
+                      # (Arazzo scenario files may contain multiple workflows)
+                      list(yaml.safe_load_all(fh))
+              except Exception as e:
+                  errors.append((f, str(e)))
+
+          print(f'Validated {len(files)} YAML files; {len(errors)} errors')
+          for f, e in errors:
+              print(f'  FAIL: {f}: {e}')
+          sys.exit(1 if errors else 0)
+          PY
+
+      - name: Confirm hello-orders project.json is valid JSON
+        run: |
+          python3 -c "import json; json.load(open('examples/hello-orders/hello-orders-project.json'))"
