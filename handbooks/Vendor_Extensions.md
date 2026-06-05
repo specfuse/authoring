@@ -110,6 +110,13 @@ Customer:
 - Entities MUST have `belongsTo` to specify their aggregate context
 - This enables proper multi-tenant data isolation and relationship modeling
 
+**Validator-enforced relationship rules**:
+
+The generator enforces five rules on entity relationships. See `API_Handbook.md §9.4` → "REST Route Patterns by Cardinality" and "M:M Junction Navigation" for the full reference, worked examples, and anti-pattern table.
+
+- **M:M junctions** — when an entity declares `belongsTo.allOf: [A, B]` as a junction, both parents must list the junction in `hasMany`, never each other directly. A direct `hasMany: [OtherParent]` triggers `REDUNDANT_JUNCTION_HASMANY` (ERROR) because the generator back-projects a non-nullable FK onto the other parent's table. The rule only fires when neither parent declares the other under `belongsTo` (so parent/child tenancy tiers like `Tenant → Customer` are unaffected).
+- **Polymorphic parents (`oneOf` / `optional.oneOf`)** — each parent in the list requires a parent-scoped create route (`POST /{parent-plural}/{parentId}/{entity-plural}`); the URL is the single source of truth for the parent FK. The `New{Entity}` DTO MUST NOT declare the polymorphic parent FK fields. A flat `POST /{entity-plural}` is **forbidden** under required `oneOf` (no valid input under the polymorphic CHECK) and **required** under pure `optional.oneOf` (the orphan case). Compound shapes (`allOf: [Tenant] + optional.oneOf: [...]`) do not need a fully-flat route — the tenant-scoped route serves "no sub-parent within tenant". Rule codes: `MISSING_PARENT_SCOPED_CREATE`, `FORBIDDEN_FLAT_CREATE_ON_REQUIRED_ONEOF`, `MISSING_FLAT_CREATE_ON_OPTIONAL_ONEOF`, `PARENT_FK_LEAK_IN_NEW_DTO` (all ERROR).
+
 **Complete Example**:
 ```yaml
 Customer:

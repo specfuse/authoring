@@ -1282,6 +1282,144 @@ CHECK (
 );
 ```
 
+### REST Route Patterns by Cardinality
+
+The cardinality shape on `x-entity.belongsTo` determines the **shape and number of create routes** for the entity. The validator enforces this mapping with four rules: `MISSING_PARENT_SCOPED_CREATE`, `FORBIDDEN_FLAT_CREATE_ON_REQUIRED_ONEOF`, `MISSING_FLAT_CREATE_ON_OPTIONAL_ONEOF`, and `PARENT_FK_LEAK_IN_NEW_DTO`. A separate rule, `REDUNDANT_JUNCTION_HASMANY`, governs the M:M junction case below.
+
+The governing principle: **the URL is the single source of truth for the parent FK.** The `New{Entity}` DTO never carries parent FK fields when `belongsTo` is polymorphic — the route handler reads `{parentId}` from the URL, asserts the route-auth scope against that parent, and inserts the entity with that exact FK populated. The entity itself keeps the N nullable polymorphic FK columns with a DB CHECK enforcing "exactly one" (`oneOf`) or "at most one" (`optional.oneOf`). This eliminates URL/body disagreement, makes the polymorphic CHECK enforceable deterministically, and lets the code generator route auth and FK assignment without inference.
+
+#### Cardinality → routes table
+
+| Shape on `belongsTo` | Required create routes | Forbidden | DTO carries parent FK? |
+|---|---|---|---|
+| `allOf: [A]` (single-required, e.g. tenant) | `POST /{As}/{aId}/{entity}s` | — | No |
+| `allOf: [A, B]` on a junction (M:M) | Parents reach the entity via the **junction** in `hasMany` (see "M:M Junction Navigation" below) | Direct `hasMany: [OtherParent]` on either parent | N/A |
+| `oneOf: [A, B]` (required polymorphic) | `POST /{As}/{aId}/{entity}s` AND `POST /{Bs}/{bId}/{entity}s` (one per parent) | `POST /{entity}s` (flat) | **No** |
+| `optional.oneOf: [A, B]` (optional polymorphic) | Per-parent routes AND `POST /{entity}s` (orphan / no-parent) | — | **No** |
+| `allOf: [Tenant] + optional.oneOf: [A, B]` (compound) | `POST /{tenants}/{tenantId}/{entity}s` (no sub-parent) AND per-sub-parent routes | Fully-flat `POST /{entity}s` (tenant is required; no true orphan possible) | **No** |
+
+#### Required polymorphic — example: Note
+
+```yaml
+# Note.yaml — entity keeps the nullable polymorphic FK columns
+x-entity:
+  type: entity
+  belongsTo:
+    oneOf: [Customer, Vendor]   # required: exactly one parent
+
+# NewNote.yaml — NO customerId, NO vendorId
+type: object
+required: [body]
+properties:
+  body: ...
+  pinned: ...
+```
+
+Routes:
+
+```
+POST /customers/{customerId}/notes        # createCustomerNote
+POST /vendors/{vendorId}/notes            # createVendorNote
+# NO POST /notes — forbidden under required shape
+# (a flat route has no valid input: the CHECK demands exactly one
+# non-null parent FK, and there's no URL parent + no DTO parent)
+```
+
+#### Optional polymorphic — example: Attachment
+
+```yaml
+# Attachment.yaml
+x-entity:
+  type: entity
+  belongsTo:
+    optional:
+      oneOf: [Project, Task]   # zero or one parent
+```
+
+Routes:
+
+```
+POST /projects/{projectId}/attachments     # attach to a known Project
+POST /tasks/{taskId}/attachments           # attach to a known Task
+POST /attachments                          # orphan / unattached case
+```
+
+`NewAttachment` still does not carry `projectId` / `taskId`. The orphan route inserts with both FKs null; the parent-scoped routes set the corresponding FK from the URL.
+
+#### Compound polymorphic (tenant + optional sub-parent) — example: Comment
+
+```yaml
+# Comment.yaml
+x-entity:
+  type: entity
+  belongsTo:
+    allOf: [Tenant]                          # required tenant
+    optional:
+      oneOf: [Project, Task, Milestone]      # optional sub-parent
+```
+
+Routes:
+
+```
+POST /tenants/{tenantId}/comments              # no sub-parent
+POST /projects/{projectId}/comments            # sub-parent: Project
+POST /tasks/{taskId}/comments                  # sub-parent: Task
+POST /milestones/{milestoneId}/comments        # sub-parent: Milestone
+# NO flat POST /comments — Tenant is required; no true orphan exists
+```
+
+The sub-parent URL carries enough information: the handler resolves the tenant `tenantId` from the sub-parent's own tenant relationship (e.g., `Project.tenantId`). Authoring a fully-flat `POST /comments` would either leave `Tenant` unset (violating `allOf: [Tenant]`) or force the FK back into the DTO (violating `PARENT_FK_LEAK_IN_NEW_DTO`). The `MISSING_FLAT_CREATE_ON_OPTIONAL_ONEOF` rule is gated on `belongsTo.allOf` being empty — compound shapes like this one do **not** need a fully-flat route because the tenant-scoped route already serves the "no sub-parent within tenant" case.
+
+#### Operation IDs are free-form
+
+The validator matches parent-scoped creates by **HTTP method + URL shape** (path-tail equals the entity plural). Operation IDs may use whichever verb fits the semantics — `createX`, `uploadX`, `attachX`, `submitX`, etc. — and binary/multipart payloads are recognized. Sub-action POSTs (e.g. `POST /notes/{noteId}/transcribe`) are correctly excluded because their terminal segment is not the entity plural.
+
+### M:M Junction Navigation
+
+When two aggregates have a many-to-many relationship through a junction entity, the parents' `hasMany` lists **must reference the junction**, not the other parent directly. This applies whenever a junction declares `belongsTo.allOf: [A, B]` AND neither `A` nor `B` declares the other under `belongsTo` (i.e., the pair is not a parent/child tenancy tier).
+
+**Why:** declaring `hasMany: [OtherParent]` on a parent triggers the code generator's FK-projection rule, which stamps a non-nullable FK column on the other parent's table — producing SQL FK violations at insert time. The junction owns the link; `hasMany: [Junction]` is how consumers navigate (`team.memberships.user`).
+
+```yaml
+# ✅ CORRECT — Team ↔ User via Membership junction
+
+# Team.yaml
+x-entity:
+  type: aggregate
+  hasMany: [Membership, Project, ...]    # ← junction, NOT User
+
+# User.yaml
+x-entity:
+  type: aggregate
+  hasMany: [Membership, ApiKey, ...]     # ← junction, NOT Team
+
+# Membership.yaml (the junction)
+x-entity:
+  type: entity
+  belongsTo:
+    allOf: [Team, User]                  # both parents
+```
+
+```yaml
+# ❌ WRONG — direct hasMany on the other parent
+
+# Team.yaml
+x-entity:
+  hasMany: [User, Project, ...]          # ← back-projects a phantom FK onto User
+```
+
+**Validator:** `REDUNDANT_JUNCTION_HASMANY` (ERROR). The discriminator (`neither parent declares the other under belongsTo`) correctly skips parent/child tenancy hierarchies — `Tenant → Customer` with `Customer.belongsTo.allOf: [Tenant]` is unaffected even if `Tenant.hasMany: [Customer]` is present, because there is no separate junction.
+
+### Common anti-patterns (and what the rules say about them)
+
+| Anti-pattern | Symptom | Rule that fires |
+|---|---|---|
+| Flat `POST /{entity}s` with `New{Entity}` carrying `aId` / `bId`, parent shape is `oneOf: [A, B]` (required) | DB CHECK violation at insert; URL/body mismatch impossible to enforce at the gateway | `FORBIDDEN_FLAT_CREATE_ON_REQUIRED_ONEOF` + `PARENT_FK_LEAK_IN_NEW_DTO` |
+| Missing per-parent route under `oneOf` / `optional.oneOf` | Some parents have no way to attach the entity at create time | `MISSING_PARENT_SCOPED_CREATE` |
+| Missing flat orphan route under pure `optional.oneOf` (no `allOf`) | The "no parent" case is unreachable | `MISSING_FLAT_CREATE_ON_OPTIONAL_ONEOF` |
+| `New{Entity}` declares parent-FK fields under any polymorphic shape | Client can send a parent FK that disagrees with the URL; generator can't reconcile | `PARENT_FK_LEAK_IN_NEW_DTO` |
+| Parent declares `hasMany: [OtherParent]` next to a junction | Generator stamps a phantom non-nullable FK on the other parent's table → runtime FK violation | `REDUNDANT_JUNCTION_HASMANY` |
+
 ---
 
 ## 9.2) Query Parameters & Filtering Standards
