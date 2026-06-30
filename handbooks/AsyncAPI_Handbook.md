@@ -380,7 +380,7 @@ The predicate is evaluated by generator-emitted service code against `EntityEntr
 
 **First-appearance events use `*Created`**: events that mark an entity's first appearance MUST use the `*Created` suffix even when the domain has its own creation verb. The "manner of creation" moves to a snapshot field (e.g., `creationSource: 'imported' | 'manual'`). The Spectral rule `specfuse-async-first-appearance-uses-created` flags non-`*Created` events whose `x-trigger-when` references no `Before.*` fields. **Exception:** events that fire as the *outcome* of a state transition on a different aggregate (e.g., a worker that processes `Tenant.OnboardingRequested` creates Customer aggregates) emit standard `Customer.Created` events per child aggregate — the parent state transition is a separate concern from the per-aggregate creation.
 
-**Optional `context` field** (state-transition only): for transitions whose metadata genuinely should not persist on the entity (cancellation reason, external trigger source), a `context: { $ref: '../events/{Entity}{Action}Context.yaml' }` field may appear in the payload. When `context` is present, the Specfuse generator emits an explicit service method that takes the context as a parameter; the auto-emission path is suppressed for that event. `x-trigger-when` is still required — it documents the semantic transition AND prevents the auto-path from emitting `*Updated` per the mutual-exclusivity rule. The owning OpenAPI operation MUST also declare `x-context-justification` (see `Vendor_Extensions.md §6.3`).
+**Optional `context` field** (state-transition only): for transitions whose metadata genuinely should not persist on the entity (cancellation reason, external trigger source), a `context: { $ref: '../events/{Entity}{Action}Context.yaml' }` field may appear in the payload. When `context` is present, the message MUST declare `x-trigger-mode: explicit` and an `x-method-name` (the imperative verb for the generated service method); the generator then emits that explicit service method taking the context as a parameter and suppresses the auto-emission path for the event (see `Vendor_Extensions.md §12.2` for both extensions). `x-trigger-when` is still required — it documents the semantic transition AND prevents the auto-path from emitting `*Updated` per the mutual-exclusivity rule. The owning OpenAPI operation MUST also declare `x-context-justification` (see `Vendor_Extensions.md §6.3`).
 
 ### 2.3 Snapshots — One Per Entity, Reused Across All Events
 
@@ -1325,7 +1325,9 @@ The Workers group in the project's generator configuration file (a JSON file at 
 
 17. **Do NOT declare `x-trigger-when` on `*Created`/`*Updated`/`*Deleted` events.** It is required only on state-transition events (anything else). See §2.2.
 
-18. **Do NOT declare `x-action-class` or `x-trigger-mode`.** Action class is inferred from the message-name suffix; trigger mode (auto vs explicit) is inferred from payload presence of `context`. See `Vendor_Extensions.md §12.5`.
+18. **Do NOT declare `x-action-class`.** Action class is inferred from the message-name suffix. See `Vendor_Extensions.md §12.5`.
+
+    **DO declare `x-trigger-mode: explicit` when (and only when) the payload carries a `context` field.** It is REQUIRED there — the message also needs a `description` ≥ 40 chars on the `context` property AND an `x-method-name` (PascalCase imperative verb for the generated service method, e.g. `CancelOrder`; generator-enforced via `MISSING_METHOD_NAME`). Enforced by Spectral `specfuse-async-context-coherence` and the generator's AsyncAPI validator. `explicit` makes the generator emit a typed service method and suppress the auto-dispatcher. Omit `x-trigger-mode` on messages with no `context` (defaults to `auto`). Valid values: `auto | explicit`.
 
 19. **Do NOT use the legacy `criticality: normal` value on `x-observability`.** The four-level enum is `low | medium | high | critical`. Migrate `normal` → `medium`.
 

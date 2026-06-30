@@ -7,7 +7,8 @@ This file tracks which Specfuse generator commits are known compatible with each
 | Kit version | Generator commit | Notes |
 |---|---|---|
 | `v0.1` (incubating) | `0a812e46` (`Bug #457: Add x-test-seed operation extension`) | Initial bootstrap. Kit content not yet populated; pin reflects the generator state at the moment of kit creation. |
-| `v0.2` (incubating, current) | *pending generator alignment — see follow-ups below* | Phases 1–6 of the kit-extraction effort: handbooks, samples, claude-assets, project-init template, and bundled `examples/hello-orders/` lifted and generalized from the source project. No generator-contract grammar changed; outstanding items are naming/style alignments that the generator will adopt incrementally. |
+| `v0.2` (incubating) | *pending generator alignment — see follow-ups below* | Phases 1–6 of the kit-extraction effort: handbooks, samples, claude-assets, project-init template, and bundled `examples/hello-orders/` lifted and generalized from the source project. No generator-contract grammar changed; outstanding items are naming/style alignments that the generator will adopt incrementally. |
+| `v0.3` (incubating, current) | generator rules `#617`/`#622`/`#623` (trigger-mode/method-name), `#520`/`#523` (aiAccess Tier 0) | Open-source packaging (`specfuse-kit` PyPi CLI, Apache-2.0) + handbook alignment to latest source contract: (1) `x-trigger-mode` flipped from forbidden/inferred to **required `explicit`** on context-bearing transitions, plus new `x-method-name` (Vendor §12.2, AsyncAPI Do-NOT #18) — enforcement already present in kit Spectral (`specfuse-async-context-coherence`, `specfuse-async-subscription-trigger-mode-values`); `x-method-name` is generator-enforced (`MISSING_METHOD_NAME`). (2) `aiAccess` now **required on every `x-entity`**; empty `operations: []` + `reason` is the canonical Tier 0 form; absence is validator WARN `ENTITY_AIACCESS_MISSING` (Vendor §1.1.1, API entity-metadata). |
 
 ## How to update this matrix
 
@@ -184,10 +185,23 @@ Surfaced during the schemas import (commits `78abc31`..`b146efa`) when verifying
 
 **Severity:** the handbooks make these promises today; until the rules ship, the promises are unenforced. New projects bootstrapped from the kit can violate these contracts and not know it. Worth landing before Phase 7 (smoke test of an imminent second project).
 
-### `x-action-class` and `x-trigger-mode` non-introduction
+### `x-action-class` non-introduction
 
-The handbooks document `x-action-class` and `x-trigger-mode` as "not introduced" extensions whose semantics are inferred from message-name suffix (`*Created`/`*Updated`/`*Deleted`/state-transition) and payload `context` field presence respectively. The kit does not currently enforce that these extensions are NOT used — a project author could declare `x-action-class: stateTransition` on a message and the kit's rules would silently allow it.
+The handbooks document `x-action-class` as a "not introduced" extension whose semantics are inferred from the message-name suffix (`*Created`/`*Updated`/`*Deleted`/state-transition). The kit does not currently enforce that this extension is NOT used — a project author could declare `x-action-class: stateTransition` on a message and the kit's rules would silently allow it. (Note: `x-trigger-mode` is now an introduced, required extension on context-bearing transitions — see Vendor_Extensions §12.2 — and is no longer forbidden.)
 
-**Action:** add a single rule (`specfuse-async-non-introduced-extensions-forbidden`) that flags any use of `x-action-class`, `x-trigger-mode`, `x-pii`, `x-sensitive`, `x-deprecated`, `x-tags`, or `x-category` as a hard error pointing at the handbook section that explains why the extension isn't introduced. Pure structural check — no custom function needed.
+**Action:** add a single rule (`specfuse-async-non-introduced-extensions-forbidden`) that flags any use of `x-action-class`, `x-pii`, `x-sensitive`, `x-deprecated`, `x-tags`, or `x-category` as a hard error pointing at the handbook section that explains why the extension isn't introduced. Pure structural check — no custom function needed.
 
 **Severity:** low — the kit's authoring path (Claude Code agents from `/design-*` commands) doesn't generate these extensions, so the gap is theoretical for kit-conformant projects. Adding the rule closes the gap for projects that author by hand.
+
+### `aiAccess` required-on-every-entity is generator-enforced, not yet kit Spectral
+
+As of v0.3 the handbooks require `aiAccess` on every `x-entity` (Vendor §1.1.1), with empty `operations: []` + `reason` as the canonical Tier 0 form and absence raising `ENTITY_AIACCESS_MISSING`. Two of those checks are **generator/DDD-validator-side only** and have no kit Spectral rule yet:
+
+- **`ENTITY_AIACCESS_MISSING`** — flag any `x-entity` with no `aiAccess` block (WARN).
+- **`reason` required when `operations: []`** — the Tier 0 justification.
+
+The kit's structural rule (`schemas/spectral/specfuse-openapi.yaml`) was updated to *accept* empty `operations` (removed the `minItems: 1`) so the canonical Tier 0 form does not fail lint, but it does not yet *require* the block or the empty-case `reason`.
+
+**Action:** add a Spectral rule (custom function) that warns on `x-entity` without `aiAccess` and errors on empty `operations` lacking `reason`. Until then these are enforced only by the generator.
+
+**Severity:** low for generator-driven projects (the generator catches both); matters for projects that lint with the kit ruleset alone.

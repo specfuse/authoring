@@ -671,7 +671,9 @@ rules:
                 operations:
                   type: array
                   uniqueItems: true
-                  minItems: 1
+                  # Empty array is the canonical Tier 0 declaration (deliberate
+                  # no-AI-access). `reason` required when empty — enforced by the
+                  # generator/DDD validator, not this structural shape rule.
                   items: { type: string, enum: [read, create, update, delete] }
                 readableProperties:
                   type: array

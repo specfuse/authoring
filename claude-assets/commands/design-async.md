@@ -160,5 +160,5 @@ The flow doc must include:
 - [ ] Root `asyncapi.yaml` updated with new channels and operations
 - [ ] Flow documentation created/updated in `api/docs/flows/{domain}/`
 - [ ] OpenAPI operations updated with `x-emits` for events they trigger
-- [ ] No removed/forbidden extensions used (`x-source-aggregate`, `x-target-aggregate`, `x-event`, `x-command`, `x-saga`, `x-dispatches`, `x-worker.type/handlerName/namespace`, `x-action-class`, `x-trigger-mode`, `x-pii`/`x-sensitive` booleans, three-segment labels, authored `x-subscription.filter`)
+- [ ] No removed/forbidden extensions used (`x-source-aggregate`, `x-target-aggregate`, `x-event`, `x-command`, `x-saga`, `x-dispatches`, `x-worker.type/handlerName/namespace`, `x-action-class`, `x-pii`/`x-sensitive` booleans, three-segment labels, authored `x-subscription.filter`)
 - [ ] Validation passes with 0 errors

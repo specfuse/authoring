@@ -1053,7 +1053,7 @@ All write operations (POST/PUT/PATCH/DELETE) must support the `validateOnly` que
 - **CRITICAL (searchableProperties)**: All fields included in free-text `search` MUST be declared in `searchableProperties`. For BilingualText fields, reference subfields (e.g., `title.en`, `title.fr`).
 - Masking for `encryptedProperties` on reads: **first N chars + `****` + last M chars** (default 2 + `****` + 2 if unspecified).
 - Writes accept plaintext; privileged reads may return unmasked (implementation-level).
-- `aiAccess` (optional): declares the AI agent access policy enforced by generated repositories. **Absent = no AI access** (opt-in, least privilege). When present, `operations` lists allowed verbs from `[read, create, update, delete]`. Write verbs require `writableProperties` and a `reason`. Encrypted fields are excluded from implicit read access and must be listed explicitly in `readableProperties` to be AI-readable. Full schema and examples: see `Vendor_Extensions.md` §1.1.1.
+- `aiAccess` (required on every `x-entity`): declares the AI agent access policy enforced by generated repositories. Absence triggers a validator WARN (`ENTITY_AIACCESS_MISSING`); for entities the AI must not touch, use the canonical Tier 0 form `operations: []` with `reason`. `operations` lists allowed verbs from `[read, create, update, delete]`; an empty array is the Tier 0 declaration. Write verbs require `writableProperties` and a `reason`. Encrypted fields are excluded from implicit read access and must be listed explicitly in `readableProperties` to be AI-readable. Full schema and examples: see `Vendor_Extensions.md` §1.1.1.
 
 ---
 
@@ -1074,6 +1074,7 @@ Specfuse APIs follow **Domain-Driven Design (DDD)** principles to ensure proper 
    - Entities that belong to and are managed by an aggregate root
    - Cannot be accessed without going through their aggregate root
    - Examples: `OrderLine`, `CustomerPreferences`, `CatalogItem`
+   - Operationalized by the validator as `ENTITY_MUST_BE_AGGREGATE_WHEN_ORPHAN_ALLOWED`: a `type: entity` whose `belongsTo` admits a fully-null parent FK state at insert (no `belongsTo` block, or pure `optional.*` / `zeroOrMore` clauses) violates this invariant and must be promoted to `aggregate`. See §9.4 → "Entity type by polymorphic shape" for the full rule.
 
 ### 9.2 Aggregate Boundary Validation
 
@@ -1148,7 +1149,9 @@ x-entity:
 ```yaml
 # Entity may belong to zero or more aggregates
 x-entity:
-  type: entity
+  type: aggregate                       # ← aggregate, not entity (see
+                                        #   "Entity type by polymorphic
+                                        #   shape" below)
   belongsTo:
     zeroOrMore: [Order, Refund, Payment]
 ```
@@ -1330,10 +1333,11 @@ POST /vendors/{vendorId}/notes            # createVendorNote
 ```yaml
 # Attachment.yaml
 x-entity:
-  type: entity
+  type: aggregate                  # ← aggregate, not entity (see "Entity type
+                                   #   by polymorphic shape" below)
   belongsTo:
     optional:
-      oneOf: [Project, Task]   # zero or one parent
+      oneOf: [Project, Task]       # zero or one parent
 ```
 
 Routes:
@@ -1373,6 +1377,36 @@ The sub-parent URL carries enough information: the handler resolves the tenant `
 #### Operation IDs are free-form
 
 The validator matches parent-scoped creates by **HTTP method + URL shape** (path-tail equals the entity plural). Operation IDs may use whichever verb fits the semantics — `createX`, `uploadX`, `attachX`, `submitX`, etc. — and binary/multipart payloads are recognized. Sub-action POSTs (e.g. `POST /notes/{noteId}/transcribe`) are correctly excluded because their terminal segment is not the entity plural.
+
+#### Entity type by polymorphic shape
+
+The polymorphic shape on `belongsTo` also constrains the entity's **classification** (`x-entity.type`). This is the entity-side counterpart to the route-side rules above.
+
+**Rule:** if an entity's `belongsTo` admits a **fully-null parent FK state** at insert time — meaning every polymorphic FK column can be null simultaneously — the entity MUST be `type: aggregate`. Otherwise it may be `type: entity`.
+
+`belongsTo` admits a fully-null parent FK state when:
+- `belongsTo` is absent entirely (no parent declared), OR
+- `belongsTo` has **no `allOf` clause** AND uses only `optional.*` or `zeroOrMore: [...]` constraints
+
+`belongsTo` does NOT admit a fully-null state — and `type: entity` remains valid — when `belongsTo.allOf` declares at least one required parent. The optional sub-parent may be null, but the `allOf` parent FK is always populated at insert.
+
+| `belongsTo` shape | Admits null-parent state? | Valid `type:` |
+|---|---|---|
+| Absent | yes — no parent at all | `aggregate` only |
+| `oneOf: [A, B]` (required) | no — exactly one populated | either |
+| `allOf: [A]` | no — A always populated | either |
+| `allOf: [A, B]` | no — both populated | either |
+| `allOf: [Tenant] + optional.oneOf: [A, B]` | no — tenant always populated | either |
+| **`optional.oneOf: [A, B]` only (no allOf)** | **yes — both can be null** | **`aggregate` only** |
+| **`zeroOrMore: [A, B]` only** | **yes — both can be null** | **`aggregate` only** |
+
+**Why:** under §9.1, child entities (`type: entity`) "cannot be accessed without going through their aggregate root" — they must always insert under their parent. An entity declared `type: entity` whose `belongsTo` allows a null-parent state contradicts that invariant: the entity has no parent to insert through. At codegen time this manifests as a generated service body that calls `repository.Add(entity)` against the wrong repository (the first parent in `oneOf`), producing non-compiling code because no per-entity repository exists for child entities — they can only be persisted through their aggregate root's repository.
+
+The canonical example is `Attachment` (from the "Optional polymorphic" example above): a file or note whose parent may be a known `Project`, a known `Task`, or neither (orphan upload). Because the "neither" case is reachable at insert, `Attachment` is `type: aggregate` even when it has no children of its own.
+
+**Validator:** `ENTITY_MUST_BE_AGGREGATE_WHEN_ORPHAN_ALLOWED` (ERROR). Resolution: either promote to `type: aggregate`, or add a `belongsTo.allOf` clause with at least one required parent.
+
+This rule is the entity-side counterpart to the four route-side rules above (`FORBIDDEN_FLAT_CREATE_ON_REQUIRED_ONEOF`, `MISSING_FLAT_CREATE_ON_OPTIONAL_ONEOF`, `MISSING_PARENT_SCOPED_CREATE`, `PARENT_FK_LEAK_IN_NEW_DTO`). Together they form a complete contract: the entity classification matches the polymorphic shape, the routes match the classification, and the DTO matches the routes — no path leads to a non-compiling regen.
 
 ### M:M Junction Navigation
 
@@ -1419,6 +1453,7 @@ x-entity:
 | Missing flat orphan route under pure `optional.oneOf` (no `allOf`) | The "no parent" case is unreachable | `MISSING_FLAT_CREATE_ON_OPTIONAL_ONEOF` |
 | `New{Entity}` declares parent-FK fields under any polymorphic shape | Client can send a parent FK that disagrees with the URL; generator can't reconcile | `PARENT_FK_LEAK_IN_NEW_DTO` |
 | Parent declares `hasMany: [OtherParent]` next to a junction | Generator stamps a phantom non-nullable FK on the other parent's table → runtime FK violation | `REDUNDANT_JUNCTION_HASMANY` |
+| `type: entity` with `belongsTo` that admits a fully-null parent FK state (pure `optional.*` / `zeroOrMore` / absent) | Generated service body calls the wrong repository (no per-entity repo exists); non-compiling code | `ENTITY_MUST_BE_AGGREGATE_WHEN_ORPHAN_ALLOWED` |
 
 ---
 
@@ -2327,6 +2362,7 @@ async function retryWithBackoff(operation, maxRetries = 3) {
 - Don't use anonymous objects within a resource.
 - Don't define path variables as global components.
 - **Don't create orphaned entities**: Every entity must be classified as either aggregate root or belong to an aggregate.
+- **Don't classify an orphan-allowing entity as `type: entity`**: if `belongsTo` admits a fully-null parent FK state (absent, or pure `optional.*` / `zeroOrMore` with no `allOf`), `type` MUST be `aggregate`. Child entities (`type: entity`) must always insert under their aggregate root. Triggers `ENTITY_MUST_BE_AGGREGATE_WHEN_ORPHAN_ALLOWED` (ERROR). See §9.4 → "Entity type by polymorphic shape".
 - **Don't use `q` parameter**: Use `search` for free-text search functionality.
 - **Don't use `sortBy` or `sortOrder`**: Use the standardized `sort` parameter that supports multiple fields and order.
 - **Don't add filterable fields without updating `filterableProperties`**: All fields usable in `filter` expressions must be declared.

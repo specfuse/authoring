@@ -112,10 +112,11 @@ Customer:
 
 **Validator-enforced relationship rules**:
 
-The generator enforces five rules on entity relationships. See `API_Handbook.md §9.4` → "REST Route Patterns by Cardinality" and "M:M Junction Navigation" for the full reference, worked examples, and anti-pattern table.
+The generator enforces six rules on entity relationships. See `API_Handbook.md §9.4` → "REST Route Patterns by Cardinality", "Entity type by polymorphic shape", and "M:M Junction Navigation" for the full reference, worked examples, and anti-pattern table.
 
 - **M:M junctions** — when an entity declares `belongsTo.allOf: [A, B]` as a junction, both parents must list the junction in `hasMany`, never each other directly. A direct `hasMany: [OtherParent]` triggers `REDUNDANT_JUNCTION_HASMANY` (ERROR) because the generator back-projects a non-nullable FK onto the other parent's table. The rule only fires when neither parent declares the other under `belongsTo` (so parent/child tenancy tiers like `Tenant → Customer` are unaffected).
 - **Polymorphic parents (`oneOf` / `optional.oneOf`)** — each parent in the list requires a parent-scoped create route (`POST /{parent-plural}/{parentId}/{entity-plural}`); the URL is the single source of truth for the parent FK. The `New{Entity}` DTO MUST NOT declare the polymorphic parent FK fields. A flat `POST /{entity-plural}` is **forbidden** under required `oneOf` (no valid input under the polymorphic CHECK) and **required** under pure `optional.oneOf` (the orphan case). Compound shapes (`allOf: [Tenant] + optional.oneOf: [...]`) do not need a fully-flat route — the tenant-scoped route serves "no sub-parent within tenant". Rule codes: `MISSING_PARENT_SCOPED_CREATE`, `FORBIDDEN_FLAT_CREATE_ON_REQUIRED_ONEOF`, `MISSING_FLAT_CREATE_ON_OPTIONAL_ONEOF`, `PARENT_FK_LEAK_IN_NEW_DTO` (all ERROR).
+- **Entity classification vs polymorphic shape** — if `belongsTo` admits a fully-null parent FK state at insert (absent, or pure `optional.*` / `zeroOrMore` with no `allOf` clause), `type` MUST be `aggregate`, not `entity`. Child entities (`type: entity`) "cannot be accessed without going through their aggregate root" (§9.1); an orphan-allowing shape contradicts that invariant, and the generator emits a service body calling `repository.Add(entity)` against the wrong repository (no per-entity repo exists), producing non-compiling code. Resolution: promote to `type: aggregate`, or add `belongsTo.allOf` with at least one required parent. Rule code: `ENTITY_MUST_BE_AGGREGATE_WHEN_ORPHAN_ALLOWED` (ERROR). This is the entity-side counterpart of the four polymorphic-create rules above — together they guarantee no path leads to a non-compiling regen.
 
 **Complete Example**:
 ```yaml
@@ -142,24 +143,24 @@ Customer:
 
 **Purpose**: Declares the access policy that generated repositories and service layers must enforce for AI agents interacting with this entity. Consumed by the code generator to emit AI-scoped repository methods, field allow-lists, and audit hooks.
 
-**Scope**: Optional property of `x-entity` metadata. Applies only to main resource schemas (aggregates and entities).
+**Scope**: Required on every `x-entity` block (main resource schemas — aggregates and entities). Tier 0 entities (those the AI must not touch) use the explicit empty-operations form (see below) rather than omitting the block.
 
-**Default when absent**: **No AI access.** Agents cannot read, create, update, or delete the entity through any generated AI-facing surface. AI access is opt-in per entity — least privilege by default.
+**Semantic default when absent**: No AI access — agents cannot read, create, update, or delete the entity through any generated AI-facing surface. However, **absence is a validator warning** (`ENTITY_AIACCESS_MISSING`), because it cannot be distinguished from authoring oversight. Every entity must make the AI-access decision explicit by declaring an `aiAccess` block. For entities the AI must not touch, use the canonical Tier 0 form: `operations: []` with `reason`.
 
 **Schema**:
 ```yaml
 aiAccess:
-  operations: string[]          # Required. Subset of [read, create, update, delete]. At least one value.
+  operations: string[]          # Required. Subset of [read, create, update, delete]. Empty array signals deliberate Tier 0 (no AI access).
   readableProperties: string[]  # Optional when 'read' in operations. Absent = all non-encrypted top-level properties.
   writableProperties: string[]  # Required when operations contains create, update, or delete.
   immutableOnUpdate: string[]   # Optional subset of writableProperties. Fields set on create but not modifiable on update.
   ownedBy: string               # Optional: shared | ai | backend (default: shared). Conflict-resolution authority.
-  reason: string                # Required when operations contains any write verb. Free-text audit justification.
+  reason: string                # Required when operations is empty (Tier 0 justification) OR contains any write verb. Free-text audit justification.
 ```
 
 **Field semantics**:
 
-- **`operations`** — authoritative list of what the AI can do. Empty or absent `aiAccess` means no access at all. There is no separate `mode` flag; presence in `operations` is the single source of truth.
+- **`operations`** — authoritative list of what the AI can do. Presence is the single source of truth; there is no separate `mode` flag. An **empty array** (`[]`) is the canonical Tier 0 declaration — explicit, reviewable, distinguishable from "author forgot." Absence is also semantically "no access" but triggers an authoring warning (`ENTITY_AIACCESS_MISSING`).
 - **`readableProperties`** — when omitted and `read` is granted, the agent may read every top-level property **except** fields listed in `encryptedProperties`. To grant read access to an encrypted field, list it explicitly. This enforces a safe-by-default read surface.
 - **`writableProperties`** — must reference top-level properties of the entity. Write access is always an explicit allow-list; there is no "all fields" shortcut for writes. Required whenever `operations` includes any of `create`, `update`, `delete`.
 - **`immutableOnUpdate`** — subset of `writableProperties`. Fields the agent may supply on create but never modify on update (e.g., foreign keys, tenant scope).
@@ -167,16 +168,17 @@ aiAccess:
   - `shared` (default): either side may write; last-writer-wins with audit
   - `ai`: the AI agent is authoritative; backend writes are reconciled against AI state
   - `backend`: the backend is authoritative; AI writes are advisory and may be overridden
-- **`reason`** — required for any write access. Free-text justification surfaced in generated doc-comments and the AI manifest for audit. Should not reference the target programming language — describe the business need.
+- **`reason`** — required in two cases: (a) `operations` is empty (the Tier 0 justification — why this entity is intentionally outside the AI surface), and (b) `operations` contains any write verb (the audit justification for granting writes). Free-text surfaced in generated doc-comments and the AI manifest. Should not reference the target programming language — describe the business need.
 
 **Validation rules** (enforced by Spectral + DDD validator):
 
-1. `operations` must be present and contain at least one value.
-2. If `operations` contains any of `create`/`update`/`delete`, then `writableProperties` (non-empty) and `reason` (non-empty) are required.
-3. `readableProperties`, `writableProperties`, and `immutableOnUpdate` must reference top-level properties that exist on the entity schema (BilingualText subfields like `title.en` allowed).
-4. `immutableOnUpdate` must be a subset of `writableProperties`.
-5. Encrypted fields (from `encryptedProperties`) are **not** included in the "absent = all properties" expansion of `readableProperties`. To grant AI read access to an encrypted field, list it explicitly in `readableProperties`.
-6. `aiAccess` may only appear on schemas that carry `x-entity` (same placement rules as other entity metadata — never on derivatives like `Basic*`, `New*`, `Update*`).
+1. `aiAccess` is required on every `x-entity` block. Absence triggers a WARN-level finding (`ENTITY_AIACCESS_MISSING`) — present-but-empty `operations` is the canonical Tier 0 declaration.
+2. `operations` must be present. An empty array (`[]`) is valid and signals deliberate Tier 0 / explicit no-access. When `operations` is empty, `reason` is required.
+3. If `operations` contains any of `create`/`update`/`delete`, then `writableProperties` (non-empty) and `reason` (non-empty) are required.
+4. `readableProperties`, `writableProperties`, and `immutableOnUpdate` must reference top-level properties that exist on the entity schema (BilingualText subfields like `title.en` allowed).
+5. `immutableOnUpdate` must be a subset of `writableProperties`.
+6. Encrypted fields (from `encryptedProperties`) are **not** included in the "absent = all properties" expansion of `readableProperties`. To grant AI read access to an encrypted field, list it explicitly in `readableProperties`.
+7. `aiAccess` may only appear on schemas that carry `x-entity` (same placement rules as other entity metadata — never on derivatives like `Basic*`, `New*`, `Update*`).
 
 **Examples**:
 
@@ -228,13 +230,17 @@ Customer:
         Tax-reconciliation agent needs the tax ID to match external
         accounting system records.
 
-# No AI access — explicit (equivalent to omitting aiAccess entirely)
+# Tier 0 — explicit no AI access (canonical form)
 PaymentMethod:
   x-entity:
     type: entity
     belongsTo:
       allOf: [Tenant]
-    # aiAccess omitted → no AI read, no AI writes
+    aiAccess:
+      operations: []
+      reason: |
+        Financial credentials and payment tokens. AI agents must never
+        read or modify these — handled by a dedicated PCI-scoped service.
 ```
 
 **Interaction with other extensions**:
@@ -1675,7 +1681,39 @@ x-trigger-when: "After.status == 'archived' && Before.status != 'archived'"
 
 **Mutual exclusivity & sibling-event semantics**: when one save satisfies multiple state-transition predicates, all matching transition events fire (siblings) and the `*Updated` is suppressed. Siblings share `correlationId`, `causationId`, `aggregateVersion`, and `producedAt`; each has its own `eventId`. Consumers MUST NOT depend on emit order.
 
-**Context-bearing transitions**: when a state-transition event includes a `context` payload property (transient metadata that does not live on the entity, e.g., a cancellation reason), the auto-emission path cannot populate it. The Specfuse generator detects `context` in the payload and emits an explicit service method that takes the context as a parameter; the auto-emission path is suppressed for that event. `x-trigger-when` is still required on context-bearing events — it documents the semantic transition AND prevents the auto-path from emitting `*Updated`. The operation MUST also declare `x-context-justification` (see §6.3).
+**Context-bearing transitions**: when a state-transition event includes a `context` payload property (transient metadata that does not live on the entity, e.g., a cancellation reason), the auto-emission path cannot populate it. The author MUST declare `x-trigger-mode: explicit` (see below) so the Specfuse generator emits an explicit service method that takes the context as a parameter; the auto-emission path is suppressed for that event. `x-trigger-when` is still required on context-bearing events — it documents the semantic transition AND prevents the auto-path from emitting `*Updated`. The operation MUST also declare `x-context-justification` (see §6.3).
+
+#### x-trigger-mode
+**Purpose**: Selects how a state-transition event is emitted — `auto` (the generator-emitted dispatcher fires the event during `SaveChangesAsync` when `x-trigger-when` matches) or `explicit` (the generator emits a typed service method the handler calls, passing the `context`; the auto-dispatcher is suppressed).
+**Scope**: State-transition messages.
+**Required**: REQUIRED with value `explicit` whenever the payload carries a `context` field. Omit otherwise (defaults to `auto`).
+**Valid values**: `auto | explicit`
+
+```yaml
+x-trigger-when: "After.status == 'cancelled' && Before.status != 'cancelled'"
+x-trigger-mode: explicit          # payload carries `context`
+payload:
+  properties:
+    context:
+      allOf:
+        - $ref: '../events/OrderCancelledContext.yaml'
+      description: >-          # ≥ 40 chars justifying the transient metadata
+        Transient per-cancellation metadata (reason, actor) not persisted
+        on the order snapshot.
+```
+
+**Enforcement**: `specfuse-async-context-coherence` (context present ⇒ `x-trigger-mode: explicit` + `context.description` ≥ 40 chars) and `specfuse-async-subscription-trigger-mode-values` (enum check); the Specfuse generator's AsyncAPI validator errors identically.
+
+#### x-method-name
+**Purpose**: The imperative-verb name of the generated service method for a context-bearing explicit-mode transition. The generator cannot derive the imperative form from the past-tense action label (e.g. `OrderCancelled` → `CancelOrder`), so it must be declared.
+**Scope**: State-transition messages with `x-trigger-mode: explicit`.
+**Required**: REQUIRED on every context-bearing explicit transition. Generator-enforced (`MISSING_METHOD_NAME`); not a Spectral rule.
+**Value**: PascalCase imperative verb phrase (e.g. `CancelOrder`, `Archive`, `Approve`).
+
+```yaml
+x-trigger-mode: explicit
+x-method-name: CancelOrder        # imperative form of OrderCancelled
+```
 
 #### x-envelope-promote
 **Purpose**: Marks a snapshot field that should also be stamped as an envelope ApplicationProperty so subscription filters can target it without inspecting the payload.
@@ -1919,7 +1957,6 @@ The following extensions existed in v1 (or were considered during v2 design) and
 | `x-message-category: sagaStep` | Removed | Sagas deferred |
 | `x-subscription.filter` (raw SQL author-written) | Forbidden | Filters are derived from the operation's `messages:` list; use `x-subscription.requiredHeaders` for header-equality and `x-subscription.filterOverride` only as a justified escape hatch. |
 | `x-action-class` | Not introduced | Action class is inferred from the message-name suffix (`*Created` → created, `*Updated` → updated, `*Deleted` → deleted, anything else → state transition). |
-| `x-trigger-mode` | Not introduced | Whether a state-transition event uses auto-emission or explicit-method emission is inferred from payload presence of `context`. The generator emits an explicit service method when `context` is present and suppresses auto-emission for that event. |
 | `x-pii` / `x-sensitive` (boolean per-field flags) | Not introduced as separate extensions | Use `x-classification` with values from the closed set `[pii, sensitive, encrypted]` on the entity property schema. See §1.5. |
 | Three-segment `Label` (`{Entity}.{Action}.{tenantId}`) | Removed (v1 routing) | Labels are exactly two segments: `{Entity}.{Action}`. Tenant routing moves to envelope `tenantId` ApplicationProperty; tenant-scoped subscribers AND-merge `user.tenantId = '<guid>'` via `requiredHeaders`. |
 
