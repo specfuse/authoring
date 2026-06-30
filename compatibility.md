@@ -171,6 +171,17 @@ These are kit-internal fixes and do not require generator coordination.
 
 These are gaps in the kit itself, separate from the generator-side follow-ups above. Each represents an enforcement promise the handbooks make that has no implementation today.
 
+### Wire Spectral into CI against the bundled example
+
+The custom Spectral functions are correctly declared (`specfuse-asyncapi.yaml` and `specfuse-arazzo.yaml` both list their functions; `specfuse-openapi.yaml` uses only built-ins), and all three rulesets load without error. But running `specfuse-openapi.yaml` directly against `examples/hello-orders/api/specs/v1/openapi.yaml` reports ~42 errors:
+
+- ~22 `oas3-schema` errors are multi-file `$ref` resolution artifacts — the kit's specs are split across domain files and Spectral lints the unbundled root. CI must bundle (e.g. Redocly/swagger-cli) before linting, mirroring what the generator resolves.
+- ~20 are genuine `specfuse-*` findings (`specfuse-enum-camel`, `specfuse-404-required`, `specfuse-x-sample-*`, `specfuse-no-inline/embedded-objects`, …) that the bundled example does not yet satisfy.
+
+**Action:** add a bundle-then-lint step to `.github/workflows/example-regen.yml` and bring `examples/hello-orders/` to zero `specfuse-*` errors, so the example becomes a real Spectral regression net (today the CI only checks YAML well-formedness). None of these involve `aiAccess` or `x-trigger-mode` — the v0.3 alignment added no new violations.
+
+**Severity:** medium — until this lands, the kit ships rulesets that its own bundled example does not fully pass, and CI cannot catch rule regressions.
+
 ### Three handbook-referenced Spectral rules with no implementation
 
 Surfaced during the schemas import (commits `78abc31`..`b146efa`) when verifying that every rule name mentioned in the handbooks resolves to a real Spectral rule in `schemas/spectral/`. The source project's Spectral ruleset never implemented these three — the handbooks reference them as if they exist, but the enforcement code was aspirational.
