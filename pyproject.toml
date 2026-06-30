@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "specfuse-kit"
-version = "0.3.0"
+version = "0.3.1"
 description = "Specfuse spec-authoring kit: handbooks, samples, Claude assets, project bootstrap, and the generator launcher."
 readme = "README.md"
 requires-python = ">=3.10"
