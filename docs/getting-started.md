@@ -12,18 +12,22 @@ This guide takes you from zero to a generated backend: install the kit, bootstra
 | Tool | Why | Check |
 |---|---|---|
 | **Python 3.10+** | runs the `specfuse-authoring` CLI | `python3 --version` |
-| **[uv](https://docs.astral.sh/uv/)** or **[pipx](https://pipx.pypa.io/)** | runs the CLI without a global install | `uvx --version` / `pipx --version` |
+| **[pipx](https://pipx.pypa.io/)** | installs the CLI as an isolated app | `pipx --version` |
 | **Java 17+ (JRE)** | the code generator is a Java binary | `java -version` |
 | **[Claude Code](https://claude.com/claude-code)** (optional) | the `/specfuse-authoring:*` authoring skills | — |
 | **GitHub access token** | only needed to run `generate` (pulls the private generator) | see §6 |
 
 You do **not** need to clone this repo. The CLI ships every kit asset (handbooks, samples, templates, schemas) inside the package, and the Claude Code authoring assets ship as the `specfuse-authoring` plugin in the `specfuse/specfuse` marketplace.
 
-## 2. Bootstrap a project
+## 2. Install the CLI and bootstrap a project
 
 ```bash
-uvx specfuse-authoring init ~/projects/my-app
+pipx install specfuse-authoring     # recommended (isolated CLI app)
+#   (or, inside a venv you control: python3 -m pip install specfuse-authoring)
+specfuse-authoring init ~/projects/my-app
 ```
+
+> A bare `pip install` into a system Python is blocked on PEP-668 externally-managed environments (Debian/Ubuntu, Homebrew). Use `pipx` (then `pipx upgrade specfuse-authoring`) or a virtualenv.
 
 You'll be prompted for three things (or pass them as flags for non-interactive use):
 
@@ -34,7 +38,7 @@ You'll be prompted for three things (or pass them as flags for non-interactive u
 | Initial domain | `--domain` | `order` | kebab-case |
 
 ```bash
-uvx specfuse-authoring init ~/projects/my-app --name my-app --token myapp --domain order
+specfuse-authoring init ~/projects/my-app --name my-app --token myapp --domain order
 ```
 
 This creates a complete project skeleton: the `api/specs/v1/` tree, a `{name}-project.json` generator config, a `CLAUDE.md`, the authoring contract (handbooks + samples) scaffolded into `.specfuse/authoring/`, and a `.claude/settings.json` wired to the `specfuse-authoring` plugin.
@@ -86,7 +90,7 @@ Inside Claude Code, the kit's skills validate your specs against the handbook ru
 The generator turns your validated specs into backend, frontend, and worker artifacts:
 
 ```bash
-uvx specfuse-authoring generate <args>
+specfuse-authoring generate <args>
 ```
 
 On first run the CLI resolves the generator pinned for your kit version (see [`generator.lock`](../generator.lock)), downloads it, **verifies its SHA-256**, caches it under `~/.specfuse/jars/`, and runs it. Subsequent runs use the cache.
@@ -110,7 +114,7 @@ If no generator is pinned yet for your kit version, `generate` exits with a clea
 When the kit ships an update, re-sync your project's authoring contract and plugin config:
 
 ```bash
-uvx specfuse-authoring refresh ~/projects/my-app
+specfuse-authoring refresh ~/projects/my-app
 ```
 
 This re-syncs `.specfuse/authoring/` from the installed package and re-asserts the `specfuse-authoring` plugin config in `.claude/settings.json`. Your specs are never touched. To pull newer skills themselves, run `/plugin update specfuse-authoring@specfuse` inside Claude Code.

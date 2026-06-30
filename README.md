@@ -7,8 +7,9 @@ The upstream contract for [Specfuse](https://github.com/Specfuse) projects. Defi
 Bootstrap a new Specfuse project with the kit's CLI:
 
 ```bash
-uvx specfuse-authoring init ~/projects/my-new-project
-# or: pipx run specfuse-authoring init ~/projects/my-new-project
+pipx install specfuse-authoring     # CLI; recommended
+#   (or, inside a venv you control: python3 -m pip install specfuse-authoring)
+specfuse-authoring init ~/projects/my-new-project
 ```
 
 You'll be prompted for the project name, the project token (channel-address prefix), and the initial domain. The CLI substitutes placeholders, scaffolds the authoring contract (handbooks + samples) into `.specfuse/authoring/`, wires the `specfuse-authoring` Claude Code plugin into `.claude/settings.json`, and prints next steps. Pass `--name`/`--token`/`--domain` to run non-interactively.
@@ -23,7 +24,7 @@ The Claude Code authoring assets (skills + agents) ship as the `specfuse-authori
 To re-sync `.specfuse/authoring/` and re-assert the plugin config in an existing project after a kit update:
 
 ```bash
-uvx specfuse-authoring refresh ~/projects/existing-project
+specfuse-authoring refresh ~/projects/existing-project
 ```
 
 Pull newer skills with `/plugin update specfuse-authoring@specfuse`.

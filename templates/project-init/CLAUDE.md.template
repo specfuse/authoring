@@ -119,7 +119,7 @@ This project uses the `specfuse-authoring` Claude Code plugin (skills + design a
 When the kit ships updates, re-sync the authoring contract and plugin config:
 
 ```bash
-uvx specfuse-authoring refresh $(pwd)
+specfuse-authoring refresh $(pwd)
 ```
 
 Pull newer skills with `/plugin update specfuse-authoring@specfuse`.
