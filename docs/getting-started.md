@@ -90,7 +90,7 @@ The generator is distributed as a private release asset. To pull it, the CLI nee
   export SPECFUSE_TOKEN=ghp_xxx
   ```
 
-Your kit maintainer issues the access. Revoking the token revokes the generator; the kit itself stays usable. The cache and config live under `~/.specfuse/` (override with `$SPECFUSE_HOME`).
+Your kit maintainer issues the access. Revoking the token revokes the generator; the kit itself stays usable. The cache and config live under `~/.specfuse/` (override with `$SPECFUSE_HOME`). Full setup, CI tokens, and troubleshooting: [`generator-access.md`](generator-access.md).
 
 If no generator is pinned yet for your kit version, `generate` exits with a clear message — upgrade the kit once a generator-bearing release is available.
 
