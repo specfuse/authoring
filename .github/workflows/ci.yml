@@ -1,0 +1,53 @@
+# Copyright 2026 Specfuse contributors
+# Licensed under the Apache License, Version 2.0. See LICENSE.
+#
+# Always-run gate. Unlike build-wheel.yml / example-regen.yml (which are
+# path-filtered), this runs on EVERY push to main and EVERY pull request, so it
+# is safe to mark as a required status check on `main` (a PR can never leave it
+# "pending" for lack of a matching path). Keep it fast: build the wheel and
+# prove a clean install bootstraps a project and the versions agree.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  smoke-test:
+    name: smoke-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build the wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel --outdir dist
+
+      - name: Clean-install and bootstrap from the built wheel
+        run: |
+          python -m venv /tmp/ci
+          /tmp/ci/bin/pip install --quiet "$(ls dist/*.whl)"
+          /tmp/ci/bin/python -c "import specfuse.authoring as a; print('import OK', a.__version__)"
+          /tmp/ci/bin/specfuse-authoring --version
+          /tmp/ci/bin/specfuse-authoring init /tmp/smoke \
+            --name beta-shop --token beta --domain cart --yes
+          test -f /tmp/smoke/.specfuse/authoring/handbooks/API_Handbook.md
+          test -d /tmp/smoke/api/specs/v1/domains/cart
+          /tmp/ci/bin/python -c "import json; s=json.load(open('/tmp/smoke/.claude/settings.json')); assert s['enabledPlugins']['specfuse-authoring@specfuse'] is True; assert s['extraKnownMarketplaces']['specfuse']['source']['repo']=='specfuse/specfuse'"
+          ! find /tmp/smoke -name '*.template' | grep -q .
+
+      - name: Versions agree (pyproject == __version__ == generator.lock)
+        run: |
+          PKG=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          INIT=$(python -c "import re;print(re.search(r'__version__\s*=\s*\"([^\"]+)\"',open('specfuse/authoring/__init__.py').read()).group(1))")
+          KIT=$(python -c "import json;print(json.load(open('generator.lock'))['kit_version'])")
+          echo "pyproject=$PKG __version__=$INIT generator.lock=$KIT"
+          test "$PKG" = "$INIT" && test "$PKG" = "$KIT" || { echo "::error::version sources disagree"; exit 1; }
