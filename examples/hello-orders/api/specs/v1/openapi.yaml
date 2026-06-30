@@ -79,8 +79,9 @@ components:
     PreconditionFailedError:  { $ref: './common/responses/errors.yaml#/PreconditionFailedError' }
 
   schemas:
-    Error: { $ref: './common/responses/errors.yaml#/Error' }
-    Role:  { $ref: './common/enums.yaml#/Role' }
+    Error:           { $ref: './common/responses/errors.yaml#/Error' }
+    Role:            { $ref: './common/enums.yaml#/Role' }
+    PaginationLinks: { $ref: './common/schemas/PaginationLinks.yaml' }
 
     Customer:               { $ref: './domains/customer/models/Customer.yaml' }
     BasicCustomer:          { $ref: './domains/customer/models/BasicCustomer.yaml' }

@@ -18,7 +18,7 @@ x-entity:
       Order-management agents add line items to draft orders on behalf of
       the customer. No update or delete — once added, a line is replaced
       by deleting and re-adding (out of scope for this example).
-required: [id, orderId, createdAt, description, quantity, unitPriceMinor]
+required: [id, orderId, createdAt, updatedAt, description, quantity, unitPriceMinor]
 properties:
   id:
     type: string
@@ -27,6 +27,9 @@ properties:
     type: string
     format: uuid
   createdAt:
+    type: string
+    format: date-time
+  updatedAt:
     type: string
     format: date-time
   description:

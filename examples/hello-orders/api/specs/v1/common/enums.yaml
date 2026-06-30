@@ -9,6 +9,7 @@
 # -----------------------------------------------------------------------------
 Role:
   type: string
+  x-enum-case: PascalCase
   enum:
     - Admin           # System administrator — full access
     - Manager         # Tenant-level manager

@@ -12,11 +12,11 @@ properties:
     minimum: 1
     x-sample:
       provider: fixed
-      value: 1
+      format: 1
   unitPriceMinor:
     type: integer
     minimum: 0
     description: Price per unit in minor currency units (e.g., cents).
     x-sample:
       provider: fixed
-      value: 9999
+      format: 9999

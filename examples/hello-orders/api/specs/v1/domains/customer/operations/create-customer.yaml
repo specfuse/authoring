@@ -30,3 +30,4 @@ post:
     '400': { $ref: '../../../common/responses/errors.yaml#/BadRequestError' }
     '401': { $ref: '../../../common/responses/errors.yaml#/UnauthorizedError' }
     '403': { $ref: '../../../common/responses/errors.yaml#/ForbiddenError' }
+    '404': { $ref: '../../../common/responses/errors.yaml#/NotFoundError' }

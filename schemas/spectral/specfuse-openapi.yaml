@@ -802,21 +802,29 @@ rules:
   specfuse-no-embedded-objects:
     description: "Properties must not define embedded objects; use $ref to separate schemas instead."
     severity: error
-    given: $.components.schemas[*].properties[*][?(@ && @.type=="object" && @.properties)]
+    # Run against the UNRESOLVED doc so properly $ref'd object schemas are not
+    # inlined-then-flagged; this rule targets genuinely authored inline objects.
+    resolved: false
+    given: $.components.schemas[*].properties[?(@ && @.type=="object" && @.properties)]
     then:
       function: falsy
 
   specfuse-no-inline-enums:
     description: "Properties must not define inline enums; use $ref to separate enum schemas instead."
     severity: error
-    given: $.components.schemas[*].properties[*][?(@ && @.enum)]
+    # Unresolved: a property that $refs a standalone enum schema must not be
+    # flagged; only genuinely authored inline enums should fire.
+    resolved: false
+    given: $.components.schemas[*].properties[?(@ && @.enum)]
     then:
       function: falsy
 
   specfuse-no-inline-objects:
     description: "Properties must not define inline objects; use $ref to separate object schemas instead."
     severity: error
-    given: $.components.schemas[*].properties[*][?(@ && @.type === 'object' && @.properties)]
+    # Unresolved: see specfuse-no-embedded-objects — avoid flagging $ref'd objects.
+    resolved: false
+    given: $.components.schemas[*].properties[?(@ && @.type === 'object' && @.properties)]
     then:
       function: falsy
 

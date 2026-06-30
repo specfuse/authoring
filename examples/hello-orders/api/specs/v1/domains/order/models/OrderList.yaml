@@ -9,13 +9,7 @@ properties:
   hasPrev:         { type: boolean }
   hasNext:         { type: boolean }
   links:
-    type: object
-    properties:
-      self:  { type: string, format: uri }
-      first: { type: string, format: uri }
-      prev:  { type: string, format: uri }
-      next:  { type: string, format: uri }
-      last:  { type: string, format: uri }
+    $ref: '../../../common/schemas/PaginationLinks.yaml'
   data:
     type: array
     items:

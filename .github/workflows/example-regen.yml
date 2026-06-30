@@ -5,15 +5,15 @@
 # at examples/hello-orders/ on every PR. If a handbook or template change
 # breaks the example, the PR fails.
 #
-# Today this is a STARTER workflow — YAML syntax validation only. The real
-# validation surface will grow as the kit's toolchain ships:
+# Two jobs run today:
+#   - validate: YAML parseability + project.json validity (the floor).
+#   - spectral: bundle the OpenAPI surface with redocly, then lint the bundle
+#     against the kit's OpenAPI ruleset; fail on any `error`-severity finding.
 #
-#   - Spectral linting against the kit's rulesets (once they ship)
-#   - Full spec bundling (once the bundler integration ships)
-#   - End-to-end generator regeneration + diff (once the generator ships)
-#
-# When those land, expand the `validate` job below. Until then, YAML
-# parseability is the floor.
+# Still to come as the toolchain grows:
+#   - Spectral linting of the AsyncAPI and Arazzo surfaces (needs an
+#     AsyncAPI/Arazzo bundling step; the rulesets already exist).
+#   - End-to-end generator regeneration + diff (once wired into CI).
 # =============================================================================
 
 name: example-regen
@@ -25,6 +25,7 @@ on:
       - 'handbooks/**'
       - 'samples/**'
       - 'templates/**'
+      - 'schemas/**'
       - '.github/workflows/example-regen.yml'
   push:
     branches:
@@ -78,3 +79,31 @@ jobs:
       - name: Confirm hello-orders project.json is valid JSON
         run: |
           python3 -c "import json; json.load(open('examples/hello-orders/hello-orders-project.json'))"
+
+  spectral:
+    name: Spectral lint hello-orders (OpenAPI)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install redocly + spectral
+        run: npm install -g @redocly/cli @stoplight/spectral-cli
+
+      - name: Bundle the OpenAPI surface
+        run: |
+          redocly bundle examples/hello-orders/api/specs/v1/openapi.yaml \
+            -o "${RUNNER_TEMP}/hello-orders.bundle.yaml"
+
+      - name: Lint the bundle against the kit's OpenAPI ruleset
+        run: |
+          # Fails the job on any error-severity finding; warnings/hints do not fail.
+          spectral lint \
+            --ruleset schemas/spectral/specfuse-openapi.yaml \
+            --fail-severity error \
+            "${RUNNER_TEMP}/hello-orders.bundle.yaml"

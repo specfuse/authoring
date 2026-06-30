@@ -10,6 +10,7 @@ post:
       description: Emitted on the draft → placed state transition
   parameters:
     - $ref: '../../../common/parameters/path.yaml#/orderId'
+    - $ref: '../../../common/parameters/pagination.yaml#/validateOnly'
     - $ref: '../../../common/parameters/pagination.yaml#/If-Match'
   security: [{ bearerAuth: [] }]
   responses:

@@ -171,16 +171,16 @@ These are kit-internal fixes and do not require generator coordination.
 
 These are gaps in the kit itself, separate from the generator-side follow-ups above. Each represents an enforcement promise the handbooks make that has no implementation today.
 
-### Wire Spectral into CI against the bundled example
+### Wire Spectral into CI against the bundled example — DONE (OpenAPI)
 
-The custom Spectral functions are correctly declared (`specfuse-asyncapi.yaml` and `specfuse-arazzo.yaml` both list their functions; `specfuse-openapi.yaml` uses only built-ins), and all three rulesets load without error. But running `specfuse-openapi.yaml` directly against `examples/hello-orders/api/specs/v1/openapi.yaml` reports ~42 errors:
+**Resolved for the OpenAPI surface.** `.github/workflows/example-regen.yml` now bundles `examples/hello-orders/` with redocly and lints the bundle against `specfuse-openapi.yaml`, failing the job on any `error`-severity finding. The example passes at **zero `specfuse-*` errors**.
 
-- ~22 `oas3-schema` errors are multi-file `$ref` resolution artifacts — the kit's specs are split across domain files and Spectral lints the unbundled root. CI must bundle (e.g. Redocly/swagger-cli) before linting, mirroring what the generator resolves.
-- ~20 are genuine `specfuse-*` findings (`specfuse-enum-camel`, `specfuse-404-required`, `specfuse-x-sample-*`, `specfuse-no-inline/embedded-objects`, …) that the bundled example does not yet satisfy.
+Getting there required:
+- A **bundle step** — linting the unbundled root produced ~22 `oas3-schema` artifacts (operation-level `$ref` is illegal until resolved); bundling eliminates them.
+- **8 example fixes** — `x-enum-case: PascalCase` on `Role`; `404` on four `{…Id}` ops; `x-sample` `value:`→`format:` on three fields; an extracted shared `common/schemas/PaginationLinks.yaml`; `validateOnly` on `place-order`; `updatedAt` on `OrderLine`.
+- **Three rule fixes** in `specfuse-openapi.yaml` — `specfuse-no-inline-objects`, `-no-embedded-objects`, and `-no-inline-enums` had a malformed `properties[*][?(…)]` JSONPath (one level too deep, mislabeled locations) and ran against the resolved doc, so any properly `$ref`'d enum/object was inlined-then-falsely-flagged. Fixed the path and set `resolved: false` so they catch only genuinely authored inline objects/enums.
 
-**Action:** add a bundle-then-lint step to `.github/workflows/example-regen.yml` and bring `examples/hello-orders/` to zero `specfuse-*` errors, so the example becomes a real Spectral regression net (today the CI only checks YAML well-formedness). None of these involve `aiAccess` or `x-trigger-mode` — the v0.3 alignment added no new violations.
-
-**Severity:** medium — until this lands, the kit ships rulesets that its own bundled example does not fully pass, and CI cannot catch rule regressions.
+**Remaining (lower priority):** the AsyncAPI and Arazzo surfaces are not yet linted in CI (their rulesets exist and load; they need an AsyncAPI/Arazzo bundling step). `specfuse-no-inline-objects` and `specfuse-no-embedded-objects` remain near-duplicates — candidate for a future dedup.
 
 ### Three handbook-referenced Spectral rules with no implementation
 
