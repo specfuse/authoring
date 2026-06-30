@@ -1,0 +1,100 @@
+# Builds the specfuse-kit wheel and smoke-tests it from a clean install:
+# the package must bootstrap a project from its BUNDLED assets (specfuse_kit/_kit/),
+# not from the repo working tree. Catches packaging regressions (missing assets,
+# broken entry point, force-include drift) before publish.
+name: build-wheel
+
+on:
+  push:
+    paths:
+      - "pyproject.toml"
+      - "src/**"
+      - "handbooks/**"
+      - "samples/**"
+      - "templates/**"
+      - "claude-assets/**"
+      - "schemas/**"
+      - "generator.lock"
+      - ".github/workflows/build-wheel.yml"
+  pull_request:
+    paths:
+      - "pyproject.toml"
+      - "src/**"
+      - "templates/**"
+      - "claude-assets/**"
+      - ".github/workflows/build-wheel.yml"
+
+jobs:
+  build-and-smoke:
+    name: Build wheel and smoke-test clean install
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Build wheel
+        run: |
+          python -m pip install --quiet --upgrade pip build
+          python -m build --wheel --outdir dist
+
+      - name: Assert kit assets are bundled in the wheel
+        run: |
+          wheel="$(ls dist/specfuse_kit-*.whl)"
+          echo "Inspecting $wheel"
+          python - "$wheel" <<'PY'
+          import sys, zipfile
+          names = zipfile.ZipFile(sys.argv[1]).namelist()
+          required = [
+              "specfuse_kit/_kit/claude-assets/agents/",
+              "specfuse_kit/_kit/handbooks/API_Handbook.md",
+              "specfuse_kit/_kit/templates/project-init/",
+              "specfuse_kit/_kit/generator.lock",
+          ]
+          missing = [r for r in required if not any(n.startswith(r) or n == r for n in names)]
+          if missing:
+              print("MISSING from wheel:", *missing, sep="\n  ")
+              sys.exit(1)
+          print(f"OK: {len(names)} entries; all required asset paths present.")
+          PY
+
+      - name: Install wheel into a clean venv
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/pip install --quiet dist/specfuse_kit-*.whl
+
+      - name: Smoke-test bootstrap from the installed package
+        run: |
+          /tmp/clean/bin/specfuse-kit --version
+          /tmp/clean/bin/specfuse-kit init /tmp/smoke \
+            --name beta-shop --token beta --domain cart --yes
+          echo "--- assert bootstrap output ---"
+          test -f /tmp/smoke/beta-shop-project.json
+          test -d /tmp/smoke/api/specs/v1/domains/cart
+          test -d /tmp/smoke/.claude/agents
+          test -d /tmp/smoke/.claude/commands
+          # no unresolved placeholders or leftover .template files
+          ! grep -rqE '\{ProjectName\}|\{project\}|\{initial-domain\}' /tmp/smoke
+          ! find /tmp/smoke -name '*.template' | grep -q .
+          echo "OK: clean-install bootstrap produced a valid project."
+
+      - name: Refuse-when-unpinned check on generate
+        run: |
+          # Only meaningful while the generator is unpinned (sha256=PENDING).
+          # Once a real jar is pinned, `generate` would try to download it, so
+          # skip the check rather than fail CI.
+          if ! grep -q '"sha256": "PENDING"' generator.lock; then
+            echo "generator is pinned — skipping the unpinned-refusal check."
+            exit 0
+          fi
+          if /tmp/clean/bin/specfuse-kit generate run >/tmp/gen.out 2>&1; then
+            echo "expected non-zero exit while generator is unpinned"; cat /tmp/gen.out; exit 1
+          fi
+          grep -qi "no generator is pinned" /tmp/gen.out
+          echo "OK: generate refuses cleanly while unpinned."
