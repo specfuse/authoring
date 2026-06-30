@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "specfuse-kit"
+name = "specfuse-authoring"
 version = "0.3.1"
-description = "Specfuse spec-authoring kit: handbooks, samples, Claude assets, project bootstrap, and the generator launcher."
+description = "Specfuse authoring kit: handbooks, samples, Claude assets, project bootstrap, and the generator launcher."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
@@ -20,28 +20,30 @@ classifiers = [
 dependencies = []
 
 [project.scripts]
-specfuse-kit = "specfuse_kit.cli:main"
+specfuse-authoring = "specfuse.authoring.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/Specfuse/authoring"
 Source = "https://github.com/Specfuse/authoring"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/specfuse_kit"]
+# Namespace package: ship specfuse/authoring/ (the `specfuse` namespace is
+# shared with sibling packages like specfuse-loop).
+packages = ["specfuse"]
 
 # The kit's authored content lives at the repo root for human browsing.
-# Map it into the package so it ships inside the wheel as specfuse_kit/_kit/...
+# Map it into the package so it ships in the wheel as specfuse/authoring/_kit/...
 [tool.hatch.build.targets.wheel.force-include]
-"handbooks" = "specfuse_kit/_kit/handbooks"
-"samples" = "specfuse_kit/_kit/samples"
-"templates" = "specfuse_kit/_kit/templates"
-"claude-assets" = "specfuse_kit/_kit/claude-assets"
-"schemas" = "specfuse_kit/_kit/schemas"
-"generator.lock" = "specfuse_kit/_kit/generator.lock"
+"handbooks" = "specfuse/authoring/_kit/handbooks"
+"samples" = "specfuse/authoring/_kit/samples"
+"templates" = "specfuse/authoring/_kit/templates"
+"claude-assets" = "specfuse/authoring/_kit/claude-assets"
+"schemas" = "specfuse/authoring/_kit/schemas"
+"generator.lock" = "specfuse/authoring/_kit/generator.lock"
 
 [tool.hatch.build.targets.sdist]
 include = [
-  "src/specfuse_kit",
+  "specfuse",
   "handbooks",
   "samples",
   "templates",

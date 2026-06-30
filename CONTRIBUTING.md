@@ -42,7 +42,7 @@ Pair the kit bump with the generator commit that implements the corresponding
 parser/validator change.
 
 Workflow assets (`claude-assets/`, `templates/project-init/`) and the
-`specfuse-kit` CLI do **not** require generator-side coordination and do not
+`specfuse-authoring` CLI do **not** require generator-side coordination and do not
 need a matrix bump — but a CLI change still bumps the package version.
 
 ## Before you push
@@ -52,8 +52,8 @@ need a matrix bump — but a CLI change still bumps the package version.
   contract, regenerate/re-validate `examples/hello-orders/` and confirm it
   still passes.
 - **Build the package.** `python -m build --wheel` must succeed, and a wheel
-  installed in a clean environment must run `specfuse-kit init` correctly
-  (assets resolve from the bundled `specfuse_kit/_kit/` path, not the repo).
+  installed in a clean environment must run `specfuse-authoring init` correctly
+  (assets resolve from the bundled `specfuse/authoring/_kit/` path, not the repo).
 - **Re-run the leak check.** Confirm no source-project brand names leaked back
   in:
   `grep -rinE 'restomanager|restaurant|<your-source-brand>' . | grep -v '.git/'`

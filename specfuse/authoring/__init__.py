@@ -1,4 +1,4 @@
-"""Specfuse spec-authoring kit — bootstrap, asset refresh, and generator launcher."""
+"""Specfuse authoring kit — bootstrap, asset refresh, and generator launcher."""
 
 from importlib.resources import files
 from pathlib import Path
@@ -10,13 +10,13 @@ def kit_root() -> Path:
     """Resolve the directory holding the kit's authored content.
 
     Works in two layouts:
-      * installed wheel  -> specfuse_kit/_kit/...
+      * installed wheel  -> specfuse/authoring/_kit/...
       * editable/repo    -> <repo-root>/  (handbooks/, claude-assets/, ...)
     """
-    bundled = Path(str(files("specfuse_kit"))) / "_kit"
+    bundled = Path(str(files("specfuse.authoring"))) / "_kit"
     if (bundled / "claude-assets").is_dir():
         return bundled
-    # Dev fallback: src/specfuse_kit/__init__.py -> repo root is two parents up.
+    # Dev fallback: specfuse/authoring/__init__.py -> repo root is two parents up.
     repo = Path(__file__).resolve().parents[2]
     if (repo / "claude-assets").is_dir():
         return repo

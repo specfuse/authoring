@@ -11,7 +11,7 @@ This guide takes you from zero to a generated backend: install the kit, bootstra
 
 | Tool | Why | Check |
 |---|---|---|
-| **Python 3.10+** | runs the `specfuse-kit` CLI | `python3 --version` |
+| **Python 3.10+** | runs the `specfuse-authoring` CLI | `python3 --version` |
 | **[uv](https://docs.astral.sh/uv/)** or **[pipx](https://pipx.pypa.io/)** | runs the CLI without a global install | `uvx --version` / `pipx --version` |
 | **Java 17+ (JRE)** | the code generator is a Java binary | `java -version` |
 | **[Claude Code](https://claude.com/claude-code)** (optional) | the `/design-*` authoring commands | — |
@@ -22,7 +22,7 @@ You do **not** need to clone this repo. The CLI ships every kit asset (handbooks
 ## 2. Bootstrap a project
 
 ```bash
-uvx specfuse-kit init ~/projects/my-app
+uvx specfuse-authoring init ~/projects/my-app
 ```
 
 You'll be prompted for three things (or pass them as flags for non-interactive use):
@@ -34,7 +34,7 @@ You'll be prompted for three things (or pass them as flags for non-interactive u
 | Initial domain | `--domain` | `order` | kebab-case |
 
 ```bash
-uvx specfuse-kit init ~/projects/my-app --name my-app --token myapp --domain order
+uvx specfuse-authoring init ~/projects/my-app --name my-app --token myapp --domain order
 ```
 
 This creates a complete project skeleton: the `api/specs/v1/` tree, a `{name}-project.json` generator config, a `CLAUDE.md`, and a `.claude/` folder with the kit's design agents and slash commands.
@@ -75,7 +75,7 @@ Inside Claude Code, the kit's commands validate your specs against the handbook 
 The generator turns your validated specs into backend, frontend, and worker artifacts:
 
 ```bash
-uvx specfuse-kit generate <args>
+uvx specfuse-authoring generate <args>
 ```
 
 On first run the CLI resolves the generator pinned for your kit version (see [`generator.lock`](../generator.lock)), downloads it, **verifies its SHA-256**, caches it under `~/.specfuse/jars/`, and runs it. Subsequent runs use the cache.
@@ -99,7 +99,7 @@ If no generator is pinned yet for your kit version, `generate` exits with a clea
 When the kit ships an update, refresh your project's design agents and commands:
 
 ```bash
-uvx specfuse-kit refresh ~/projects/my-app
+uvx specfuse-authoring refresh ~/projects/my-app
 ```
 
 This re-copies `.claude/agents/` and `.claude/commands/` from the installed kit. Your specs are never touched.

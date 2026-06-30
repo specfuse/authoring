@@ -147,6 +147,6 @@ def init(
         "    git init && git add . && git commit -m 'Initial bootstrap from spec-authoring-kit'\n\n"
         "  Then read CLAUDE.md and start designing with /design-scenario or /design-async.\n"
         "  Refresh agents/commands after a kit update with:\n"
-        f"    specfuse-kit refresh {target}\n"
+        f"    specfuse-authoring refresh {target}\n"
     )
     return 0

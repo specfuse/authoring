@@ -20,7 +20,7 @@ Please do **not** open a public issue for security vulnerabilities.
 ## Scope note
 
 The kit ships handbooks, samples, templates, Claude assets, and a thin
-generator launcher (`specfuse-kit generate`). The generator binary itself is
+generator launcher (`specfuse-authoring generate`). The generator binary itself is
 distributed separately as a pinned, checksum-verified release asset; the
 launcher refuses any jar whose SHA-256 does not match the pin in
 `generator.lock`. Report launcher/verification issues here; report generator
@@ -29,5 +29,5 @@ binary issues through the channel named in your generator-access agreement.
 ## Supported Versions
 
 This project is pre-1.0. Only the **`main` branch** (HEAD) and the latest
-published `specfuse-kit` release receive security fixes. Older commits and
+published `specfuse-authoring` release receive security fixes. Older commits and
 non-`main` branches are not supported.

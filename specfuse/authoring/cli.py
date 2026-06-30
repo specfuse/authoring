@@ -1,4 +1,4 @@
-"""specfuse-kit command-line entry point."""
+"""specfuse-authoring command-line entry point."""
 
 from __future__ import annotations
 
@@ -20,10 +20,10 @@ def main(argv: list[str] | None = None) -> int:
         return generator.generate(raw[1:])
 
     parser = argparse.ArgumentParser(
-        prog="specfuse-kit",
+        prog="specfuse-authoring",
         description="Bootstrap Specfuse projects and run the spec->code generator.",
     )
-    parser.add_argument("--version", action="version", version=f"specfuse-kit {__version__}")
+    parser.add_argument("--version", action="version", version=f"specfuse-authoring {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_init = sub.add_parser("init", help="Bootstrap a new Specfuse project.")

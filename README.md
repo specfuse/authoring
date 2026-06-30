@@ -7,8 +7,8 @@ The upstream contract for [Specfuse](https://github.com/Specfuse) projects. Defi
 Bootstrap a new Specfuse project with the kit's CLI:
 
 ```bash
-uvx specfuse-kit init ~/projects/my-new-project
-# or: pipx run specfuse-kit init ~/projects/my-new-project
+uvx specfuse-authoring init ~/projects/my-new-project
+# or: pipx run specfuse-authoring init ~/projects/my-new-project
 ```
 
 You'll be prompted for the project name, the project token (channel-address prefix), and the initial domain. The CLI substitutes placeholders, copies the kit's Claude Code agents and commands into the new project's `.claude/`, and prints next steps. Pass `--name`/`--token`/`--domain` to run non-interactively.
@@ -16,7 +16,7 @@ You'll be prompted for the project name, the project token (channel-address pref
 To refresh agents and commands in an existing project after a kit update:
 
 ```bash
-uvx specfuse-kit refresh ~/projects/existing-project
+uvx specfuse-authoring refresh ~/projects/existing-project
 ```
 
 (The legacy `templates/project-init/init.sh` bash bootstrap still works for git-clone workflows.)
@@ -67,9 +67,9 @@ The kit is upstream of both: it defines *what* a Specfuse spec must look like. T
 
 ## Status
 
-**Incubating** (`v0.3.1`), Apache-2.0. Handbooks, samples, claude-assets, the `project-init` template, the bundled `hello-orders` example, and the `specfuse-kit` CLI are all in place. Generator-side alignment items are tracked in [`compatibility.md`](compatibility.md#outstanding-generator-side-follow-ups).
+**Incubating** (`v0.3.1`), Apache-2.0. Handbooks, samples, claude-assets, the `project-init` template, the bundled `hello-orders` example, and the `specfuse-authoring` CLI are all in place. Generator-side alignment items are tracked in [`compatibility.md`](compatibility.md#outstanding-generator-side-follow-ups).
 
-The kit is distributed on PyPI as `specfuse-kit` and hosted under [`Specfuse/authoring`](https://github.com/Specfuse/authoring). The code generator it drives is distributed separately as a pinned, checksum-verified release asset (see [`generator.lock`](generator.lock)); `specfuse-kit generate` resolves, verifies, and runs it on demand.
+The kit is distributed on PyPI as `specfuse-authoring` and hosted under [`Specfuse/authoring`](https://github.com/Specfuse/authoring). The code generator it drives is distributed separately as a pinned, checksum-verified release asset (see [`generator.lock`](generator.lock)); `specfuse-authoring generate` resolves, verifies, and runs it on demand.
 
 ## Additional references
 

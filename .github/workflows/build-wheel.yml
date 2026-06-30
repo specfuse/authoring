@@ -1,5 +1,5 @@
-# Builds the specfuse-kit wheel and smoke-tests it from a clean install:
-# the package must bootstrap a project from its BUNDLED assets (specfuse_kit/_kit/),
+# Builds the specfuse-authoring wheel and smoke-tests it from a clean install:
+# the package must bootstrap a project from its BUNDLED assets (specfuse/authoring/_kit/),
 # not from the repo working tree. Catches packaging regressions (missing assets,
 # broken entry point, force-include drift) before publish.
 name: build-wheel
@@ -46,16 +46,16 @@ jobs:
 
       - name: Assert kit assets are bundled in the wheel
         run: |
-          wheel="$(ls dist/specfuse_kit-*.whl)"
+          wheel="$(ls dist/specfuse_authoring-*.whl)"
           echo "Inspecting $wheel"
           python - "$wheel" <<'PY'
           import sys, zipfile
           names = zipfile.ZipFile(sys.argv[1]).namelist()
           required = [
-              "specfuse_kit/_kit/claude-assets/agents/",
-              "specfuse_kit/_kit/handbooks/API_Handbook.md",
-              "specfuse_kit/_kit/templates/project-init/",
-              "specfuse_kit/_kit/generator.lock",
+              "specfuse/authoring/_kit/claude-assets/agents/",
+              "specfuse/authoring/_kit/handbooks/API_Handbook.md",
+              "specfuse/authoring/_kit/templates/project-init/",
+              "specfuse/authoring/_kit/generator.lock",
           ]
           missing = [r for r in required if not any(n.startswith(r) or n == r for n in names)]
           if missing:
@@ -67,12 +67,12 @@ jobs:
       - name: Install wheel into a clean venv
         run: |
           python -m venv /tmp/clean
-          /tmp/clean/bin/pip install --quiet dist/specfuse_kit-*.whl
+          /tmp/clean/bin/pip install --quiet dist/specfuse_authoring-*.whl
 
       - name: Smoke-test bootstrap from the installed package
         run: |
-          /tmp/clean/bin/specfuse-kit --version
-          /tmp/clean/bin/specfuse-kit init /tmp/smoke \
+          /tmp/clean/bin/specfuse-authoring --version
+          /tmp/clean/bin/specfuse-authoring init /tmp/smoke \
             --name beta-shop --token beta --domain cart --yes
           echo "--- assert bootstrap output ---"
           test -f /tmp/smoke/beta-shop-project.json
@@ -93,7 +93,7 @@ jobs:
             echo "generator is pinned — skipping the unpinned-refusal check."
             exit 0
           fi
-          if /tmp/clean/bin/specfuse-kit generate run >/tmp/gen.out 2>&1; then
+          if /tmp/clean/bin/specfuse-authoring generate run >/tmp/gen.out 2>&1; then
             echo "expected non-zero exit while generator is unpinned"; cat /tmp/gen.out; exit 1
           fi
           grep -qi "no generator is pinned" /tmp/gen.out
