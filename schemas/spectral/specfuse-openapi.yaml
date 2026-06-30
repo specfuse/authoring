@@ -799,16 +799,6 @@ rules:
       field: x-entity
 
   # ===== Schema design rules =====
-  specfuse-no-embedded-objects:
-    description: "Properties must not define embedded objects; use $ref to separate schemas instead."
-    severity: error
-    # Run against the UNRESOLVED doc so properly $ref'd object schemas are not
-    # inlined-then-flagged; this rule targets genuinely authored inline objects.
-    resolved: false
-    given: $.components.schemas[*].properties[?(@ && @.type=="object" && @.properties)]
-    then:
-      function: falsy
-
   specfuse-no-inline-enums:
     description: "Properties must not define inline enums; use $ref to separate enum schemas instead."
     severity: error
@@ -822,7 +812,8 @@ rules:
   specfuse-no-inline-objects:
     description: "Properties must not define inline objects; use $ref to separate object schemas instead."
     severity: error
-    # Unresolved: see specfuse-no-embedded-objects — avoid flagging $ref'd objects.
+    # Run against the UNRESOLVED doc so a property that $refs a standalone object
+    # schema is not inlined-then-flagged; only genuinely authored inline objects fire.
     resolved: false
     given: $.components.schemas[*].properties[?(@ && @.type === 'object' && @.properties)]
     then:

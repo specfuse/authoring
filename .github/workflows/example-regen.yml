@@ -81,7 +81,7 @@ jobs:
           python3 -c "import json; json.load(open('examples/hello-orders/hello-orders-project.json'))"
 
   spectral:
-    name: Spectral lint hello-orders (OpenAPI)
+    name: Spectral lint hello-orders (OpenAPI + AsyncAPI + Arazzo)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -107,3 +107,19 @@ jobs:
             --ruleset schemas/spectral/specfuse-openapi.yaml \
             --fail-severity error \
             "${RUNNER_TEMP}/hello-orders.bundle.yaml"
+
+      # AsyncAPI and Arazzo need no bundling — Spectral resolves their $refs
+      # directly (no operation-level-$ref antipattern as in OpenAPI).
+      - name: Lint the AsyncAPI surface
+        run: |
+          spectral lint \
+            --ruleset schemas/spectral/specfuse-asyncapi.yaml \
+            --fail-severity error \
+            examples/hello-orders/api/specs/v1/asyncapi.yaml
+
+      - name: Lint the Arazzo scenarios and recipes
+        run: |
+          spectral lint \
+            --ruleset schemas/spectral/specfuse-arazzo.yaml \
+            --fail-severity error \
+            "examples/hello-orders/api/specs/v1/scenarios/**/*.yaml"

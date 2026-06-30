@@ -172,16 +172,14 @@ These are kit-internal fixes and do not require generator coordination.
 
 These are gaps in the kit itself, separate from the generator-side follow-ups above. Each represents an enforcement promise the handbooks make that has no implementation today.
 
-### Wire Spectral into CI against the bundled example — DONE (OpenAPI)
+### Wire Spectral into CI against the bundled example — DONE (all three surfaces)
 
-**Resolved for the OpenAPI surface.** `.github/workflows/example-regen.yml` now bundles `examples/hello-orders/` with redocly and lints the bundle against `specfuse-openapi.yaml`, failing the job on any `error`-severity finding. The example passes at **zero `specfuse-*` errors**.
+`.github/workflows/example-regen.yml` lints `examples/hello-orders/` against all three kit rulesets, failing the job on any `error`-severity finding. The example passes at **zero `specfuse-*` errors** on OpenAPI, AsyncAPI, and Arazzo.
 
 Getting there required:
-- A **bundle step** — linting the unbundled root produced ~22 `oas3-schema` artifacts (operation-level `$ref` is illegal until resolved); bundling eliminates them.
-- **8 example fixes** — `x-enum-case: PascalCase` on `Role`; `404` on four `{…Id}` ops; `x-sample` `value:`→`format:` on three fields; an extracted shared `common/schemas/PaginationLinks.yaml`; `validateOnly` on `place-order`; `updatedAt` on `OrderLine`.
-- **Three rule fixes** in `specfuse-openapi.yaml` — `specfuse-no-inline-objects`, `-no-embedded-objects`, and `-no-inline-enums` had a malformed `properties[*][?(…)]` JSONPath (one level too deep, mislabeled locations) and ran against the resolved doc, so any properly `$ref`'d enum/object was inlined-then-falsely-flagged. Fixed the path and set `resolved: false` so they catch only genuinely authored inline objects/enums.
-
-**Remaining (lower priority):** the AsyncAPI and Arazzo surfaces are not yet linted in CI (their rulesets exist and load; they need an AsyncAPI/Arazzo bundling step). `specfuse-no-inline-objects` and `specfuse-no-embedded-objects` remain near-duplicates — candidate for a future dedup.
+- **OpenAPI** — a redocly **bundle step** (linting the unbundled root produced ~22 `oas3-schema` artifacts; operation-level `$ref` is illegal until resolved). AsyncAPI and Arazzo need no bundling — Spectral resolves their `$ref`s directly.
+- **9 example fixes** — `x-enum-case: PascalCase` on `Role`; `404` on four `{…Id}` ops; `x-sample` `value:`→`format:` on three fields; an extracted shared `common/schemas/PaginationLinks.yaml`; `validateOnly` on `place-order`; `updatedAt` on `OrderLine`; **moved root `tags` under `info.tags`** in `asyncapi.yaml` (root `tags` is invalid in AsyncAPI 3.0).
+- **Rule fixes** in `specfuse-openapi.yaml` — `specfuse-no-inline-objects` and `-no-inline-enums` had a malformed `properties[*][?(…)]` JSONPath (one level too deep, mislabeled locations) and ran against the resolved doc, so any properly `$ref`'d enum/object was inlined-then-falsely-flagged. Fixed the path and set `resolved: false`. The near-duplicate `specfuse-no-embedded-objects` was **merged into** `specfuse-no-inline-objects` (deduped).
 
 ### Three handbook-referenced Spectral rules with no implementation
 

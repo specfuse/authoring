@@ -7,12 +7,11 @@ info:
     No scheduled jobs in this example. See `handbooks/AsyncAPI_Handbook.md` in
     the spec-authoring-kit for the authoritative rules.
   version: 1.0.0
-
-tags:
-  - name: Customer
-    description: Customer domain events
-  - name: Order
-    description: Order domain events (Order aggregate + OrderLine entity)
+  tags:
+    - name: Customer
+      description: Customer domain events
+    - name: Order
+      description: Order domain events (Order aggregate + OrderLine entity)
 
 channels:
   applicationEvents:
