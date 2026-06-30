@@ -1,0 +1,81 @@
+# Copyright 2026 Specfuse contributors
+# Licensed under the Apache License, Version 2.0. See LICENSE.
+#
+# Release: on a `v*` tag, build the wheel + sdist, smoke-test the BUILT artifact
+# (clean-install bootstrap, not the source tree), then publish to PyPI via OIDC
+# trusted publishing. No API tokens — the trusted publisher must be configured on
+# PyPI for project `specfuse-authoring` (operator one-time setup; see RELEASING.md).
+# The build+smoke job always runs; publish only runs on a tag and only if it passed.
+
+name: release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+  workflow_dispatch:   # manual build/smoke without publishing (no tag → publish skipped)
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build wheel + sdist
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Verify the built wheel imports, exposes the CLI, and bootstraps
+        run: |
+          python -m venv /tmp/relenv
+          /tmp/relenv/bin/python -m pip install --upgrade pip
+          WHEEL=$(ls dist/*.whl)
+          /tmp/relenv/bin/python -m pip install "${WHEEL}"
+          /tmp/relenv/bin/python -c "import specfuse.authoring as a; print('import OK', a.__version__)"
+          /tmp/relenv/bin/specfuse-authoring --version
+          # Clean-install bootstrap: scaffolds the contract + wires the plugin.
+          /tmp/relenv/bin/specfuse-authoring init /tmp/smoke \
+            --name beta-shop --token beta --domain cart --yes
+          test -f /tmp/smoke/.specfuse/authoring/handbooks/API_Handbook.md
+          /tmp/relenv/bin/python -c "import json; s=json.load(open('/tmp/smoke/.claude/settings.json')); assert s['enabledPlugins']['specfuse-authoring@specfuse'] is True"
+          echo "OK: built wheel bootstraps a valid project."
+
+      - name: Tag/version agreement check
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          INIT=$(python -c "import re;print(re.search(r'__version__\s*=\s*\"([^\"]+)\"',open('specfuse/authoring/__init__.py').read()).group(1))")
+          KIT=$(python -c "import json;print(json.load(open('generator.lock'))['kit_version'])")
+          echo "tag=$TAG pyproject=$PKG __version__=$INIT generator.lock=$KIT"
+          test "$TAG" = "$PKG"  || { echo "::error::tag v$TAG != pyproject version $PKG"; exit 1; }
+          test "$TAG" = "$INIT" || { echo "::error::tag v$TAG != __version__ $INIT"; exit 1; }
+          test "$TAG" = "$KIT"  || { echo "::error::tag v$TAG != generator.lock kit_version $KIT"; exit 1; }
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build-test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write   # OIDC — required for trusted publishing; no API token
+    steps:
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI (trusted publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
