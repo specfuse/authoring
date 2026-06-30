@@ -23,8 +23,8 @@ dependencies = []
 specfuse-kit = "specfuse_kit.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/Specfuse/spec-authoring-kit"
-Source = "https://github.com/Specfuse/spec-authoring-kit"
+Homepage = "https://github.com/Specfuse/authoring"
+Source = "https://github.com/Specfuse/authoring"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/specfuse_kit"]

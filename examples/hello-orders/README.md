@@ -1,6 +1,6 @@
 # hello-orders
 
-A tiny, complete Specfuse example project bundled inside the [spec-authoring-kit](https://github.com/Specfuse/spec-authoring-kit). Its job is two-fold:
+A tiny, complete Specfuse example project bundled inside the [spec-authoring-kit](https://github.com/Specfuse/authoring). Its job is two-fold:
 
 1. **Pedagogical** — show, in one place, what a minimum-but-real Specfuse project looks like across OpenAPI, AsyncAPI, and Arazzo.
 2. **Regression net** — the kit's CI workflow re-validates this example on every PR; if a handbook change breaks the example, the PR fails.
