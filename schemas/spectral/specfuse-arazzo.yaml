@@ -19,17 +19,16 @@
 # explicit JSONPath targeting and are format-agnostic. Project-side CLI
 # invocation should select Arazzo files by glob pattern.
 #
-# Generalization notes for items lifted from the RestoManager source:
+# Generalization notes for items lifted from the source project:
 # - All rule IDs renamed from rm-arazzo-* to specfuse-arazzo-* (per
 #   compatibility.md §1).
 # - specfuse-arazzo-actors-role-shape: replaces the original
-#   rm-arazzo-actors-role-enum which pinned the closed RM role set
-#   (Authenticated/Admin/CompanyAdmin/RestaurantAdmin/RestaurantManager/
-#   Employee). The kit rule enforces only the PascalCase identifier
+#   rm-arazzo-actors-role-enum which pinned the source project's closed
+#   role set. The kit rule enforces only the PascalCase identifier
 #   shape; the project's overlay constrains the closed value set
 #   against common/enums.yaml#/Role.
 # - specfuse-arazzo-domain-shape: replaces the original
-#   rm-arazzo-domain-enum which enumerated the 17 RM domain values.
+#   rm-arazzo-domain-enum which enumerated the source project's domain set.
 #   The kit rule enforces only the kebab-case shape; the project's
 #   overlay constrains the closed value set against the project's
 #   domain list.
@@ -118,8 +117,8 @@ rules:
       field: x-domain
       function: truthy
 
-  # GENERALIZATION: the original rm-arazzo-domain-enum enumerated the 17 RM
-  # domain values. The kit-level rule enforces only the kebab-case shape;
+  # GENERALIZATION: the original rm-arazzo-domain-enum enumerated the source
+  # project's domain set. The kit-level rule enforces only the kebab-case shape;
   # projects constrain the closed value set against their declared domain
   # list via an overlay.
   specfuse-arazzo-domain-shape:
@@ -147,7 +146,7 @@ rules:
   # ===========================================================================
 
   # GENERALIZATION: the original rm-arazzo-actors-role-enum pinned values
-  # to the RM closed role set. The kit rule below enforces only the
+  # to the source project's closed role set. The kit rule below enforces only the
   # PascalCase shape; the project's overlay constrains the closed value
   # set against common/enums.yaml#/Role.
   specfuse-arazzo-actors-role-shape:

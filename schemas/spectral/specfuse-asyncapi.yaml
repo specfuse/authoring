@@ -16,7 +16,7 @@
 # are NOT baked in here. Projects should extend this ruleset in their own
 # .spectral.yaml and add the project-specific overlays. See schemas/README.md.
 #
-# Generalization notes for items lifted from the RestoManager source:
+# Generalization notes for items lifted from the source project:
 # - All rule IDs renamed from rm-async-* to specfuse-async-* (per
 #   compatibility.md §1). The asyncapi-* prefixed rules
 #   (asyncapi-channel-message-completeness,
@@ -25,11 +25,11 @@
 #   them by that exact identifier.
 # - Channel-address rule (specfuse-async-channel-address-format): the
 #   original rm-async-channel-address-format required addresses to begin
-#   with the literal "restomanager." prefix. The kit removes the prefix
+#   with the literal "<project>." prefix. The kit removes the prefix
 #   constraint and enforces only the dot-separated-segments shape;
 #   projects pin their prefix via an overlay.
 # - Shared-event-topic rule (specfuse-async-event-topic-must-be-shared):
-#   the literal "restomanager.events" requirement is dropped from the
+#   the literal "<project>.events" requirement is dropped from the
 #   kit-level rule. The kit retains the architectural invariant that all
 #   event-topic channels point at a single shared address — the rule now
 #   checks that all event-topic channels resolve to a single address per
@@ -39,8 +39,8 @@
 # - Operation tag canonical list (rm-async-operation-tag-name-canonical):
 #   replaced with specfuse-async-operation-tag-pascal — enforces the
 #   PascalCase shape only. The project's overlay enforces its closed
-#   value set (the 17 RM domains in PascalCase, or whatever the project
-#   declares).
+#   value set (the source project's domain set in PascalCase, or whatever
+#   the project declares).
 # - Note: handbooks reference specfuse-async-subscription-name-mismatch as
 #   the rule enforcing "subscription name = operation file stem". The
 #   source Spectral ruleset did NOT include a rule with this id — the
@@ -131,8 +131,8 @@ rules:
       function: truthy
 
   # GENERALIZATION: the original rm-async-channel-address-format required
-  # addresses to start with the literal RestoManager prefix
-  # ("restomanager.{segment}(.{segment})*"). The kit removes the literal
+  # addresses to start with the literal source-project prefix
+  # ("<project>.{segment}(.{segment})*"). The kit removes the literal
   # prefix and enforces only the dot-separated-lowercase-segments shape;
   # projects pin their prefix (e.g., "{project}.{segment}(.{segment})*")
   # via an overlay rule.
@@ -147,7 +147,7 @@ rules:
         match: "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9.-]*)+$"
 
   # GENERALIZATION: the original rm-async-event-topic-must-be-shared rule
-  # required the literal "restomanager.events" address. The kit retains
+  # required the literal "<project>.events" address. The kit retains
   # the architectural intent ("all event-topic channels in a project
   # should share a single address") but does not pin the literal value.
   # Projects override this rule in their overlay to enforce their
@@ -457,10 +457,10 @@ rules:
         match: "^[a-z][a-zA-Z0-9]*$"
 
   # GENERALIZATION: the original rm-async-partition-key-scope-values
-  # enumerated RM-specific scope values (aggregate, tenant, restaurant).
-  # The kit retains the generic scopes (aggregate, tenant) which are
-  # universal; project-specific narrower scopes (e.g., restaurant, site,
-  # customer) should be added via a project overlay.
+  # enumerated source-specific scope values. The kit retains the generic
+  # scopes (aggregate, tenant) which are universal; project-specific
+  # narrower scopes (e.g., site, customer) should be added via a project
+  # overlay.
   specfuse-async-partition-key-scope-values:
     description: "x-partition-key.scope must be: aggregate or tenant. Project-specific narrower scopes can be added via a project overlay."
     message: "x-partition-key.scope '{{value}}' is not valid. Universal values: aggregate, tenant. Add project-specific scopes via overlay."
@@ -488,7 +488,7 @@ rules:
       function: truthy
 
   # GENERALIZATION: the original rm-async-job-scope-values enumerated
-  # RM-specific scopes (global, perCompany, perRestaurant). Kept the
+  # source-specific scopes. Kept the
   # universal "global" plus a generic "perTenant". Projects should
   # override this rule in their overlay to add their bespoke per-X
   # scope values.
@@ -603,8 +603,8 @@ rules:
       function: truthy
 
   # GENERALIZATION: the original rm-async-operation-tag-name-canonical
-  # enumerated the 17 RM domain tags (Company, Compliance, ...,
-  # WorkItem). The closed value-set is project-defined. The kit-level
+  # enumerated the source project's domain set. The closed value-set is
+  # project-defined. The kit-level
   # rule enforces only the PascalCase shape; the project's overlay
   # constrains values to the project's declared domain list.
   specfuse-async-operation-tag-pascal:

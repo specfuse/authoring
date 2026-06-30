@@ -6,7 +6,7 @@ This is a Specfuse project — spec-first API design with OpenAPI 3.0.3 + AsyncA
 
 ## Authoritative rules
 
-All API, async, scenario, and AI-access design in this project MUST comply with the [Specfuse spec-authoring kit](https://github.com/clabonte/spec-authoring-kit). The kit's handbooks are the source of truth; this `CLAUDE.md` only documents project-specific overlays and conventions on top of them.
+All API, async, scenario, and AI-access design in this project MUST comply with the [Specfuse spec-authoring kit](https://github.com/Specfuse/spec-authoring-kit). The kit's handbooks are the source of truth; this `CLAUDE.md` only documents project-specific overlays and conventions on top of them.
 
 When designing specs, read the relevant handbook first:
 

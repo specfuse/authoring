@@ -7,7 +7,7 @@ This file tracks which Specfuse generator commits are known compatible with each
 | Kit version | Generator commit | Notes |
 |---|---|---|
 | `v0.1` (incubating) | `0a812e46` (`Bug #457: Add x-test-seed operation extension`) | Initial bootstrap. Kit content not yet populated; pin reflects the generator state at the moment of kit creation. |
-| `v0.2` (incubating, current) | *pending generator alignment — see follow-ups below* | Phases 1–6 of the kit-extraction effort: handbooks, samples, claude-assets, project-init template, and bundled `examples/hello-orders/` lifted and generalized from RestoManager. No generator-contract grammar changed; outstanding items are naming/style alignments that the generator will adopt incrementally. |
+| `v0.2` (incubating, current) | *pending generator alignment — see follow-ups below* | Phases 1–6 of the kit-extraction effort: handbooks, samples, claude-assets, project-init template, and bundled `examples/hello-orders/` lifted and generalized from the source project. No generator-contract grammar changed; outstanding items are naming/style alignments that the generator will adopt incrementally. |
 
 ## How to update this matrix
 
@@ -32,7 +32,7 @@ The kit accepts both forms in its prose (notes the alias where one exists), so t
 
 **Status:** kit canonical (Phase 2, 4 commits)
 
-The kit renamed all Spectral rule identifiers from the legacy `rm-*` prefix (inherited from RestoManager) to `specfuse-*` to match the kit's neutral identity. Rules touched:
+The kit renamed all Spectral rule identifiers from the legacy `rm-*` prefix (inherited from the source project) to `specfuse-*` to match the kit's neutral identity. Rules touched:
 
 | Legacy name | Kit canonical name |
 |---|---|
@@ -84,7 +84,7 @@ The generator currently ships `docs/VENDOR-EXTENSIONS.md` as a 45-line summary. 
 
 **Status:** kit canonical (Phase 2 and Phase 3, commit `d813853`)
 
-The kit's samples and handbooks consistently use `x-roles` and `x-scopes` (the shorter form, matching the generator's `ExtensionConstants` documentation). The RM endpoint-samples used the longer `x-required-roles` / `x-required-scopes` form. The kit aligned on the short form during the endpoint-samples generalization (documented in the commit message).
+The kit's samples and handbooks consistently use `x-roles` and `x-scopes` (the shorter form, matching the generator's `ExtensionConstants` documentation). The source project's endpoint-samples used the longer `x-required-roles` / `x-required-scopes` form. The kit aligned on the short form during the endpoint-samples generalization (documented in the commit message).
 
 **Generator action:** confirm `ExtensionConstants` accepts `x-roles` / `x-scopes` as canonical. If the longer alias is also accepted, document the canonical short form and mark the longer one as legacy.
 
@@ -94,17 +94,17 @@ The kit's samples and handbooks consistently use `x-roles` and `x-scopes` (the s
 
 **Status:** kit canonical (Phase 2, commit `569a89b`)
 
-The kit's AsyncAPI handbook §4.5.8 (telemetry dimension tagging) declares the unprefixed `event.entity` / `event.action` attributes as canonical, with a note that projects may apply a project-specific prefix (e.g., `{project}.event.entity`) via generator configuration. The legacy `resto.event.*` prefix is removed.
+The kit's AsyncAPI handbook §4.5.8 (telemetry dimension tagging) declares the unprefixed `event.entity` / `event.action` attributes as canonical, with a note that projects may apply a project-specific prefix (e.g., `{project}.event.entity`) via generator configuration. The legacy source-project-specific prefix (`<project>.event.*`) is removed.
 
 **Generator action:** emit telemetry attributes as `event.entity` / `event.action` by default. Read a `telemetryAttributePrefix` field from the project config (or environment) to apply a per-project prefix when set.
 
-**Severity:** breaking for any observability dashboards that filtered on `resto.event.*`. Coordinated with telemetry consumers before flip.
+**Severity:** breaking for any observability dashboards that filtered on the legacy `<project>.event.*` attributes. Coordinated with telemetry consumers before flip.
 
 ### 6. Spec path versioning baseline
 
 **Status:** kit canonical (commit `7cea428`)
 
-Projects bootstrapped from `templates/project-init/` start at `api/specs/v1/`. The RM project used `api/specs/v3/` for legacy reasons (it had migrated through v1 and v2 internally). Fresh projects from the kit do not inherit that history.
+Projects bootstrapped from `templates/project-init/` start at `api/specs/v1/`. The source project used `api/specs/v3/` for legacy reasons (it had migrated through v1 and v2 internally). Fresh projects from the kit do not inherit that history.
 
 **Generator action:** ensure the generator's spec-discovery logic does not assume any specific major version. The project's generator config (`{project}-project.json`) declares the spec paths explicitly; the generator should read them rather than glob for a hardcoded directory name.
 
@@ -114,7 +114,7 @@ Projects bootstrapped from `templates/project-init/` start at `api/specs/v1/`. T
 
 **Status:** kit canonical (Phase 3, commit `6d1a7c9`)
 
-The kit's AsyncAPI handbook §1.5 and §3.2 declare a single shared event topic (`{project}.events`) as the v2.1 architectural baseline, with a documented sharding escape hatch (handbook §3.2). The RM `message-samples.yaml` showed a per-aggregate event-topic address (`restomanager.scheduling.staffing-plan.events`) that predated this decision. The kit's `samples/message-samples.yaml` aligns with the handbook (`{project}.events` as the canonical channel address).
+The kit's AsyncAPI handbook §1.5 and §3.2 declare a single shared event topic (`{project}.events`) as the v2.1 architectural baseline, with a documented sharding escape hatch (handbook §3.2). The source project's `message-samples.yaml` showed a per-aggregate event-topic address (`{project}.{domain}.{aggregate}.events`) that predated this decision. The kit's `samples/message-samples.yaml` aligns with the handbook (`{project}.events` as the canonical channel address).
 
 **Generator action:** verify that the generator's channel-derivation logic supports both the single-shared-topic case (default) and the sharded case (escape hatch). The `messages:` map completeness invariant on the shared channel must be enforced by the bundled Spectral rule `asyncapi-channel-message-completeness`.
 
@@ -147,7 +147,7 @@ The kit handbooks document `Authenticated` as a **recommended convention** for p
 
 **Status:** kit canonical (Phases 2–3, throughout)
 
-The kit collapsed the RM-specific two-level tenant model (`companyId` + `restaurantId`) into a single `tenantId` envelope ApplicationProperty for routing. Projects with a multi-level tenancy hierarchy define their own scoping fields in addition to `tenantId` — but `tenantId` is the canonical top-level tenant scope across handbooks and samples.
+The kit collapsed the source project's two-level tenant model (a parent-org id plus a per-site id) into a single `tenantId` envelope ApplicationProperty for routing. Projects with a multi-level tenancy hierarchy define their own scoping fields in addition to `tenantId` — but `tenantId` is the canonical top-level tenant scope across handbooks and samples.
 
 **Generator action:** confirm that the envelope/header-stamping logic reads `tenantId` from the snapshot or operation parameters and stamps it as an ApplicationProperty. Project-specific narrower scopes (e.g., `customerId`, `siteId`) are stamped through `x-envelope-promote` declarations on snapshot fields, not through hardcoded generator logic.
 
@@ -172,7 +172,7 @@ These are gaps in the kit itself, separate from the generator-side follow-ups ab
 
 ### Three handbook-referenced Spectral rules with no implementation
 
-Surfaced during the schemas import (commits `78abc31`..`b146efa`) when verifying that every rule name mentioned in the handbooks resolves to a real Spectral rule in `schemas/spectral/`. The source RestoManager Spectral ruleset never implemented these three — the handbooks reference them as if they exist, but the enforcement code was aspirational.
+Surfaced during the schemas import (commits `78abc31`..`b146efa`) when verifying that every rule name mentioned in the handbooks resolves to a real Spectral rule in `schemas/spectral/`. The source project's Spectral ruleset never implemented these three — the handbooks reference them as if they exist, but the enforcement code was aspirational.
 
 | Rule ID | Referenced in | What it should enforce |
 |---|---|---|

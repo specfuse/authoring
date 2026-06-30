@@ -23,9 +23,8 @@
 //
 // The rule discriminates "this is the auditableEvent trait" by checking that
 // the header schema includes `eventId` (no other trait in the system has
-// that field). Drift in the trait file (legacy `companyId`, `restaurantId`,
-// `messageType`, `timestamp`, or removal of any required field) fires this
-// rule.
+// that field). Drift in the trait file (legacy `messageType`, `timestamp`,
+// or removal of any required field) fires this rule.
 //
 // Projects with a multi-level tenancy hierarchy may add narrower scoping
 // fields (e.g., `siteId`, `regionId`) via `x-envelope-promote` declarations
@@ -49,7 +48,7 @@ const ENVELOPE_FIELDS = {
   userId:           { required: false, type: "string",  format: "uuid" },
 };
 
-const FORBIDDEN_LEGACY_FIELDS = ["companyId", "restaurantId", "messageType", "timestamp"];
+const FORBIDDEN_LEGACY_FIELDS = ["messageType", "timestamp"];
 
 module.exports = function asyncAuditableEventEnvelopeShape(targetVal, _opts, context) {
   if (!targetVal || typeof targetVal !== "object") return;
@@ -105,7 +104,7 @@ module.exports = function asyncAuditableEventEnvelopeShape(targetVal, _opts, con
   for (const legacy of FORBIDDEN_LEGACY_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(props, legacy)) {
       results.push({
-        message: `auditableEvent envelope (on message ${messageName}) carries legacy field '${legacy}'. Drop it — see AsyncAPI Handbook §0.8 for the canonical envelope. (companyId/restaurantId → tenantId; messageType is removed; timestamp → producedAt.)`,
+        message: `auditableEvent envelope (on message ${messageName}) carries legacy field '${legacy}'. Drop it — see AsyncAPI Handbook §0.8 for the canonical envelope. (messageType is removed; timestamp → producedAt.)`,
       });
     }
   }

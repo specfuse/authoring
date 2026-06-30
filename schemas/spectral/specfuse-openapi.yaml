@@ -10,19 +10,19 @@
 # Projects should extend this ruleset in their own .spectral.yaml and add the
 # project-specific overlays. See schemas/README.md.
 #
-# Generalization notes for items lifted from the RestoManager source:
+# Generalization notes for items lifted from the source project:
 # - All rule IDs renamed from rm-* to specfuse-* (compatibility.md §1).
-# - Closed role enum (Admin/CompanyAdmin/...) removed from
+# - Closed role enum (the source project's closed role set) removed from
 #   specfuse-auth-roles-allowed: rule now enforces the structural
 #   PascalCase shape only. The project's overlay adds the closed value set.
-# - Path-pattern exclusions that named RestoManager-specific suffixes (e.g.,
+# - Path-pattern exclusions that named source-specific suffixes (e.g.,
 #   /dismiss, /access, /process, /errors on POST endpoints) were dropped:
 #   the rule still distinguishes resource-creation paths from action paths
 #   by the plural-noun heuristic. Projects with bespoke action verbs can
 #   add their own exclusions via an overlay.
-# - Illustrative event names in messages updated from RestoManager fixtures
-#   (e.g., StaffingPlan.Finalized) to generic order/customer vocabulary
-#   (e.g., Order.Created) to match examples/hello-orders/.
+# - Illustrative event names in messages updated from source-project fixtures
+#   to generic order/customer vocabulary (e.g., Order.Created) to match
+#   examples/hello-orders/.
 # =============================================================================
 
 extends: "spectral:oas"
@@ -102,7 +102,7 @@ rules:
   # ===== Verbs & statuses =====
   specfuse-post-201-location:
     description: "Resource-creation POST must return 201 with Location header (operation paths ending in a plural noun)."
-    # NOTE: The RestoManager source excluded RM-specific action suffixes
+    # NOTE: The source project excluded source-specific action suffixes
     # (/dismiss, /access, /process, /errors). Those exclusions were dropped
     # during the generalization; projects with bespoke action endpoints can
     # add their own exclusions via an overlay rule.
@@ -351,8 +351,7 @@ rules:
               type: string
 
   # GENERALIZATION: original rm-auth-roles-allowed pinned the values to the
-  # RestoManager closed set (Admin/CompanyAdmin/RestaurantAdmin/RestaurantManager/
-  # Employee/Authenticated). Per compatibility.md #9 and the kit's stated
+  # source project's closed role set. Per compatibility.md #9 and the kit's stated
   # position, the role enum is project-defined. This kit-level rule now
   # enforces only the structural PascalCase identifier shape. Projects MUST
   # add their own overlay rule constraining x-roles values to the closed set

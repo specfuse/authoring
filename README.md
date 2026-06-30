@@ -4,20 +4,22 @@ The upstream contract for [Specfuse](https://github.com/Specfuse) projects. Defi
 
 ## Quick start
 
-Bootstrap a new Specfuse project from the kit's `project-init` template:
+Bootstrap a new Specfuse project with the kit's CLI:
 
 ```bash
-git clone git@github.com:clabonte/spec-authoring-kit.git
-./spec-authoring-kit/templates/project-init/init.sh ~/projects/my-new-project
+uvx specfuse-kit init ~/projects/my-new-project
+# or: pipx run specfuse-kit init ~/projects/my-new-project
 ```
 
-You'll be prompted for the project name, the project token (channel-address prefix), and the initial domain. The script substitutes placeholders, copies the kit's Claude Code agents and commands into the new project's `.claude/`, and prints next steps.
+You'll be prompted for the project name, the project token (channel-address prefix), and the initial domain. The CLI substitutes placeholders, copies the kit's Claude Code agents and commands into the new project's `.claude/`, and prints next steps. Pass `--name`/`--token`/`--domain` to run non-interactively.
 
 To refresh agents and commands in an existing project after a kit update:
 
 ```bash
-./spec-authoring-kit/templates/project-init/init.sh --refresh-assets ~/projects/existing-project
+uvx specfuse-kit refresh ~/projects/existing-project
 ```
+
+(The legacy `templates/project-init/init.sh` bash bootstrap still works for git-clone workflows.)
 
 See [`templates/project-init/README.md`](templates/project-init/README.md) for the full bootstrap reference and [`examples/hello-orders/`](examples/hello-orders/) for a complete worked example.
 
@@ -65,9 +67,9 @@ The kit is upstream of both: it defines *what* a Specfuse spec must look like. T
 
 ## Status
 
-**Private, incubating** (`v0.2`). Phases 1–6 of the kit-extraction effort are complete: handbooks, samples, claude-assets, project-init template, and the bundled `hello-orders` example are all in place. Generator-side alignment items are tracked in [`compatibility.md`](compatibility.md#outstanding-generator-side-follow-ups).
+**Incubating** (`v0.3`), Apache-2.0. Handbooks, samples, claude-assets, the `project-init` template, the bundled `hello-orders` example, and the `specfuse-kit` CLI are all in place. Generator-side alignment items are tracked in [`compatibility.md`](compatibility.md#outstanding-generator-side-follow-ups).
 
-The kit is currently hosted under `clabonte/spec-authoring-kit` while the first external consumer is bootstrapped and the content is audited for leakage from its source project. It will transfer to `Specfuse/spec-authoring-kit` once that audit is clean.
+The kit is distributed on PyPI as `specfuse-kit` and hosted under [`Specfuse/spec-authoring-kit`](https://github.com/Specfuse/spec-authoring-kit). The code generator it drives is distributed separately as a pinned, checksum-verified release asset (see [`generator.lock`](generator.lock)); `specfuse-kit generate` resolves, verifies, and runs it on demand.
 
 ## Additional references
 

@@ -87,4 +87,4 @@ rules:
 
 ## Rename tracking
 
-The kit renamed all Spectral rule identifiers from the legacy `rm-*` prefix (inherited from RestoManager) to `specfuse-*`. The 12 rules whose renames were declared canonical in `compatibility.md` §1 are tracked there; this commit applied the same `rm-* -> specfuse-*` rule mechanically to every other ruleset entry as well. See `compatibility.md` for the generator-side follow-up.
+The kit renamed all Spectral rule identifiers from the legacy `rm-*` prefix (inherited from the source project) to `specfuse-*`. The 12 rules whose renames were declared canonical in `compatibility.md` §1 are tracked there; this commit applied the same `rm-* -> specfuse-*` rule mechanically to every other ruleset entry as well. See `compatibility.md` for the generator-side follow-up.

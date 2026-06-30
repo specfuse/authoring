@@ -9,3 +9,12 @@ node_modules/
 output/
 *.log
 *.iml
+
+# Python packaging
+__pycache__/
+*.py[cod]
+build/
+dist/
+*.egg-info/
+.venv/
+venv/

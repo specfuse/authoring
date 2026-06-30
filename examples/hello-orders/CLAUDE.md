@@ -1,6 +1,6 @@
 # hello-orders
 
-This is the bundled Specfuse example project inside the [spec-authoring-kit](https://github.com/clabonte/spec-authoring-kit). It exists for two reasons: (1) a worked-out reference of a minimum-but-real Specfuse project across OpenAPI + AsyncAPI + Arazzo, and (2) the kit's CI regression net — every PR to the kit re-validates this example.
+This is the bundled Specfuse example project inside the [spec-authoring-kit](https://github.com/Specfuse/spec-authoring-kit). It exists for two reasons: (1) a worked-out reference of a minimum-but-real Specfuse project across OpenAPI + AsyncAPI + Arazzo, and (2) the kit's CI regression net — every PR to the kit re-validates this example.
 
 ---
 
