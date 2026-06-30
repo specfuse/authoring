@@ -8,20 +8,18 @@ on:
   push:
     paths:
       - "pyproject.toml"
-      - "src/**"
+      - "specfuse/**"
       - "handbooks/**"
       - "samples/**"
       - "templates/**"
-      - "claude-assets/**"
       - "schemas/**"
       - "generator.lock"
       - ".github/workflows/build-wheel.yml"
   pull_request:
     paths:
       - "pyproject.toml"
-      - "src/**"
+      - "specfuse/**"
       - "templates/**"
-      - "claude-assets/**"
       - ".github/workflows/build-wheel.yml"
 
 jobs:
@@ -52,8 +50,8 @@ jobs:
           import sys, zipfile
           names = zipfile.ZipFile(sys.argv[1]).namelist()
           required = [
-              "specfuse/authoring/_kit/claude-assets/agents/",
               "specfuse/authoring/_kit/handbooks/API_Handbook.md",
+              "specfuse/authoring/_kit/samples/",
               "specfuse/authoring/_kit/templates/project-init/",
               "specfuse/authoring/_kit/generator.lock",
           ]
@@ -77,8 +75,11 @@ jobs:
           echo "--- assert bootstrap output ---"
           test -f /tmp/smoke/beta-shop-project.json
           test -d /tmp/smoke/api/specs/v1/domains/cart
-          test -d /tmp/smoke/.claude/agents
-          test -d /tmp/smoke/.claude/commands
+          # contract scaffolded for the skills to read
+          test -f /tmp/smoke/.specfuse/authoring/handbooks/API_Handbook.md
+          test -d /tmp/smoke/.specfuse/authoring/samples
+          # plugin wired into settings.json (marketplace + enabled plugin)
+          python -c "import json; s=json.load(open('/tmp/smoke/.claude/settings.json')); assert s['enabledPlugins']['specfuse-authoring@specfuse'] is True; assert s['extraKnownMarketplaces']['specfuse']['source']['repo']=='specfuse/specfuse'"
           # no unresolved placeholders or leftover .template files
           ! grep -rqE '\{ProjectName\}|\{project\}|\{initial-domain\}' /tmp/smoke
           ! find /tmp/smoke -name '*.template' | grep -q .

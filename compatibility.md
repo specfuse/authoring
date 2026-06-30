@@ -20,7 +20,7 @@ Bump the kit version on every change to:
 
 Pair the kit bump with the generator commit that implements the corresponding parser/validator change, and add a row above.
 
-Workflow assets (`claude-assets/`, `templates/project-init/init.sh`) do not require generator-side coordination and do not need a matrix bump.
+Claude assets (the `specfuse-authoring` plugin in the `specfuse/specfuse` marketplace) and the `specfuse-authoring` CLI do not require generator-side coordination and do not need a matrix bump.
 
 ---
 

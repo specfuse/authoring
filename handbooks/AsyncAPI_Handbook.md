@@ -1343,7 +1343,7 @@ Every domain with async specifications SHOULD have corresponding flow documentat
 - When adding or modifying async specs, the corresponding flow doc should be created or updated
 - Each flow doc covers one end-to-end process (trigger → final outcome)
 - Flow docs use Mermaid sequence diagrams for visual clarity
-- The `/design-async` skill from the kit's `claude-assets/` enforces flow doc creation as part of the design process
+- The `/specfuse-authoring:design-async` skill (from the `specfuse-authoring` plugin) enforces flow doc creation as part of the design process
 
 Project-specific location and template are decided by the project — typical layout is `api/docs/flows/{domain}/`.
 

@@ -11,16 +11,16 @@ def kit_root() -> Path:
 
     Works in two layouts:
       * installed wheel  -> specfuse/authoring/_kit/...
-      * editable/repo    -> <repo-root>/  (handbooks/, claude-assets/, ...)
+      * editable/repo    -> <repo-root>/  (handbooks/, samples/, ...)
     """
     bundled = Path(str(files("specfuse.authoring"))) / "_kit"
-    if (bundled / "claude-assets").is_dir():
+    if (bundled / "handbooks").is_dir():
         return bundled
     # Dev fallback: specfuse/authoring/__init__.py -> repo root is two parents up.
     repo = Path(__file__).resolve().parents[2]
-    if (repo / "claude-assets").is_dir():
+    if (repo / "handbooks").is_dir():
         return repo
     raise FileNotFoundError(
-        "Cannot locate kit assets (claude-assets/). "
+        "Cannot locate kit content (handbooks/). "
         f"Looked in {bundled} and {repo}."
     )

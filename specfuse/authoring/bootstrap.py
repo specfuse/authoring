@@ -1,15 +1,21 @@
-"""Project bootstrap — Python port of templates/project-init/init.sh.
+"""Project bootstrap for specfuse-authoring.
 
-Faithful to the bash original:
-  * init    -> prompt name/token/domain, copy template tree, rename the
-               {initial-domain} dir, substitute placeholders in *.template
-               files, rename the project json, copy claude-assets.
-  * refresh -> re-copy claude-assets agents + commands into an existing
-               project's .claude/.
+  * init    -> prompt name/token/domain, lay down the project skeleton from the
+               project-init template, scaffold the authoring contract into
+               .specfuse/authoring/, and wire the specfuse-authoring Claude Code
+               plugin into .claude/settings.json.
+  * refresh -> re-sync .specfuse/authoring/ from the installed package and
+               re-assert the plugin config in an existing project.
+
+Claude assets (skills + agents) are distributed via the `specfuse` Claude Code
+plugin marketplace (github: specfuse/specfuse), NOT copied per project. `init`
+registers that marketplace and enables the `specfuse-authoring@specfuse` plugin;
+the skills read the contract scaffolded under .specfuse/authoring/.
 """
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import sys
@@ -20,30 +26,74 @@ from . import kit_root
 NAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")  # kebab-case
 TOKEN_RE = re.compile(r"^[a-z][a-z0-9]*$")  # lowercase alnum, no dots/hyphens
 
+# Claude Code plugin wiring (shared `specfuse` marketplace; our plugin key).
+MARKETPLACE_KEY = "specfuse"
+MARKETPLACE_VALUE = {"source": {"source": "github", "repo": "specfuse/specfuse"}}
+PLUGIN_KEY = "specfuse-authoring@specfuse"
 
-def _claude_assets_src() -> Path:
-    assets = kit_root() / "claude-assets"
-    if not (assets / "agents").is_dir() or not (assets / "commands").is_dir():
-        sys.exit(f"Error: kit claude-assets incomplete at {assets}")
-    return assets
+# The authoring contract the skills read at runtime, scaffolded into the project.
+CONTRACT_DIRS = ("handbooks", "samples")
+SCAFFOLD_SUBDIR = Path(".specfuse") / "authoring"
 
 
-def copy_claude_assets(target: Path) -> None:
-    """Copy agents/ and commands/ markdown into target/.claude/ (mirrors init.sh)."""
-    src = _claude_assets_src()
-    for sub in ("agents", "commands"):
-        dst = target / ".claude" / sub
-        dst.mkdir(parents=True, exist_ok=True)
-        for md in sorted((src / sub).glob("*.md")):
-            shutil.copy2(md, dst / md.name)
+def scaffold_contract(target: Path) -> None:
+    """Copy the authoring contract (handbooks/, samples/) into
+    <target>/.specfuse/authoring/. Overwrites — this is a version-sync."""
+    root = kit_root()
+    dest_base = target / SCAFFOLD_SUBDIR
+    for sub in CONTRACT_DIRS:
+        src = root / sub
+        if not src.is_dir():
+            sys.exit(f"Error: kit content missing: {src}")
+        dst = dest_base / sub
+        if dst.exists():
+            shutil.rmtree(dst)
+        shutil.copytree(src, dst)
+
+
+def wire_plugin(target: Path) -> list[str]:
+    """Parse-merge-rewrite <target>/.claude/settings.json to assert the
+    specfuse-authoring plugin config. Idempotent; returns the changed keys.
+
+    - extraKnownMarketplaces["specfuse"] = the github source (overwrite on drift)
+    - enabledPlugins["specfuse-authoring@specfuse"] = true (restore if removed)
+    All other settings are preserved untouched.
+    """
+    claude_dir = target / ".claude"
+    settings_path = claude_dir / "settings.json"
+    if settings_path.exists():
+        data = json.loads(settings_path.read_text())
+    else:
+        data = {}
+
+    changed: list[str] = []
+    marketplaces = data.setdefault("extraKnownMarketplaces", {})
+    if marketplaces.get(MARKETPLACE_KEY) != MARKETPLACE_VALUE:
+        marketplaces[MARKETPLACE_KEY] = MARKETPLACE_VALUE
+        changed.append(f"extraKnownMarketplaces.{MARKETPLACE_KEY}")
+    plugins = data.setdefault("enabledPlugins", {})
+    if plugins.get(PLUGIN_KEY) is not True:
+        plugins[PLUGIN_KEY] = True
+        changed.append(f"enabledPlugins.{PLUGIN_KEY}")
+
+    if changed:
+        claude_dir.mkdir(parents=True, exist_ok=True)
+        settings_path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    return changed
 
 
 def refresh(target: Path) -> int:
     if not target.is_dir():
         sys.exit(f"Error: target directory does not exist: {target}")
-    print(f"Refreshing claude-assets in: {target}")
-    copy_claude_assets(target)
-    print("✓ Refreshed .claude/agents/ and .claude/commands/")
+    print(f"Refreshing authoring contract + plugin config in: {target}")
+    scaffold_contract(target)
+    changed = wire_plugin(target)
+    print("✓ Synced .specfuse/authoring/ (handbooks, samples)")
+    print(
+        f"✓ Re-asserted plugin config: {', '.join(changed)}"
+        if changed else "✓ Plugin config already current"
+    )
+    print("  Pull the latest skills in Claude Code: /plugin update specfuse-authoring@specfuse")
     return 0
 
 
@@ -104,7 +154,7 @@ def init(
     target = target.resolve()
     print(f"\nBootstrapping Specfuse project.\n  Kit:    {kit_root()}\n  Target: {target}\n")
 
-    # Copy template tree, excluding init.sh and README.md (mirrors init.sh).
+    # Copy template tree, excluding any bootstrap script/README at the template root.
     for src in template_root.rglob("*"):
         if not src.is_file():
             continue
@@ -137,16 +187,22 @@ def init(
     if proj_json.is_file():
         proj_json.rename(target / f"{project_name}-project.json")
 
-    print("Copying claude-assets...")
-    copy_claude_assets(target)
+    print("Scaffolding authoring contract + wiring the plugin...")
+    scaffold_contract(target)
+    wire_plugin(target)
 
     print(
         f"\n✓ Project bootstrapped at {target}\n\n"
         "  Next steps:\n"
         f"    cd {target}\n"
-        "    git init && git add . && git commit -m 'Initial bootstrap from spec-authoring-kit'\n\n"
-        "  Then read CLAUDE.md and start designing with /design-scenario or /design-async.\n"
-        "  Refresh agents/commands after a kit update with:\n"
+        "    git init && git add . && git commit -m 'Initial bootstrap from specfuse-authoring'\n\n"
+        "  Install the authoring skills (one-time, in Claude Code):\n"
+        "    /plugin marketplace add specfuse/specfuse\n"
+        "    /plugin install specfuse-authoring@specfuse\n"
+        "  (init already registered the marketplace and enabled the plugin in\n"
+        "   .claude/settings.json — the commands above are the manual equivalent.)\n\n"
+        "  Then design with /specfuse-authoring:design-scenario or :design-async.\n"
+        "  After a kit update, re-sync the contract + plugin config with:\n"
         f"    specfuse-authoring refresh {target}\n"
     )
     return 0

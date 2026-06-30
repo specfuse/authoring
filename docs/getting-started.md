@@ -14,10 +14,10 @@ This guide takes you from zero to a generated backend: install the kit, bootstra
 | **Python 3.10+** | runs the `specfuse-authoring` CLI | `python3 --version` |
 | **[uv](https://docs.astral.sh/uv/)** or **[pipx](https://pipx.pypa.io/)** | runs the CLI without a global install | `uvx --version` / `pipx --version` |
 | **Java 17+ (JRE)** | the code generator is a Java binary | `java -version` |
-| **[Claude Code](https://claude.com/claude-code)** (optional) | the `/design-*` authoring commands | — |
+| **[Claude Code](https://claude.com/claude-code)** (optional) | the `/specfuse-authoring:*` authoring skills | — |
 | **GitHub access token** | only needed to run `generate` (pulls the private generator) | see §6 |
 
-You do **not** need to clone this repo. The CLI ships every kit asset (handbooks, samples, templates, Claude assets) inside the package.
+You do **not** need to clone this repo. The CLI ships every kit asset (handbooks, samples, templates, schemas) inside the package, and the Claude Code authoring assets ship as the `specfuse-authoring` plugin in the `specfuse/specfuse` marketplace.
 
 ## 2. Bootstrap a project
 
@@ -37,12 +37,23 @@ You'll be prompted for three things (or pass them as flags for non-interactive u
 uvx specfuse-authoring init ~/projects/my-app --name my-app --token myapp --domain order
 ```
 
-This creates a complete project skeleton: the `api/specs/v1/` tree, a `{name}-project.json` generator config, a `CLAUDE.md`, and a `.claude/` folder with the kit's design agents and slash commands.
+This creates a complete project skeleton: the `api/specs/v1/` tree, a `{name}-project.json` generator config, a `CLAUDE.md`, the authoring contract (handbooks + samples) scaffolded into `.specfuse/authoring/`, and a `.claude/settings.json` wired to the `specfuse-authoring` plugin.
 
 ```bash
 cd ~/projects/my-app
 git init && git add . && git commit -m "Initial bootstrap from spec-authoring-kit"
 ```
+
+### Install the authoring plugin
+
+The design and validation skills (and the 5 design sub-agents) ship as the `specfuse-authoring` plugin in the shared `specfuse` marketplace. `init` auto-wires the plugin into `.claude/settings.json`, but install it once in Claude Code with:
+
+```
+/plugin marketplace add specfuse/specfuse
+/plugin install specfuse-authoring@specfuse
+```
+
+The skills read the authoring contract from `.specfuse/authoring/` (scaffolded by `init`).
 
 ## 3. Author your first domain
 
@@ -51,23 +62,23 @@ The [handbooks](../handbooks/) are the authoritative spec-authoring contract. St
 | To design… | Read | Command |
 |---|---|---|
 | An entity or endpoint | [`API_Handbook.md`](../handbooks/API_Handbook.md) + [`samples/endpoint-samples.yaml`](../samples/endpoint-samples.yaml) | author by hand |
-| An async event / scheduled job | [`AsyncAPI_Handbook.md`](../handbooks/AsyncAPI_Handbook.md) | `/design-async` |
-| A cross-domain scenario | [`Arazzo_Handbook.md`](../handbooks/Arazzo_Handbook.md) | `/design-scenario` |
-| A setup recipe | [`Arazzo_Handbook.md`](../handbooks/Arazzo_Handbook.md) §7 | `/design-recipe` |
+| An async event / scheduled job | [`AsyncAPI_Handbook.md`](../handbooks/AsyncAPI_Handbook.md) | `/specfuse-authoring:design-async` |
+| A cross-domain scenario | [`Arazzo_Handbook.md`](../handbooks/Arazzo_Handbook.md) | `/specfuse-authoring:design-scenario` |
+| A setup recipe | [`Arazzo_Handbook.md`](../handbooks/Arazzo_Handbook.md) §7 | `/specfuse-authoring:design-recipe` |
 | AI agent access policy | [`AI_Access_Policy_Framework.md`](../handbooks/AI_Access_Policy_Framework.md) | copy the template |
 
-The slash commands run inside Claude Code in your project directory. The bundled [`examples/hello-orders/`](../examples/hello-orders/) is a complete worked reference — pattern-match against it.
+The skills run inside Claude Code in your project directory. The bundled [`examples/hello-orders/`](../examples/hello-orders/) is a complete worked reference — pattern-match against it.
 
 > **`aiAccess` is required on every entity.** Each `x-entity` must declare an `aiAccess` block. For entities the AI must not touch, use the canonical Tier 0 form `operations: []` with a `reason`. See `Vendor_Extensions.md` §1.1.1.
 
 ## 4. Validate
 
-Inside Claude Code, the kit's commands validate your specs against the handbook rules:
+Inside Claude Code, the kit's skills validate your specs against the handbook rules:
 
 ```
-/validate            # OpenAPI surface
-/validate-async      # AsyncAPI messages and operations
-/validate-scenarios  # Arazzo scenarios and recipes
+/specfuse-authoring:validate            # OpenAPI surface
+/specfuse-authoring:validate-async      # AsyncAPI messages and operations
+/specfuse-authoring:validate-scenarios  # Arazzo scenarios and recipes
 ```
 
 ## 5. Generate code
@@ -96,13 +107,13 @@ If no generator is pinned yet for your kit version, `generate` exits with a clea
 
 ## 7. Keep assets current
 
-When the kit ships an update, refresh your project's design agents and commands:
+When the kit ships an update, re-sync your project's authoring contract and plugin config:
 
 ```bash
 uvx specfuse-authoring refresh ~/projects/my-app
 ```
 
-This re-copies `.claude/agents/` and `.claude/commands/` from the installed kit. Your specs are never touched.
+This re-syncs `.specfuse/authoring/` from the installed package and re-asserts the `specfuse-authoring` plugin config in `.claude/settings.json`. Your specs are never touched. To pull newer skills themselves, run `/plugin update specfuse-authoring@specfuse` inside Claude Code.
 
 ## Where to go next
 

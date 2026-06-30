@@ -33,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
     p_init.add_argument("--domain", help="Initial domain (kebab-case). Prompted if omitted.")
     p_init.add_argument("-y", "--yes", action="store_true", help="Don't prompt to overwrite a non-empty dir.")
 
-    p_refresh = sub.add_parser("refresh", help="Re-copy kit claude-assets into an existing project.")
+    p_refresh = sub.add_parser("refresh", help="Re-sync .specfuse/authoring/ and re-assert the plugin config in an existing project.")
     p_refresh.add_argument("target", type=Path, help="Existing project directory.")
 
     p_gen = sub.add_parser(

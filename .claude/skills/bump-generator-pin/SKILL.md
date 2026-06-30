@@ -63,7 +63,7 @@ If any are missing, ask for them. Do not guess a SHA-256.
 
 - Never invent or commit a token or SHA-256. If the SHA isn't supplied, stop and ask.
 - This skill lives in the kit repo's `.claude/` and is maintainer-only — it is
-  **not** part of `claude-assets/` and must never be copied into client projects.
+  **not** part of the `specfuse-authoring` plugin and must never reach client projects.
 - A generator release without this kit-side bump is a no-op for clients; a kit
   bump pointing at a SHA that doesn't match the published jar makes `generate`
   abort on every client. Keep version, asset, tag, and SHA-256 mutually consistent.

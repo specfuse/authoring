@@ -33,11 +33,13 @@ packages = ["specfuse"]
 
 # The kit's authored content lives at the repo root for human browsing.
 # Map it into the package so it ships in the wheel as specfuse/authoring/_kit/...
+# Claude assets (skills + agents) are NOT bundled — they ship via the `specfuse`
+# plugin marketplace (specfuse/specfuse). The package carries only the contract
+# the skills read (handbooks, samples) plus the project skeleton + schemas.
 [tool.hatch.build.targets.wheel.force-include]
 "handbooks" = "specfuse/authoring/_kit/handbooks"
 "samples" = "specfuse/authoring/_kit/samples"
 "templates" = "specfuse/authoring/_kit/templates"
-"claude-assets" = "specfuse/authoring/_kit/claude-assets"
 "schemas" = "specfuse/authoring/_kit/schemas"
 "generator.lock" = "specfuse/authoring/_kit/generator.lock"
 
@@ -47,7 +49,6 @@ include = [
   "handbooks",
   "samples",
   "templates",
-  "claude-assets",
   "schemas",
   "generator.lock",
   "README.md",

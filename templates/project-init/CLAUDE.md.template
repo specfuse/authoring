@@ -12,20 +12,20 @@ When designing specs, read the relevant handbook first:
 
 | Topic | Handbook |
 |---|---|
-| REST API design (paths, models, HTTP contract, errors) | `<kit>/handbooks/API_Handbook.md` |
-| AsyncAPI events, scheduled jobs, snapshots, workers | `<kit>/handbooks/AsyncAPI_Handbook.md` |
-| Arazzo scenarios and setup recipes | `<kit>/handbooks/Arazzo_Handbook.md` |
-| Vendor extensions (`x-entity`, `x-emits`, `x-label`, etc.) | `<kit>/handbooks/Vendor_Extensions.md` |
-| AI agent access policy (tier framework) | `<kit>/handbooks/AI_Access_Policy_Framework.md` |
+| REST API design (paths, models, HTTP contract, errors) | `.specfuse/authoring/handbooks/API_Handbook.md` |
+| AsyncAPI events, scheduled jobs, snapshots, workers | `.specfuse/authoring/handbooks/AsyncAPI_Handbook.md` |
+| Arazzo scenarios and setup recipes | `.specfuse/authoring/handbooks/Arazzo_Handbook.md` |
+| Vendor extensions (`x-entity`, `x-emits`, `x-label`, etc.) | `.specfuse/authoring/handbooks/Vendor_Extensions.md` |
+| AI agent access policy (tier framework) | `.specfuse/authoring/handbooks/AI_Access_Policy_Framework.md` |
 
 Canonical samples to copy from:
 
-- `<kit>/samples/endpoint-samples.yaml`
-- `<kit>/samples/message-samples.yaml`
-- `<kit>/samples/scenario-samples.yaml`
-- `<kit>/samples/recipe-samples.yaml`
+- `.specfuse/authoring/samples/endpoint-samples.yaml`
+- `.specfuse/authoring/samples/message-samples.yaml`
+- `.specfuse/authoring/samples/scenario-samples.yaml`
+- `.specfuse/authoring/samples/recipe-samples.yaml`
 
-Replace `<kit>` with the path where the kit is cloned (typically `../spec-authoring-kit` if cloned as a sibling).
+The authoring contract (handbooks + samples) is scaffolded into `.specfuse/authoring/` by `specfuse-authoring init` and kept current with `specfuse-authoring refresh`.
 
 ---
 
@@ -58,7 +58,7 @@ Starter shape (edit `enums.yaml` to add the roles your project actually needs):
 
 ### AI access policy
 
-The project's per-entity AI access tier assignments are documented in `api/docs/{ProjectName}-ai-access-policy.md` (copy from `<kit>/templates/ai-access-policy-template.md`). Every entity with `x-entity` must be assigned to a tier (0 = no access, 1 = read-only, 2 = collaborative, 3 = AI-owned). See `<kit>/handbooks/AI_Access_Policy_Framework.md` for tier semantics.
+The project's per-entity AI access tier assignments are documented in `api/docs/{ProjectName}-ai-access-policy.md`. Every entity with `x-entity` must be assigned to a tier (0 = no access, 1 = read-only, 2 = collaborative, 3 = AI-owned). See `.specfuse/authoring/handbooks/AI_Access_Policy_Framework.md` for tier semantics.
 
 ### Flow documentation
 
@@ -102,27 +102,27 @@ Cross-cutting Arazzo recipes and scenarios live under `api/specs/v1/scenarios/` 
 
 ## Claude Code workflow
 
-This project's `.claude/agents/` and `.claude/commands/` are copies of the kit's `claude-assets/`. To start designing:
+This project uses the `specfuse-authoring` Claude Code plugin (skills + design agents), wired into `.claude/settings.json` by `specfuse-authoring init`. Install it once with `/plugin marketplace add specfuse/specfuse` then `/plugin install specfuse-authoring@specfuse`. To start designing:
 
 | Task | Command |
 |---|---|
-| Design a new REST endpoint | (no kit command yet — author by hand following `<kit>/handbooks/API_Handbook.md`) |
-| Design a new async flow (events, scheduled jobs) | `/design-async` |
-| Design a new Arazzo scenario | `/design-scenario` |
-| Design a new setup recipe | `/design-recipe` |
-| Validate scenario files | `/validate-scenarios` |
-| Validate AsyncAPI specs | `/validate-async` |
-| List existing scenarios | `/list-scenarios` |
-| Bundle specs for the generator | `/bundle` |
-| Generate code from specs | `/generate` |
+| Design a new REST endpoint | (no kit command yet — author by hand following `.specfuse/authoring/handbooks/API_Handbook.md`) |
+| Design a new async flow (events, scheduled jobs) | `/specfuse-authoring:design-async` |
+| Design a new Arazzo scenario | `/specfuse-authoring:design-scenario` |
+| Design a new setup recipe | `/specfuse-authoring:design-recipe` |
+| Validate scenario files | `/specfuse-authoring:validate-scenarios` |
+| Validate AsyncAPI specs | `/specfuse-authoring:validate-async` |
+| List existing scenarios | `/specfuse-authoring:list-scenarios` |
+| Bundle specs for the generator | `/specfuse-authoring:bundle` |
+| Generate code from specs | `/specfuse-authoring:generate` |
 
-See `<kit>/claude-assets/commands/` for the full command list with descriptions.
-
-When the kit ships updated agents/commands, refresh this project's copies:
+When the kit ships updates, re-sync the authoring contract and plugin config:
 
 ```bash
-<kit>/templates/project-init/init.sh --refresh-assets $(pwd)
+uvx specfuse-authoring refresh $(pwd)
 ```
+
+Pull newer skills with `/plugin update specfuse-authoring@specfuse`.
 
 ---
 

@@ -41,7 +41,10 @@ Bump the kit version and add a `compatibility.md` row on any change to:
 Pair the kit bump with the generator commit that implements the corresponding
 parser/validator change.
 
-Workflow assets (`claude-assets/`, `templates/project-init/`) and the
+The Claude Code authoring assets (skills + design agents) live in the
+`specfuse-authoring` plugin in the `specfuse/specfuse` marketplace, not in this
+repo. The kit ships the CLI plus the handbooks, samples, schemas, and
+templates. Workflow assets (`templates/project-init/`) and the
 `specfuse-authoring` CLI do **not** require generator-side coordination and do not
 need a matrix bump — but a CLI change still bumps the package version.
 
@@ -53,7 +56,8 @@ need a matrix bump — but a CLI change still bumps the package version.
   still passes.
 - **Build the package.** `python -m build --wheel` must succeed, and a wheel
   installed in a clean environment must run `specfuse-authoring init` correctly
-  (assets resolve from the bundled `specfuse/authoring/_kit/` path, not the repo).
+  (the wheel bundles handbooks, samples, templates, and schemas under the
+  `specfuse/authoring/_kit/` path; Claude assets resolve from the plugin, not the wheel).
 - **Re-run the leak check.** Confirm no source-project brand names leaked back
   in:
   `grep -rinE 'restomanager|restaurant|<your-source-brand>' . | grep -v '.git/'`
