@@ -581,8 +581,9 @@ rules:
         schema:
           type: object
           additionalProperties: false
-          required: ["type"]
+          required: ["domain", "type"]
           properties:
+            domain: { type: string, pattern: "^[a-z][a-z0-9-]*$" }
             type: { type: string, enum: ["entity","aggregate"] }
             requiresPagination: { type: boolean, default: true }
             hasMany:

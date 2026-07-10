@@ -495,6 +495,78 @@ payload:
       default: 30
 ```
 
+### 2.5 The Closed Universe: No Open Maps in Event Payloads
+
+Event payloads live in a **closed universe** — the same principle that governs the domain registry (`API_Handbook.md §0.1`) applies to the *shape* of every payload. Each field of a snapshot, a `context` object, or a job payload MUST resolve to a **named, typed schema**: a scalar with a declared `format`, an enum, a snapshot `$ref`, or a value object (`x-value-object`, `Vendor_Extensions.md §1.2`). What is forbidden is the **open map** — a free-form `object` with `additionalProperties: true` (or `additionalProperties: { }`) standing in for "some set of keys we don't want to enumerate."
+
+**Why open maps are banned:**
+
+- **No generated types.** An open map generates as `Dictionary<string, object>` / `Map<String, Object>` / `dict[str, Any]` — the consumer self-sufficiency and typed-payload guarantees of §1.2 evaporate. Every consumer re-invents parsing and re-guesses the value type.
+- **No validation, no evolution signal.** Nothing constrains the keys, so nothing flags a producer that renames one. The snapshot-version cascade (§2.3) cannot see inside an open map, so a breaking change ships silently.
+- **No audit surface.** PII/classification rules (§2.3, `Vendor_Extensions.md §1.5`) key off declared fields. Data hidden in an open map bypasses `x-snapshot-pii-acknowledged` entirely.
+
+**The remodel:** when the data is genuinely heterogeneous (a variable set of extracted values, per-line annotations, arbitrary tags), do not reach for a map keyed by strings. Model it as an **array of self-describing value objects** — each element names its own kind via a discriminator and carries a typed value. The set of kinds is itself a closed enum, so the universe stays closed.
+
+#### Worked example: `DocumentExtractedContext`
+
+A `Document.Extracted` state-transition event (`x-trigger-when: "After.status == 'extracted' && Before.status != 'extracted'"`) carries a `context` describing the fields an extraction worker pulled out of the document. The first cut modeled that context as an open map of field-name → value.
+
+**Before — open map (rejected):**
+
+```yaml
+# events/DocumentExtractedContext.yaml  ❌
+type: object
+description: Fields extracted from the document, keyed by field name.
+additionalProperties: true        # <-- open map: any string key, any value
+# e.g. { "invoiceNumber": "INV-42", "total": 128.5, "issuedOn": "2026-07-01" }
+```
+
+Problems: the key set is unbounded, the value type is `object`, and neither `total` (a money amount) nor `invoiceNumber` (an identifier) carries type, confidence, or provenance. Generated consumers get `Dictionary<string, object>`.
+
+**After — array of self-describing value objects (correct):**
+
+```yaml
+# events/DocumentExtractedContext.yaml  ✅
+type: object
+required: [fields]
+description: Fields extracted from the document, as a closed set of typed value objects.
+properties:
+  fields:
+    type: array
+    items:
+      $ref: './ExtractedField.yaml'
+```
+
+```yaml
+# events/ExtractedField.yaml  ✅  (self-describing value object)
+type: object
+x-value-object:
+  defaultStorage: 'single_json'
+  immutable: true
+required: [kind, value, confidence]
+properties:
+  kind:                            # discriminator — the closed set of extractable fields
+    $ref: './ExtractedFieldKind.yaml'
+  value:                           # typed, normalized value
+    type: string
+  confidence:
+    type: number
+    minimum: 0
+    maximum: 1
+  source:                          # provenance: where on the document it was found
+    type: string
+    nullable: true
+    description: e.g. page/region locator; null when the extractor cannot attribute it.
+```
+
+```yaml
+# models/ExtractedFieldKind.yaml  ✅  (closed enum — the universe of kinds)
+type: string
+enum: [invoiceNumber, total, issuedOn, vendorName, currency]
+```
+
+Now every extracted field is a first-class, typed, versioned VO drawn from a closed enum of `kind`s. Adding a new extractable field is a one-line enum edit that the version cascade and Spectral rules can see — the universe stays closed. `additionalProperties: true` anywhere in an event payload is an ERROR; the escape hatch (a genuinely opaque blob) is a single scalar `type: string, format: byte` field with a documented content type, never a keyed map.
+
 ---
 
 ## 3) Channel Design

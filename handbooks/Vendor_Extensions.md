@@ -25,6 +25,7 @@ This document provides a comprehensive specification of all vendor extensions (`
 **Schema**:
 ```yaml
 x-entity:
+  domain: string                  # Required: owning domain (kebab-case; MUST be a key in info.x-domains)
   type: string                    # Required: "aggregate" | "entity"
   belongsTo: object | string[]   # Optional: Parent aggregate relationships with cardinality
   hasOne: string[]               # Optional: One-to-one child relationships
@@ -36,6 +37,8 @@ x-entity:
   valueObjects: object           # Optional: Value object storage configuration
   aiAccess: object               # Optional: AI agent access policy (see 1.1.1). Absent = no AI access.
 ```
+
+**`domain` (required, leads the block).** Every entity is assigned to exactly one domain. The value is a kebab-case name that **MUST** be a key in the project's domain registry `info.x-domains` (see `API_Handbook.md §0.1` and the new-project scaffold's `openapi.yaml`). The registry is a **closed universe**: an entity may only name a registered domain, and the validator rejects an `x-entity.domain` that has no matching `info.x-domains` key (`ENTITY_DOMAIN_UNREGISTERED`, ERROR). The value also matches the entity's `domains/{domain}/` folder and lines up 1:1 with the AsyncAPI channel `x-domain` (§12.1) and Arazzo workflow `x-domain` (§13.1) — one domain vocabulary shared across all three specs. Author it first so the entity's home is unambiguous before any relationship or access metadata is read.
 
 > **Storage technology choices are not declared on `x-entity`.** Database engine, connection, schema name, and container name live in `project.json.persistence` — see `Project_File.md` §6. The `schema` property previously recognised on `x-entity` is **deprecated**; configure schema names through `persistence.entities.<EntityName>.schema` (relational descriptors only).
 
@@ -123,6 +126,7 @@ The generator enforces six rules on entity relationships. See `API_Handbook.md �
 Customer:
   type: object
   x-entity:
+    domain: customer
     type: aggregate
     hasMany: [Order, CustomerPreference]
     belongsTo:

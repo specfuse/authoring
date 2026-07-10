@@ -9,6 +9,16 @@ info:
   version: 1.0.0
   contact:
     name: spec-authoring-kit
+  # Domain registry — the closed universe of this project's domains.
+  # Every x-entity.domain and every AsyncAPI/Arazzo x-domain must reference a
+  # key here. See handbooks/API_Handbook.md §0.1.
+  x-domains:
+    customer:
+      title: Customers
+      description: Customer accounts and profiles.
+    order:
+      title: Orders
+      description: Order capture and lifecycle.
 
 servers:
   - url: https://api.helloorders.example/v1

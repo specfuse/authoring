@@ -1,6 +1,7 @@
 type: object
 description: An order aggregate. Belongs to a Tenant and a Customer.
 x-entity:
+  domain: order
   type: aggregate
   belongsTo:
     allOf: [Tenant, Customer]

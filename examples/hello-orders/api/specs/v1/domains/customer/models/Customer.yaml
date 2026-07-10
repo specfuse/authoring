@@ -1,6 +1,7 @@
 type: object
 description: A customer aggregate within a tenant.
 x-entity:
+  domain: customer
   type: aggregate
   belongsTo:
     allOf: [Tenant]

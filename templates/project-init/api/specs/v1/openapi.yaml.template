@@ -8,6 +8,16 @@ info:
   version: 1.0.0
   contact:
     name: TODO
+  # Domain registry — the closed universe of this project's domains.
+  # Every x-entity.domain (OpenAPI) and every x-domain (AsyncAPI channels, Arazzo
+  # workflows) MUST reference a key declared here; the validator rejects any
+  # domain name that is not registered. Keys are kebab-case and match the
+  # domains/{domain}/ folder names. Add one entry per domain.
+  # See handbooks/API_Handbook.md §0.1.
+  x-domains:
+    {initial-domain}:
+      title: TODO         # PascalCase display / tag name (e.g., Orders)
+      description: TODO — one-line charter for this domain.
 
 servers:
   - url: https://api.{project}.example/v1
