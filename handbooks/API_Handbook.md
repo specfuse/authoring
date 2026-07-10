@@ -67,7 +67,32 @@ api/specs/v1/
             └── ...
 ```
 
-Domain folder names follow the project's domain naming convention (kebab-case, one folder per bounded context). The active domain list is defined by the project's overlay; location is project-specific.
+Domain folder names follow the project's domain naming convention (kebab-case, one folder per bounded context). The active domain list is the **domain registry** declared in `info.x-domains` on the OpenAPI root (see below).
+
+### Domain registry (`info.x-domains`)
+
+`info.x-domains` is the project's authoritative **closed universe** of domains. Every domain the project has must appear here exactly once, keyed by its kebab-case name; nothing outside this map is a valid domain.
+
+```yaml
+info:
+  title: Acme API
+  version: 1.0.0
+  x-domains:
+    order:
+      title: Orders
+      description: Order capture, fulfilment, and lifecycle.
+    customer:
+      title: Customers
+      description: Customer accounts and profiles.
+```
+
+Every reference to a domain across the three specs resolves against this registry:
+
+- `x-entity.domain` on each OpenAPI entity (`Vendor_Extensions.md §1.1`) — MUST be a registered key (`ENTITY_DOMAIN_UNREGISTERED`, ERROR otherwise).
+- `x-domain` on every AsyncAPI channel and Arazzo workflow (`Vendor_Extensions.md §12.1`, `§13.1`) — same key set (plus the reserved `cross-domain` value for Arazzo files under `scenarios/cross-domain/`).
+- The `domains/{domain}/` folder name and the entity's PascalCase OpenAPI tag.
+
+A domain key's `title` is the PascalCase display/tag name; `description` is a one-line charter. Adding a domain is a single edit here first — then the folder, tag, and any `domain`/`x-domain` references may use it.
 
 ### File Naming Conventions
 
@@ -1027,6 +1052,7 @@ All write operations (POST/PUT/PATCH/DELETE) must support the `validateOnly` que
 ```json
 {
   "x-entity": {
+    "domain": "order",
     "type": "aggregate",
     "requiresPagination": true,
     "hasMany": ["OrderLine","Payment"],
@@ -1045,6 +1071,7 @@ All write operations (POST/PUT/PATCH/DELETE) must support the `validateOnly` que
 ```
 
 **Behavior:**
+- `domain` (string, required, leads the block): the kebab-case owning domain. MUST be a key in the project's domain registry `info.x-domains` (§0.1) — the closed universe of domains. An unregistered value is an ERROR (`ENTITY_DOMAIN_UNREGISTERED`). Matches the `domains/{domain}/` folder and the shared `x-domain` vocabulary in AsyncAPI/Arazzo. See `Vendor_Extensions.md §1.1`.
 - `requiresPagination` (boolean, default: true): indicates if this resource can grow large and requires pagination when returned in collections. When `true`, endpoints returning collections of this resource should use `{Resource}List` wrapper and support `page`, `pageSize`, `sort` parameters. When `false`, endpoints can return simple arrays.
 - Assistant may infer cardinality from `hasOne` / `hasMany` / `belongsTo`, but asks if in doubt.
 - One-sided declarations are allowed; assistants warn on likely mismatches.

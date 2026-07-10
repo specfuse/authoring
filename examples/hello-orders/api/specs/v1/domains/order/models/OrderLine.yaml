@@ -1,6 +1,7 @@
 type: object
 description: A line item under an Order. Belongs to its Order aggregate.
 x-entity:
+  domain: order
   type: entity
   belongsTo:
     allOf: [Order]
