@@ -1,12 +1,12 @@
 {
-  "kit_version": "0.3.5",
+  "kit_version": "0.4.0",
   "min_java": 17,
   "generator": {
-    "version": "0.3.0",
-    "asset": "specfuse-generator-0.3.0.jar",
-    "sha256": "a2cbac6942e1873c48c68b1e08a6883036a5d0b04960c2b82ece3bc0b33b686a",
+    "version": "0.4.0",
+    "asset": "specfuse-generator-0.4.0.jar",
+    "sha256": "6c9c38e52543c238f2cd1b2391d2828bd8420d40703531a2d2cf8b016b248a9b",
     "release_repo": "Specfuse/generator-dist",
-    "release_tag": "v0.3.0"
+    "release_tag": "v0.4.0"
   },
   "_note": "Pin the kit<->generator contract here. On each generator release: set version/asset/sha256/release_tag, then publish a matching kit patch. sha256=PENDING means no generator is bundled yet; `specfuse-authoring generate` will refuse with a clear message until a real jar is pinned."
 }
