@@ -317,6 +317,58 @@ CatalogItem:
 - **Java**: Generate value objects with equals/hashCode and validation
 - **Python**: Generate dataclasses with frozen=True and validation
 
+### 1.3 x-internal-only
+
+**Purpose**: Marks an entity property as **server-internal** — persisted on the domain entity and its storage column, but excluded from every generated DTO (request *and* response) and from the test-support builder. Use for fields the system stores and reasons over but must never accept from or return to a client (e.g. a `passwordHash`, an internal `riskScore`, a computed `dedupeKey`).
+
+**Scope**: Applied to a property schema inside an `x-entity` main resource. Ignored on value-object schemas and on derivatives (`Basic*`, `New*`, `Update*`) — the derivatives simply never receive the property.
+
+**Optional**: Yes. Default = the property flows into DTOs per the normal rules.
+
+**Schema**:
+
+```yaml
+x-internal-only: true
+```
+
+**Semantics**:
+
+- The property **is** generated on the domain entity and its persistence column (unlike a spec field that is simply omitted — the value is stored).
+- The property is **excluded from every DTO layer**: request DTOs (`New*`/`Update*`/`*Request`), response DTOs, and the paginated `Basic{Entity}` projection. A client can neither set nor read it.
+- The property is **excluded from the generated test-support builder** — tests construct it through domain logic, not the builder surface.
+- Because it never reaches a response, an `x-internal-only` property with a secret-shaped name satisfies the `SENSITIVE_FIELD_IN_RESPONSE` rule (see §1.5).
+
+**Relationship with `writeOnly`**: `writeOnly: true` (OpenAPI-native) keeps a property in **request** DTOs but drops it from **response** DTOs — the client sets it, never reads it (e.g. a plaintext `password` on `New*`). `x-internal-only` is stricter: the property leaves **both** directions. Choose `writeOnly` when the client supplies the value; choose `x-internal-only` when only the server ever touches it.
+
+**Validation rules**:
+
+1. `x-internal-only: true` may only appear on property schemas inside an `x-entity` main resource. Enforced at spec validation (`INTERNAL_ONLY_*` guards).
+2. `x-internal-only` and `writeOnly` MUST NOT co-occur on the same property — they express conflicting request-DTO intent (internal-only removes it, writeOnly keeps it).
+3. A property carrying `x-internal-only: true` MUST NOT be `required: true` on any client-facing operation — a required field a client can never supply is unsatisfiable.
+
+**Example**:
+
+```yaml
+User:
+  type: object
+  x-entity:
+    type: aggregate
+  properties:
+    id:
+      type: string
+      format: uuid
+    email:
+      type: string
+      format: email
+      x-classification: [pii]
+    passwordHash:
+      type: string
+      x-internal-only: true        # stored + queried server-side; never in any DTO
+    password:
+      type: string
+      writeOnly: true              # client SETS on New*/Update*; never returned
+```
+
 ### 1.4 x-enum-case
 
 **Purpose**: Overrides the default camelCase formatting applied by the code generator to enum values when the standard convention doesn't make sense (e.g., industry-standard codes that must be preserved as-is).
@@ -398,6 +450,7 @@ x-classification:
   - pii          # personally identifying — name, email, phone, address, government IDs
   - sensitive    # business-confidential — financial details, internal evaluations, disciplinary records
   - encrypted    # MUST be encrypted at rest (also implies sensitive)
+  - exposed      # secret-shaped name, human-reviewed, safe to expose (grants no access)
 ```
 
 **Allowed values** (closed set):
@@ -407,6 +460,7 @@ x-classification:
 | `pii` | Personally identifying information | Snapshot inclusion requires `x-snapshot-pii-acknowledged` justification (see §11.2). AI read access requires explicit listing in `aiAccess.readableProperties`. |
 | `sensitive` | Business-confidential data | Same snapshot/AI-access rules as `pii`. Triggers heightened audit logging on read. |
 | `encrypted` | Must be encrypted at rest | Generator emits encryption converters. The property is excluded from the default "all readable" expansion in `aiAccess.readableProperties` (see §1.1.1 rule 5). Implies `sensitive`. |
+| `exposed` | Secret-shaped name, human-reviewed, safe to expose | Escape hatch for the `SENSITIVE_FIELD_IN_RESPONSE` validator (see below). Asserts a reviewer confirmed the field is safe on a response despite a secret-shaped name. **Grants no access** on its own; carries no encryption/masking obligation. Contradictory with `sensitive`/`encrypted` — MUST NOT co-occur with either. Requires a `description` justifying why exposure is safe. |
 
 **Multiple classifications** are allowed (e.g., `[pii, encrypted]` for a tax ID). The generator unions the implications.
 
@@ -433,6 +487,10 @@ Customer:
     creditScore:
       type: number
       x-classification: [sensitive]
+    avatarHash:
+      type: string
+      description: Content-address of the public avatar image; not a credential. Safe on responses despite the secret-shaped name.
+      x-classification: [exposed]   # override SENSITIVE_FIELD_IN_RESPONSE — reviewed, public
     avatarUrl:
       type: string
       # no classification — unclassified
@@ -440,10 +498,25 @@ Customer:
 
 **Validation rules** (Spectral + Specfuse):
 
-1. Values must come from the closed set `[pii, sensitive, encrypted]`.
+1. Values must come from the closed set `[pii, sensitive, encrypted, exposed]`.
 2. `x-classification: [encrypted]` requires the property to also be representable as a string (encryption produces opaque ciphertext).
 3. When a snapshot file references a property whose source entity carries `pii` or `sensitive`, the snapshot file MUST declare `x-snapshot-pii-acknowledged.{propertyName}` with a justification ≥ 20 chars (see §11.2).
 4. When `aiAccess.readableProperties` is omitted, properties classified `encrypted` are excluded from the implicit allow-set (existing rule 5 in §1.1.1, now driven by classification).
+5. `x-classification: [exposed]` MUST NOT co-occur with `sensitive` or `encrypted` on the same property — those demand masking/encryption, which contradicts "safe to expose." A property carrying both fails validation (`CLASSIFICATION_EXPOSED_CONTRADICTION`).
+6. A property carrying `x-classification: [exposed]` MUST also carry a non-empty `description` justifying why the field is safe to expose despite its name.
+
+**`SENSITIVE_FIELD_IN_RESPONSE` — the `exposed` escape hatch**
+
+The generator's `SENSITIVE_FIELD_IN_RESPONSE` rule flags any **response-bound** entity property whose name is *secret-shaped* — matches the heuristic `*Hash`, `*Token`, `*Secret`, `*Salt`, `*Password` (case-insensitive suffix) — because such a field on a response DTO is a likely credential leak.
+
+A secret-shaped, response-bound property **passes** the rule only if it carries exactly one of:
+
+- `writeOnly: true` — the field is never serialized onto responses, so there is nothing to leak; or
+- `x-internal-only: true` — the field is stripped from all external response layers (see §1.3); or
+- `x-classification: [encrypted]` — the serialized value is opaque ciphertext; or
+- `x-classification: [exposed]` — a reviewer has confirmed the field is safe to return as-is.
+
+`x-classification: [sensitive]` alone does **not** satisfy the rule: `sensitive` means *must be masked*, not *may be exposed*. Using `exposed` is an explicit, reviewed override — reach for it only when the secret-shaped name is a false positive (e.g. a public `avatarHash` content-address, an already-public `shareToken`).
 
 ### 1.6 x-content
 
@@ -1961,7 +2034,7 @@ The following extensions existed in v1 (or were considered during v2 design) and
 | `x-message-category: sagaStep` | Removed | Sagas deferred |
 | `x-subscription.filter` (raw SQL author-written) | Forbidden | Filters are derived from the operation's `messages:` list; use `x-subscription.requiredHeaders` for header-equality and `x-subscription.filterOverride` only as a justified escape hatch. |
 | `x-action-class` | Not introduced | Action class is inferred from the message-name suffix (`*Created` → created, `*Updated` → updated, `*Deleted` → deleted, anything else → state transition). |
-| `x-pii` / `x-sensitive` (boolean per-field flags) | Not introduced as separate extensions | Use `x-classification` with values from the closed set `[pii, sensitive, encrypted]` on the entity property schema. See §1.5. |
+| `x-pii` / `x-sensitive` (boolean per-field flags) | Not introduced as separate extensions | Use `x-classification` with values from the closed set `[pii, sensitive, encrypted, exposed]` on the entity property schema. See §1.5. |
 | Three-segment `Label` (`{Entity}.{Action}.{tenantId}`) | Removed (v1 routing) | Labels are exactly two segments: `{Entity}.{Action}`. Tenant routing moves to envelope `tenantId` ApplicationProperty; tenant-scoped subscribers AND-merge `user.tenantId = '<guid>'` via `requiredHeaders`. |
 
 ### 12.6 OpenAPI ↔ AsyncAPI Cross-Spec Link
