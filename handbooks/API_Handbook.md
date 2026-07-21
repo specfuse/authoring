@@ -557,10 +557,27 @@ async function updateOrder(orderId, changes, maxRetries = 3) {
 - **Append-only resources** (e.g., AuditLog, Payment): Only support POST, no updates
 - **POST operations**: Creating new resources, no If-Match required
 
+#### No-Op Writes
+
+A PUT/PATCH whose payload leaves every tracked field of the entity unchanged is a **semantic no-op**. It MUST:
+
+- return `200` with the current representation
+- return the **unchanged** ETag
+- leave `updatedAt` untouched
+- write no row
+- emit no `x-emits` event
+
+**Why `updatedAt` must not move:** where `updatedAt` backs the ETag, bumping it on a no-op invalidates every client's cached `If-Match` and produces spurious `412`s on the next genuine write. The rule at "same resource state = same ETag" (below) is only satisfiable if no-ops are inert.
+
+**Why no event:** `*Created`/`*Updated`/`*Deleted` messages are forbidden from declaring `x-trigger-when` (`AsyncAPI_Handbook.md` §2.2, `Vendor_Extensions.md` §12.2), so subscribers have no declarative way to filter out a `Before == After` delivery. Suppression is producer-side or it does not happen. A no-change event costs every subscriber a full handler run — including metered AI workers.
+
+What counts as "unchanged" is decided by the change-detection rules in `AsyncAPI_Handbook.md` §2.3 — diff the **tracked entity**, not the event snapshot.
+
 #### Implementation Notes
 
 **For API Implementers:**
 - Generate ETags consistently (same resource state = same ETag)
+- Detect no-op writes before persisting; return the current ETag unchanged (see No-Op Writes)
 - Include ETag in all GET responses for mutable resources
 - Validate If-Match before processing PUT/PATCH
 - Return current ETag in 412 responses

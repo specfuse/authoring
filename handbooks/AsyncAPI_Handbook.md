@@ -410,6 +410,18 @@ api/specs/v1/domains/{domain}/
 - Computed/non-stored fields
 - Audit fields already present on the envelope (`producedAt`, `userId`, `correlationId`, etc.)
 
+**Change detection diffs the tracked entity, never the snapshot.**
+
+The snapshot is the wire payload. It is not the diff source. Because it deliberately omits navigation properties, child collections, and computed fields, a snapshot-level diff reports "identical" for a write that mutated only an omitted field — and, combined with the no-op suppression rule (`API_Handbook.md` §Concurrency Control → No-Op Writes), silently swallows a real persisted change while publishing nothing and raising no error. Data moves, the event stream stays quiet, nothing fails. That is the expensive shape to debug.
+
+Diff `EntityEntry.OriginalValues` against `EntityEntry.CurrentValues` before `SaveChangesAsync` — the same source `x-trigger-when` predicates evaluate against (`Vendor_Extensions.md` §12.2).
+
+Accepted consequence: a write touching only snapshot-omitted fields emits an `*Updated` whose `before` and `after` are byte-identical, so subscribers cannot tell what moved. The intended remedy is to add the field to the snapshot if consumers need it; a `changedFields` map on the envelope was considered and rejected (§5.3 — consumers compute deltas from `(before, after)`).
+
+**Array-valued properties compare as sets.**
+
+For change detection, scalar-array properties compare order-insensitively: `[a, b]` → `[b, a]` is not a change and MUST NOT trigger a write or an event. Sorting or hashing members before comparison is fine. Where authored sequence carries meaning, declare an explicit ordering property and sort on it — array position in a JSON column MUST NOT carry semantics implicitly. (This concerns scalar arrays only; child collections are excluded from snapshots and have their own events.)
+
 **Snapshot guardrails:**
 
 | Rule | Severity | Override |
