@@ -161,6 +161,22 @@ The kit collapsed the source project's two-level tenant model (a parent-org id p
 
 **Severity:** non-breaking for projects that already use `tenantId`; coordination required for projects that need to migrate from a different field name.
 
+### 11. Write/change-detection semantics (kit `v0.5.4`, authoring #16 + #11)
+
+**Status:** kit canonical (handbook contract added in authoring PR #16, prompted by consumer report #11)
+
+Three write/emit rules are now normative in the handbooks but govern generator **runtime behavior**, not an authorable surface — so there is no Spectral rule to lint them and generator conformance is unverified:
+
+- **No-op writes are inert** (`API_Handbook.md` §Concurrency Control → No-Op Writes): a write leaving every tracked field unchanged returns `200` + current representation, unchanged ETag, no `updatedAt` bump, no row, no event. Critical because `*Created`/`*Updated`/`*Deleted` are forbidden from declaring `x-trigger-when`, so a `Before == After` event has no subscriber-side filter — suppression must be producer-side.
+- **Change detection diffs the tracked entity, never the snapshot** (`AsyncAPI_Handbook.md` §2.3): diff `EntityEntry.OriginalValues`/`CurrentValues` before `SaveChangesAsync`. A snapshot-level diff reports "identical" for a write mutating only a snapshot-omitted field and, combined with no-op suppression, silently swallows a real persisted change.
+- **Scalar-array properties compare as sets** (`AsyncAPI_Handbook.md` §2.3): reordering is not a change; sequence-significant data declares an explicit ordering property.
+
+**Generator action:** confirm the emitted persistence/emit path (a) detects no-op writes and suppresses `updatedAt`/ETag/row/event, (b) diffs tracked-entity values rather than the serialized snapshot, and (c) compares scalar arrays order-insensitively.
+
+**Open conformance gap (#11):** the consumer also observed **owned value objects absent from event snapshots** in practice, though `AsyncAPI_Handbook.md:402-406` requires them (serialized via the same converter as on the entity). That is a generator non-conformance bug, not an authoring gap — awaiting a repro (entity shape, snapshot YAML, observed payload) to file against the generator.
+
+**Severity:** additive to the contract; generator behavior may already be conformant on (a)–(c). The owned-VO omission, if reproduced, is a silent-data-loss bug on the event stream.
+
 ---
 
 ## Surfaced bugs (kit-side, fixed during Phase 6 verification)
