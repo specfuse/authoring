@@ -21,3 +21,8 @@ venv/
 # Spectral bundle artifacts
 *.bundle.yaml
 .bundle.yaml
+
+# Other-harness scaffolding (kit supports Claude Code only for now)
+.agents/
+.codex/
+AGENTS.md
