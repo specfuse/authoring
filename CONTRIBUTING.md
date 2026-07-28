@@ -25,8 +25,24 @@ adoptable — contributions should keep the kit usable on its own.
   `examples/hello-orders/` must always pattern-match the current handbook
   rules. If you change a rule, update the samples and the example in the same
   PR.
+- **Extension shape changes and the ruleset move together.** The Spectral rules
+  that validate `x-entity`, `x-value-object` and friends are hand-maintained
+  mirrors of those extensions' shapes, and `specfuse-xentity-shape` is
+  `additionalProperties: false`. So a new entity-level property that lands in
+  the handbooks without a matching ruleset update does not merely go
+  unvalidated — it makes the shape rule **reject every entity that uses it**.
+  Adding or renaming a property inside any `x-*` block therefore requires
+  updating `schemas/spectral/` **in the same PR**. This has drifted before: a
+  required property once shipped across dozens of entities with no ruleset
+  update and sat broken for months. A hand-maintained mirror will drift; the
+  only question is how long before anyone notices.
 - **Boring beats clever.** Markdown, YAML, JSON Schema, Spectral, a thin Python
   CLI. Every piece individually replaceable.
+- **An extension nothing consumes is a false guarantee.** Readers reasonably
+  assume a declared constraint is enforced somewhere. Before adding one, name
+  what reads it — a generator output, a Spectral rule, a documented lint
+  exemption. If nothing does, either wire it up or document it explicitly as
+  declared-but-unenforced, and say so where authors will see it.
 
 ## What requires a version bump
 
@@ -54,6 +70,12 @@ need a matrix bump — but a CLI change still bumps the package version.
   example (`.github/workflows/example-regen.yml`). If your change touches the
   contract, regenerate/re-validate `examples/hello-orders/` and confirm it
   still passes.
+- **A rule change must be verified in both directions.** Confirm the rule still
+  fires on a genuine violation, not only that the error count went down. A rule
+  that stops misfiring by never running looks identical to a fixed one from the
+  finding count alone, and the same is true of a lint gate that silently stops
+  gating. `schemas/spectral/fixtures/` holds the fixtures that pin this for the
+  null-tolerance and `mutability` behaviours; add one when you fix a rule.
 - **Build the package.** `python -m build --wheel` must succeed, and a wheel
   installed in a clean environment must run `specfuse-authoring init` correctly
   (the wheel bundles handbooks, samples, templates, and schemas under the

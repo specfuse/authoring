@@ -37,7 +37,7 @@ See [`examples/hello-orders/`](examples/hello-orders/) for a complete worked exa
 |---|---|
 | **Handbooks** ([`handbooks/`](handbooks/)) | 6 authoritative documents: REST API, AsyncAPI, Arazzo, vendor extensions, AI access policy framework, and the generator's project file. Together these define the full spec-authoring contract. |
 | **Samples** ([`samples/`](samples/)) | 4 canonical YAML templates — endpoints, async messages, scenarios, recipes — that every authored file should pattern-match against. |
-| **Schemas** ([`schemas/`](schemas/)) | Working Spectral rulesets and custom functions for validation under `schemas/spectral/`. CI lints the bundled example against them. |
+| **Schemas** ([`schemas/`](schemas/)) | Working Spectral rulesets and custom functions for validation under `schemas/spectral/`. CI lints the bundled example against them. [`schemas/README.md`](schemas/README.md) also covers how to run Spectral so a crash cannot pass as a clean spec, and how to turn the ruleset on against specs that predate it. |
 | **Templates** ([`templates/`](templates/)) | The `project-init/` skeleton, plus the AI Access Policy template. |
 | **Claude assets** | 5 Claude Code sub-agents and 20 authoring skills (`/specfuse-authoring:design-scenario`, `/specfuse-authoring:design-async`, `/specfuse-authoring:design-recipe`, etc.) that automate spec design. Distributed as the `specfuse-authoring` plugin in the `specfuse/specfuse` marketplace; `init` wires the plugin and scaffolds the contract the skills read into `.specfuse/authoring/`. |
 | **Bundled example** ([`examples/hello-orders/`](examples/hello-orders/)) | A 61-file complete Specfuse project — 2 domains, 3 entities, 1 state-transition event, 1 cross-domain scenario, 2 setup recipes, filled AI access policy, CI workflow. Serves as the kit's regression net. |
@@ -75,7 +75,7 @@ The kit is upstream of both: it defines *what* a Specfuse spec must look like. T
 
 ## Status
 
-**Incubating** (`v0.5.4`), Apache-2.0. Handbooks, samples, schemas, the `project-init` template, the bundled `hello-orders` example, the `specfuse-authoring` plugin (in the `specfuse/specfuse` marketplace), and the `specfuse-authoring` CLI are all in place. Generator-side alignment items are tracked in [`compatibility.md`](compatibility.md#outstanding-generator-side-follow-ups).
+**Incubating** (`v0.5.5`), Apache-2.0. Handbooks, samples, schemas, the `project-init` template, the bundled `hello-orders` example, the `specfuse-authoring` plugin (in the `specfuse/specfuse` marketplace), and the `specfuse-authoring` CLI are all in place. Generator-side alignment items are tracked in [`compatibility.md`](compatibility.md#outstanding-generator-side-follow-ups).
 
 The kit is distributed on PyPI as `specfuse-authoring` and hosted under [`Specfuse/authoring`](https://github.com/Specfuse/authoring). The code generator it drives is distributed separately as a pinned, checksum-verified release asset (see [`generator.lock`](generator.lock)); `specfuse-authoring generate` resolves, verifies, and runs it on demand.
 
