@@ -29,6 +29,8 @@ specfuse-authoring init ~/projects/my-app
 
 > A bare `pip install` into a system Python is blocked on PEP-668 externally-managed environments (Debian/Ubuntu, Homebrew). Use `pipx` (then `pipx upgrade specfuse-authoring`) or a virtualenv.
 
+> **If you already run the `specfuse` umbrella CLI, install the kit through it instead:** `pipx install --force --include-deps 'specfuse[all]'`. The umbrella's `authoring` extra and this standalone package both provide a `specfuse-authoring` command, and pipx refuses to point one venv's shim at another's — it warns `File exists at ~/.local/bin/specfuse-authoring and points to … Not modifying.` and moves on. The result is a command that silently keeps running the install you *didn't* just upgrade. Run `specfuse doctor` (umbrella 0.9.4+) to see which install owns each command.
+
 You'll be prompted for three things (or pass them as flags for non-interactive use):
 
 | Prompt | Flag | Example | Rules |
