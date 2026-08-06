@@ -111,13 +111,39 @@ If no generator is pinned yet for your kit version, `generate` exits with a clea
 
 ## 7. Keep assets current
 
-When the kit ships an update, re-sync your project's authoring contract and plugin config:
+When the kit ships an update, pull it into your project:
 
 ```bash
-specfuse-authoring refresh ~/projects/my-app
+specfuse-authoring upgrade ~/projects/my-app
 ```
 
-This re-syncs `.specfuse/authoring/` from the installed package and re-asserts the `specfuse-authoring` plugin config in `.claude/settings.json`. Your specs are never touched. To pull newer skills themselves, run `/plugin update specfuse-authoring@specfuse` inside Claude Code.
+Add `--dry-run` to see what would change before anything is written.
+
+This overlays the kit-owned files from the installed package — the handbooks, samples and Spectral schemas under `.specfuse/authoring/`, plus the `scripts/` tooling the skills call — and re-asserts the plugin config in `.claude/settings.json`. **Your specs are never touched**: `api/`, `CLAUDE.md`, your project file and `.gitignore` are seeded once at `init` and owned by you thereafter.
+
+### What upgrade will and will not do
+
+`upgrade` records a sha256 of every file it writes in `.specfuse/authoring/.scaffold-manifest`. That record is what lets it tell three otherwise identical-looking files apart:
+
+| Situation | What happens |
+|---|---|
+| Kit file, untouched | Replaced silently |
+| Kit file you edited | Replaced, with a warning naming the file |
+| File the kit never wrote, sitting in a kit directory | **Kept**, with a note — never deleted |
+| Kit file dropped from a newer release | Removed, but only because the manifest proves the kit wrote it |
+
+So edits to shipped handbooks or scripts do not survive an upgrade — that is the contract, and the warning tells you which file lost changes. Send improvements upstream instead (see [`CONTRIBUTING.md`](../CONTRIBUTING.md)).
+
+A project scaffolded by a **newer** kit than the one installed is refused rather than rolled back:
+
+```
+Error: refusing downgrade: … was scaffolded by kit 0.6.0, but the installed kit is 0.5.5.
+Upgrade the CLI first: pipx upgrade specfuse-authoring
+```
+
+Projects created before the overlay existed have no manifest. They are adopted on first `upgrade` — it reports `kit unversioned -> <version>`, writes everything, and stays quiet about pre-existing edits it has no baseline for.
+
+To pull newer skills themselves, run `/plugin update specfuse-authoring@specfuse` inside Claude Code.
 
 ## Where to go next
 

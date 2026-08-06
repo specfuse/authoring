@@ -32,13 +32,20 @@ MARKETPLACE_VALUE = {"source": {"source": "github", "repo": "specfuse/specfuse"}
 PLUGIN_KEY = "specfuse-authoring@specfuse"
 
 # The authoring contract the skills read at runtime, scaffolded into the project.
-CONTRACT_DIRS = ("handbooks", "samples")
+# `schemas` joins handbooks/samples here: the skills and a project's own
+# .spectral.yaml both reference the shipped rulesets, so a project that never
+# received them could not lint against the contract it was handed.
+CONTRACT_DIRS = ("handbooks", "samples", "schemas")
 SCAFFOLD_SUBDIR = Path(".specfuse") / "authoring"
 
 
 def scaffold_contract(target: Path) -> None:
-    """Copy the authoring contract (handbooks/, samples/) into
-    <target>/.specfuse/authoring/. Overwrites — this is a version-sync."""
+    """Copy the authoring contract into <target>/.specfuse/authoring/.
+
+    Used by `init` only. Wholesale replacement is safe here because the project
+    is being created; for an existing project the overlay in `scaffold.py`
+    handles this, and it knows which files the project has since edited.
+    """
     root = kit_root()
     dest_base = target / SCAFFOLD_SUBDIR
     for sub in CONTRACT_DIRS:
@@ -49,6 +56,25 @@ def scaffold_contract(target: Path) -> None:
         if dst.exists():
             shutil.rmtree(dst)
         shutil.copytree(src, dst)
+
+
+def upgrade(target: Path, *, dry_run: bool = False) -> int:
+    """Update kit-owned files in an existing project. See scaffold.upgrade."""
+    from . import scaffold
+
+    try:
+        rc = scaffold.upgrade(target, dry_run=dry_run)
+    except scaffold.DowngradeError as exc:
+        sys.exit(f"Error: {exc}")
+    if not dry_run:
+        scaffold.clean_orphans(target.resolve())
+        changed = wire_plugin(target)
+        print(
+            f"  plugin config: re-asserted {', '.join(changed)}"
+            if changed else "  plugin config: already current"
+        )
+        print("  Pull the latest skills in Claude Code: /plugin update specfuse-authoring@specfuse")
+    return rc
 
 
 def wire_plugin(target: Path) -> list[str]:
@@ -82,19 +108,10 @@ def wire_plugin(target: Path) -> list[str]:
     return changed
 
 
-def refresh(target: Path) -> int:
-    if not target.is_dir():
-        sys.exit(f"Error: target directory does not exist: {target}")
-    print(f"Refreshing authoring contract + plugin config in: {target}")
-    scaffold_contract(target)
-    changed = wire_plugin(target)
-    print("✓ Synced .specfuse/authoring/ (handbooks, samples)")
-    print(
-        f"✓ Re-asserted plugin config: {', '.join(changed)}"
-        if changed else "✓ Plugin config already current"
-    )
-    print("  Pull the latest skills in Claude Code: /plugin update specfuse-authoring@specfuse")
-    return 0
+# `refresh` is retained as a name for backward compatibility only. It used to
+# blind-copy handbooks and samples; it now routes through the versioned overlay,
+# which is a strict improvement — it knows what it wrote last time.
+refresh = upgrade
 
 
 def _prompt(label: str, pattern: re.Pattern[str], err: str, value: str | None) -> str:
@@ -191,6 +208,12 @@ def init(
     scaffold_contract(target)
     wire_plugin(target)
 
+    # Record what the kit just wrote. Without this the first `upgrade` would
+    # find no manifest, treat every kit file as unowned, and lose its ability to
+    # tell a stale kit file from one the project authored.
+    from . import scaffold
+    scaffold.stamp(target)
+
     print(
         f"\n✓ Project bootstrapped at {target}\n\n"
         "  Next steps:\n"
@@ -202,7 +225,8 @@ def init(
         "  (init already registered the marketplace and enabled the plugin in\n"
         "   .claude/settings.json — the commands above are the manual equivalent.)\n\n"
         "  Then design with /specfuse-authoring:design-scenario or :design-async.\n"
-        "  After a kit update, re-sync the contract + plugin config with:\n"
-        f"    specfuse-authoring refresh {target}\n"
+        "  After a kit update, pull the new contract, schemas and scripts with:\n"
+        f"    specfuse-authoring upgrade {target}\n"
+        "  (add --dry-run to see what would change first.)\n"
     )
     return 0

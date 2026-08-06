@@ -12,7 +12,7 @@ pipx install specfuse-authoring     # CLI; recommended
 specfuse-authoring init ~/projects/my-new-project
 ```
 
-You'll be prompted for the project name, the project token (channel-address prefix), and the initial domain. The CLI substitutes placeholders, scaffolds the authoring contract (handbooks + samples) into `.specfuse/authoring/`, wires the `specfuse-authoring` Claude Code plugin into `.claude/settings.json`, and prints next steps. Pass `--name`/`--token`/`--domain` to run non-interactively.
+You'll be prompted for the project name, the project token (channel-address prefix), and the initial domain. The CLI substitutes placeholders, scaffolds the authoring contract (handbooks + samples + Spectral schemas) into `.specfuse/authoring/`, wires the `specfuse-authoring` Claude Code plugin into `.claude/settings.json`, and prints next steps. Pass `--name`/`--token`/`--domain` to run non-interactively.
 
 The Claude Code authoring assets (skills + agents) ship as the `specfuse-authoring` plugin in the shared `specfuse` marketplace. `init` auto-wires the plugin, but you install it once in Claude Code with:
 
@@ -21,11 +21,14 @@ The Claude Code authoring assets (skills + agents) ship as the `specfuse-authori
 /plugin install specfuse-authoring@specfuse
 ```
 
-To re-sync `.specfuse/authoring/` and re-assert the plugin config in an existing project after a kit update:
+To pull a kit update into an existing project — handbooks, samples, schemas and the `scripts/` tooling:
 
 ```bash
-specfuse-authoring refresh ~/projects/existing-project
+specfuse-authoring upgrade ~/projects/existing-project
+specfuse-authoring upgrade ~/projects/existing-project --dry-run   # preview first
 ```
+
+Your specs are never touched. `upgrade` tracks what it wrote (`.specfuse/authoring/.scaffold-manifest`), so it replaces kit files, warns before overwriting one you edited, and never deletes a file it did not create. (`refresh` is a deprecated alias.)
 
 Pull newer skills with `/plugin update specfuse-authoring@specfuse`.
 
@@ -75,7 +78,7 @@ The kit is upstream of both: it defines *what* a Specfuse spec must look like. T
 
 ## Status
 
-**Incubating** (`v0.5.5`), Apache-2.0. Handbooks, samples, schemas, the `project-init` template, the bundled `hello-orders` example, the `specfuse-authoring` plugin (in the `specfuse/specfuse` marketplace), and the `specfuse-authoring` CLI are all in place. Generator-side alignment items are tracked in [`compatibility.md`](compatibility.md#outstanding-generator-side-follow-ups).
+**Incubating** (`v0.5.6`), Apache-2.0. Handbooks, samples, schemas, the `project-init` template, the bundled `hello-orders` example, the `specfuse-authoring` plugin (in the `specfuse/specfuse` marketplace), and the `specfuse-authoring` CLI are all in place. Generator-side alignment items are tracked in [`compatibility.md`](compatibility.md#outstanding-generator-side-follow-ups).
 
 The kit is distributed on PyPI as `specfuse-authoring` and hosted under [`Specfuse/authoring`](https://github.com/Specfuse/authoring). The code generator it drives is distributed separately as a pinned, checksum-verified release asset (see [`generator.lock`](generator.lock)); `specfuse-authoring generate` resolves, verifies, and runs it on demand.
 
