@@ -8,6 +8,11 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # the version pinned in generator.lock -- there is no jar to keep next to this
 # script. Override with SPECFUSE_AUTHORING to point at a different CLI.
 SPECFUSE="${SPECFUSE_AUTHORING:-specfuse-authoring}"
+# `specfuse-authoring generate` runs the PINNED GENERATOR JAR with whatever
+# follows it, so the jar's own verb (generate / validate / validate-source) is
+# passed explicitly as the first argument below. Dropping it silently runs the
+# jar with no subcommand.
+RUN_GENERATOR=("${SPECFUSE}" generate)
 
 # The project file is named after the project (<name>-project.json), so find it
 # rather than hardcoding one project's name.
@@ -77,10 +82,10 @@ echo "Bundling AsyncAPI specs..."
 
 echo "Generating scenario documentation..."
 cd "${ROOT_DIR}"
-"${SPECFUSE}" generate --progress --group "Documentation - Scenarios" ${ARGS[@]+"${ARGS[@]}"} "${CONFIG_FILE}"
+"${RUN_GENERATOR[@]}" generate --progress --group "Documentation - Scenarios" ${ARGS[@]+"${ARGS[@]}"} "${CONFIG_FILE}"
 
 echo "Generating technical reference documentation..."
-"${SPECFUSE}" generate --progress --group "Documentation - Technical References" ${ARGS[@]+"${ARGS[@]}"} "${CONFIG_FILE}"
+"${RUN_GENERATOR[@]}" generate --progress --group "Documentation - Technical References" ${ARGS[@]+"${ARGS[@]}"} "${CONFIG_FILE}"
 
 # Post-generation: cross-links + index
 INDEX_ARGS=()

@@ -163,6 +163,21 @@ jobs:
           # delivered by the overlay, not a stale project-local copy.
           grep -q ".specfuse/authoring/schemas/spectral/" scripts/validate-spectral.sh
 
+          # Every script a shipped script calls must itself be shipped.
+          # validate-specs.sh composes nine layers; running them individually
+          # (as the 0.5.6 verification did) proves each works but not that the
+          # aggregate resolves. validate-generator.sh was missing for exactly
+          # that reason, so the entry-point validator died on its last step.
+          missing=0
+          for dep in $(grep -rhoE '\$(SCRIPT_DIR|ROOT_DIR)?/?[A-Za-z0-9_-]+\.(sh|py)|\./scripts/[A-Za-z0-9_-]+\.(sh|py)' scripts/*.sh \
+                       | sed 's|.*/||' | sort -u); do
+            if [ ! -f "scripts/$dep" ]; then
+              echo "::error::scripts/ references $dep, which is not shipped" >&2
+              missing=1
+            fi
+          done
+          [ $missing -eq 0 ] || exit 1
+
           echo "==> scaffolded project validates with the shipped scripts."
 
       - name: Versions agree (pyproject == __version__ == generator.lock)
