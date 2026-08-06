@@ -661,6 +661,189 @@ Article:
 
 ---
 
+### 1.7 x-references
+
+**Purpose**: Declares a `format: uuid` property to be a **non-owning association FK** — a pointer to another entity that does **not** make this entity part of that entity's aggregate.
+
+**Scope**: Applied to a `type: string, format: uuid` property inside a main resource (`x-entity`).
+
+**Optional**: Yes, but see "Every FK-shaped property must be classified" below — in practice an unclassified uuid property is a spec defect, not a default.
+
+**Schema**:
+
+```yaml
+x-references: Customer      # target entity name (PascalCase), or the literal `none`
+```
+
+**Semantics**:
+
+- **Association only.** The referencing entity is *not* a member of the target's aggregate. Contrast `belongsTo`, which declares composition and aggregate membership.
+- **Delete behaviour is `NoAction`.** Deleting the target does not cascade to the referencing rows, because they are not owned. A composition FK (`belongsTo`) cascades; an association FK must not.
+- **Nullability follows `required`.** The property is nullable unless listed in the schema's `required` array. There is no separate nullability marker.
+- Test-seed naming for the FK follows `TestSeed.<Entity>Id`.
+
+**`x-references: none`** marks a `format: uuid` property that is **not a foreign key at all** — a correlation id, an idempotency token, an externally-minted identifier. Because this suppresses relationship classification entirely, it MUST be accompanied by a `description` justifying why the value is opaque. An unjustified `none` is indistinguishable from an author who did not want to think about the relationship.
+
+**Every FK-shaped property must be classified.** Since the retirement of implicit `{Entity}Id` → `belongsTo` inference (kit `0.5.4`), a `format: uuid` property named after an entity carries no relationship meaning on its own. Exactly one classification applies:
+
+| Intent | Declaration |
+|---|---|
+| This entity is part of the target's aggregate | `belongsTo: <Target>` on `x-entity` (composition, Cascade, aggregate membership) |
+| This entity merely points at the target | `x-references: <Target>` on the property (association, NoAction, no membership) |
+| The uuid is not a foreign key | `x-references: none` on the property + a justifying `description` |
+
+Leaving an FK-shaped property unclassified is a spec defect.
+
+**Validation rules**:
+
+1. `x-references: <Target>` and a `belongsTo` naming the same target on the same entity are **mutually exclusive** — declaring both is an error. There is no precedence between them and no "degrades to a hint" fallback; if the entity is owned, use `belongsTo`, and if it merely points, use `x-references`.
+2. `x-references` and `x-fk-for` (§1.8) MUST NOT appear on the same property. They declare opposite ownership.
+3. `x-references: none` requires a non-empty `description`.
+4. The value MUST be `none` or a PascalCase entity name.
+
+**Examples**:
+
+```yaml
+# Association: a note points at the customer it concerns, but the note is not
+# part of the Customer aggregate — deleting the customer must not cascade.
+Note:
+  type: object
+  x-entity:
+    domain: support
+    type: entity
+    belongsTo: { allOf: [Tenant] }
+  required: [id, tenantId, body]
+  properties:
+    id:         { type: string, format: uuid }
+    tenantId:   { type: string, format: uuid }
+    customerId:
+      type: string
+      format: uuid
+      x-references: Customer          # association, nullable (not in `required`)
+    body:       { type: string }
+
+# Opaque uuid: not a foreign key, so classification is suppressed — and justified.
+    correlationId:
+      type: string
+      format: uuid
+      x-references: none
+      description: >-
+        Client-generated correlation id echoed back on the response. Not a
+        foreign key — no entity is identified by this value.
+```
+
+**Interactions**:
+
+- **`belongsTo` (§1.1)**: the owning counterpart. Mutually exclusive per target.
+- **`x-fk-for` (§1.8)**: for an *owning* FK whose column name does not follow the `{Entity}Id` convention.
+
+---
+
+### 1.8 x-fk-for
+
+**Purpose**: Binds an **owning** FK property to its target entity when the property name does not follow the `{Entity}Id` convention — typically a legacy or deliberately-differently-named column that must nevertheless keep composition semantics.
+
+**Scope**: Applied to a `type: string, format: uuid` property inside a main resource (`x-entity`) whose `x-entity.belongsTo` already declares the target.
+
+**Optional**: Yes. Needed only when the property name does not resolve to the target on its own.
+
+**Schema**:
+
+```yaml
+x-fk-for: Order          # target entity name (PascalCase)
+```
+
+**Semantics**:
+
+- Composition is **preserved**: Cascade delete, aggregate membership, and every other consequence of `belongsTo` apply exactly as if the property had been named `orderId`.
+- It is a *binding*, not a declaration. `x-fk-for` does not create a relationship; it names which declared `belongsTo` a misnamed column satisfies.
+
+**Validation rules**:
+
+1. The target named by `x-fk-for` MUST appear in the same entity's `x-entity.belongsTo`. An `x-fk-for` with no matching `belongsTo` is an error — it looks like a relationship declaration but declares nothing.
+2. `x-fk-for` and `x-references` MUST NOT appear on the same property (§1.7).
+3. The value MUST be a PascalCase entity name. `none` is not valid here — an owning FK always has a target.
+
+**Example**:
+
+```yaml
+# The column is `parentTicketRef` for historical reasons, but it is the owning
+# FK to Ticket and must keep Cascade semantics.
+TicketComment:
+  type: object
+  x-entity:
+    domain: support
+    type: entity
+    belongsTo: { allOf: [Ticket] }
+  required: [id, parentTicketRef, body]
+  properties:
+    id: { type: string, format: uuid }
+    parentTicketRef:
+      type: string
+      format: uuid
+      x-fk-for: Ticket
+    body: { type: string }
+```
+
+> Prefer renaming the property to `{Entity}Id` when you control the schema. `x-fk-for` exists so that a name you cannot change does not force you to give up composition semantics — not as a general alternative to the naming convention.
+
+---
+
+### 1.9 x-expand-of and x-projection
+
+**Purpose**: Mark **read-only projections** — properties that surface data belonging to another entity for read convenience, and which must never be treated as owned state.
+
+**Scope**: Property schemas inside a main resource (`x-entity`).
+
+**Optional**: Yes, but an unmarked projection embed is a spec defect (see below).
+
+**Schema**:
+
+```yaml
+x-expand-of: customerId     # scalar projection: names the twin property it expands
+x-projection: true          # collection projection: array of $ref, read-only
+```
+
+**Semantics**:
+
+- **`x-expand-of: <twin>`** marks a **scalar** projection embed. The named twin MUST be a sibling property in the same schema, and MUST be either a `format: uuid` FK or a required `type: string` natural key. The projection is excluded from persistence (EF-Ignored) — it is computed on read, never written.
+- **`x-projection: true`** marks a **collection** projection: a non-owned array of `$ref`. It is read-only and MUST NOT be `required`, because a projection is a convenience the server may decline to populate.
+
+**Validation rules**:
+
+1. An embed that projects another entity's data MUST carry one of the two markers. An unmarked projection embed is indistinguishable from owned state and will be persisted as such.
+2. `x-expand-of` MUST name an existing sibling property, and that property must be a uuid FK or a required string natural key.
+3. `x-projection: true` MUST be applied to an array-of-`$ref` property, and that property MUST NOT appear in `required`.
+4. Both markers are read-only: the properties they mark MUST NOT appear in `New*` or `Update*` derivatives.
+
+**Example**:
+
+```yaml
+Note:
+  type: object
+  x-entity: { domain: support, type: entity }
+  required: [id, customerId]
+  properties:
+    id:         { type: string, format: uuid }
+    customerId: { type: string, format: uuid, x-references: Customer }
+    customer:
+      # Scalar projection of the entity identified by `customerId`.
+      allOf: [{ $ref: './BasicCustomer.yaml' }]
+      x-expand-of: customerId
+    recentOrders:
+      # Collection projection — not owned, never required.
+      type: array
+      items: { $ref: './BasicOrder.yaml' }
+      x-projection: true
+```
+
+**Interactions**:
+
+- **`x-references` (§1.7)**: a scalar projection almost always expands an association FK. The FK carries the relationship; the projection carries the convenience copy.
+- **`Basic*` derivatives**: projections typically reference the lightweight shape of the target, not its full read model.
+
+---
+
 ## 2. Value Object Storage Extensions
 
 > **`storage` patterns are hints, not directives.** The patterns below (`single_json`, `flatten`, `serialized`, `separate_table`, `collection_json`) were originally designed against a relational target. Under the multi-backend persistence model (`Project_File.md` §6), each backend kind honors the hints it can and reinterprets the rest: a `document` adapter typically ignores `flatten` (the whole entity is one document anyway); a pure-`blob` adapter accepts only `serialized`; a `relational` adapter honors every pattern. Authors should pick the hint that matches the *semantic intent* (one blob vs. flat columns vs. side table) and let the resolved backend decide the physical realisation.

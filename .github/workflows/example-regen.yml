@@ -236,3 +236,60 @@ jobs:
 
           [[ $fail -eq 0 ]] || exit 1
           echo "==> mutability exemption matrix verified in both directions."
+
+      # Regression net for authoring issue #19. Each relationship/projection
+      # rule must fire on its own violation, and a correctly-marked schema must
+      # produce none of them — the second half is what keeps a shape rule from
+      # quietly becoming a no-op.
+      - name: Relationship and projection marker rules (regression)
+        run: |
+          # See the note two steps up: `bash -e` would abort on the fixture's
+          # expected error-severity findings.
+          set +e
+          set -uo pipefail
+          REPORT="${RUNNER_TEMP}/relationship-regression.txt"
+
+          spectral lint \
+            --ruleset schemas/spectral/specfuse-openapi.yaml \
+            schemas/spectral/fixtures/relationship-markers.yaml \
+            >"$REPORT" 2>&1
+          STATUS=$?
+          cat "$REPORT"
+
+          if [[ $STATUS -ge 2 ]]; then
+            echo "::error::Spectral crashed on the relationship fixture (exit ${STATUS})." >&2
+            exit 1
+          fi
+
+          fail=0
+
+          # Every rule must fire on the schema built to violate it.
+          check() {
+            if ! grep -q "$1" "$REPORT"; then
+              echo "::error::$2 did not fire on ${1##*schemas.}." >&2
+              fail=1
+            fi
+          }
+          check "components.schemas.BadReferenceValue"  "specfuse-x-references-shape"
+          check "components.schemas.UnjustifiedOpaque.properties.token" "specfuse-opaque-reference-justified"
+          check "components.schemas.BadFkForValue"      "specfuse-x-fk-for-shape"
+          check "components.schemas.ConflictingMarkers" "specfuse-fk-marker-exclusive"
+          check "components.schemas.DanglingExpandOf"   "specfuse-projection-coherence"
+          check "components.schemas.BadExpandOfTwin"    "specfuse-projection-coherence"
+          check "components.schemas.InlineProjection"   "specfuse-projection-coherence"
+          check "components.schemas.RequiredProjection" "specfuse-projection-coherence"
+          check "components.schemas.NewThing"           "specfuse-no-projection-markers-on-derivatives"
+          check "components.schemas.UpdateThing"        "specfuse-no-expand-of-on-derivatives"
+
+          # And a correctly-marked schema must trip none of them. This is the
+          # direction that catches over-matching — notably specfuse-projection-coherence
+          # runs unresolved precisely so a compliant array-of-$ref is not
+          # inlined-then-flagged.
+          if grep -E "components.schemas.GoodMarkers.*(x-references|x-fk-for|x-projection|x-expand-of)" "$REPORT"; then
+            echo "::error::GoodMarkers uses every marker correctly but was flagged." >&2
+            echo "A relationship or projection rule is over-matching." >&2
+            fail=1
+          fi
+
+          [[ $fail -eq 0 ]] || exit 1
+          echo "==> relationship and projection marker rules verified in both directions."

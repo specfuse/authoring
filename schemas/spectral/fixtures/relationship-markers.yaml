@@ -1,0 +1,170 @@
+# =============================================================================
+# Regression fixture: relationship classification + projection markers
+# =============================================================================
+# Pins the rules added for authoring issue #19 in both directions — that each
+# rule fires on the violation it exists for, and that a correctly-marked schema
+# produces no findings at all. The second half is what stops a shape rule from
+# quietly becoming a no-op.
+#
+# Expected findings (asserted by .github/workflows/example-regen.yml):
+#
+#   GoodMarkers            no relationship/projection findings
+#   BadReferenceValue      specfuse-x-references-shape
+#   UnjustifiedOpaque      specfuse-opaque-reference-justified
+#   BadFkForValue          specfuse-x-fk-for-shape
+#   ConflictingMarkers     specfuse-fk-marker-exclusive
+#   DanglingExpandOf       specfuse-projection-coherence (twin not a property)
+#   BadExpandOfTwin        specfuse-projection-coherence (twin is not an identifier)
+#   InlineProjection       specfuse-projection-coherence (not an array of $ref)
+#   RequiredProjection     specfuse-projection-coherence (projection is required)
+#   NewThing               specfuse-no-projection-markers-on-derivatives
+#   UpdateThing            specfuse-no-expand-of-on-derivatives
+#
+# See handbooks/Vendor_Extensions.md §1.7-1.9 and API_Handbook.md §9.5.
+# Not a Specfuse-conformant example — do not copy.
+# =============================================================================
+openapi: 3.0.3
+info:
+  title: Relationship marker fixture
+  version: "1.0.0"
+paths: {}
+components:
+  schemas:
+    BasicCustomer:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+
+    BasicOrder:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+
+    # ---- Correct: every marker used as intended. No findings expected. ----
+    GoodMarkers:
+      type: object
+      x-entity: { domain: support, type: entity, belongsTo: { allOf: [Ticket] } }
+      required: [id, ticketRef, naturalKey]
+      properties:
+        id: { type: string, format: uuid }
+        # Owning FK under a name that is not {Entity}Id.
+        ticketRef:
+          type: string
+          format: uuid
+          x-fk-for: Ticket
+        # Non-owning association.
+        customerId:
+          type: string
+          format: uuid
+          x-references: Customer
+        # Opaque uuid, justified.
+        correlationId:
+          type: string
+          format: uuid
+          x-references: none
+          description: Client-generated correlation id; identifies no entity.
+        naturalKey:
+          type: string
+        # Scalar projection over a uuid FK.
+        customer:
+          allOf: [{ $ref: '#/components/schemas/BasicCustomer' }]
+          x-expand-of: customerId
+        # Scalar projection over a required string natural key.
+        keyedThing:
+          allOf: [{ $ref: '#/components/schemas/BasicOrder' }]
+          x-expand-of: naturalKey
+        # Collection projection: array of $ref, not required.
+        recentOrders:
+          type: array
+          items: { $ref: '#/components/schemas/BasicOrder' }
+          x-projection: true
+
+    # ---- Each of these violates exactly one rule. ----
+    BadReferenceValue:
+      type: object
+      x-entity: { domain: support, type: entity }
+      properties:
+        id: { type: string, format: uuid }
+        customerId: { type: string, format: uuid, x-references: customer }   # not PascalCase
+
+    UnjustifiedOpaque:
+      type: object
+      x-entity: { domain: support, type: entity }
+      properties:
+        id: { type: string, format: uuid }
+        token: { type: string, format: uuid, x-references: none }            # no description
+
+    BadFkForValue:
+      type: object
+      x-entity: { domain: support, type: entity }
+      properties:
+        id: { type: string, format: uuid }
+        ref: { type: string, format: uuid, x-fk-for: none }                  # 'none' is not a target
+
+    ConflictingMarkers:
+      type: object
+      x-entity: { domain: support, type: entity }
+      properties:
+        id: { type: string, format: uuid }
+        ref:
+          type: string
+          format: uuid
+          x-references: Customer
+          x-fk-for: Customer                                                 # opposite ownership
+
+    DanglingExpandOf:
+      type: object
+      x-entity: { domain: support, type: entity }
+      properties:
+        id: { type: string, format: uuid }
+        customer:
+          allOf: [{ $ref: '#/components/schemas/BasicCustomer' }]
+          x-expand-of: customerId                                            # no such sibling
+
+    BadExpandOfTwin:
+      type: object
+      x-entity: { domain: support, type: entity }
+      properties:
+        id: { type: string, format: uuid }
+        count: { type: integer }
+        thing:
+          allOf: [{ $ref: '#/components/schemas/BasicOrder' }]
+          x-expand-of: count                                                 # not an identifier
+
+    InlineProjection:
+      type: object
+      x-entity: { domain: support, type: entity }
+      properties:
+        id: { type: string, format: uuid }
+        orders:
+          type: array
+          items: { type: object, properties: { id: { type: string } } }      # inline, not a $ref
+          x-projection: true
+
+    RequiredProjection:
+      type: object
+      x-entity: { domain: support, type: entity }
+      required: [id, orders]
+      properties:
+        id: { type: string, format: uuid }
+        orders:
+          type: array
+          items: { $ref: '#/components/schemas/BasicOrder' }
+          x-projection: true                                                 # must not be required
+
+    # ---- Markers are meaningless on request derivatives. ----
+    NewThing:
+      type: object
+      properties:
+        orders:
+          type: array
+          items: { $ref: '#/components/schemas/BasicOrder' }
+          x-projection: true
+
+    UpdateThing:
+      type: object
+      properties:
+        customerId: { type: string, format: uuid }
+        customer:
+          allOf: [{ $ref: '#/components/schemas/BasicCustomer' }]
+          x-expand-of: customerId

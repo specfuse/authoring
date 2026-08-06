@@ -1501,6 +1501,60 @@ x-entity:
 
 ---
 
+## 9.5) Relationship classification: owning, association, opaque
+
+`belongsTo` (§9.4) declares **composition** — the entity is a member of the target's aggregate, deletes cascade, and the parent owns the lifecycle. Not every foreign key means that. An entity frequently points at another entity it does not belong to, and the two cases generate very different code.
+
+Since implicit `{Entity}Id` → `belongsTo` inference was retired (kit `0.5.4`), a `format: uuid` property named after an entity carries **no relationship meaning on its own**. Every FK-shaped property is classified explicitly, exactly once:
+
+| Intent | Declaration | Delete behaviour | Aggregate membership |
+|---|---|---|---|
+| Entity is part of the target's aggregate | `belongsTo: <Target>` on `x-entity` | Cascade | Yes |
+| Entity points at the target but is not owned | `x-references: <Target>` on the property | NoAction | No |
+| The uuid is not a foreign key at all | `x-references: none` + justifying `description` | n/a | n/a |
+| Owning FK under a name that is not `{Entity}Id` | `x-fk-for: <Target>` on the property, bound to a declared `belongsTo` | Cascade | Yes |
+
+Full extension reference: `Vendor_Extensions.md` §1.7 (`x-references`), §1.8 (`x-fk-for`), §1.9 (`x-expand-of` / `x-projection`).
+
+**The markers are mutually exclusive.** `x-references` and `x-fk-for` declare opposite ownership and must never appear on the same property. `x-references: <Target>` must never co-occur with a `belongsTo` naming that same target — there is no precedence rule and no "declaration wins, marker degrades to a hint" fallback. If the entity is owned, use `belongsTo`; if it merely points, use `x-references`; if it is owned under a legacy column name, use `x-fk-for`.
+
+### Read-only projections
+
+An embed that surfaces another entity's data for read convenience is **not owned state** and must say so, or it will be persisted as if it were:
+
+- **`x-expand-of: <twin>`** — a scalar projection of the entity identified by a sibling property (a uuid FK, or a required string natural key). Excluded from persistence.
+- **`x-projection: true`** — a non-owned array-of-`$ref` collection. Read-only, and never `required`, because a projection is a convenience the server may decline to populate.
+
+Neither marker may appear on `New*` or `Update*` derivatives — a client cannot write a projection.
+
+### Nested routes require ownership
+
+A nested route asserts a containment relationship in the URL:
+
+```
+POST /{parents}/{parentId}/{children}
+GET  /{parents}/{parentId}/{children}
+```
+
+The child MUST declare `belongsTo <Parent>`. An `x-references` association is **not** sufficient: the route says the child lives inside the parent, while the association says it merely points at it, and the two cannot both be true. Model the association as a flat route with a filter (`GET /{children}?parentId=...`) instead.
+
+This is the route-level counterpart of the classification table — the URL shape and the relationship declaration must agree.
+
+### Anti-patterns
+
+| Anti-pattern | Symptom | Why it is wrong |
+|---|---|---|
+| Unclassified `format: uuid` property named after an entity | No relationship generated; the FK silently becomes a plain column | Inference was retired — absence of a marker is not a default, it is an omission |
+| `x-references: <T>` alongside `belongsTo: <T>` | Ambiguous ownership | Composition and association are mutually exclusive per target |
+| `x-references` and `x-fk-for` on one property | Contradictory ownership | The two markers mean opposite things |
+| `x-fk-for: <T>` with no `belongsTo: <T>` | Looks like a relationship declaration, declares nothing | `x-fk-for` binds an existing declaration; it cannot create one |
+| Unmarked projection embed | Projection persisted as owned state | Nothing distinguishes it from real state without a marker |
+| `x-projection` property listed in `required` | Client cannot rely on it anyway | The server may decline to populate a projection |
+| Nested route whose child only declares `x-references` | Route asserts containment the model denies | Use a flat route with a filter |
+| `x-references: none` with no description | Relationship classification suppressed for unstated reasons | Indistinguishable from an author who skipped the question |
+
+---
+
 ## 9.2) Query Parameters & Filtering Standards
 
 Specfuse APIs use **standardized query parameters** for consistent filtering, searching, and pagination. Two distinct mechanisms are supported:
@@ -2398,6 +2452,9 @@ async function retryWithBackoff(operation, maxRetries = 3) {
 - **Query Parameters**: All fields usable in OData `filter` expressions MUST be declared in `filterableProperties`. All fields used in free-text `search` MUST be declared in `searchableProperties`.
 - **BilingualText**: Reference subfields in `searchableProperties` (e.g., `title.en`, `title.fr`).
 - **Parameter Naming**: Use `search` (not `q`) for free-text search, `filter` for OData filtering, `sort` (not `sortBy` or `sortOrder`) for sorting.
+- **Relationship classification**: Classify every `format: uuid` FK-shaped property exactly once — `belongsTo` for composition, `x-references: <Entity>` for a non-owning association, `x-references: none` (with a justifying description) for a uuid that is not a foreign key. Inference was retired; an unmarked property is an omission, not a default. See §9.5.
+- **Legacy FK names**: When an owning FK cannot be named `{Entity}Id`, bind it with `x-fk-for: <Entity>` alongside the declared `belongsTo`, so composition and Cascade survive the naming exception.
+- **Projections**: Mark read-only embeds — `x-expand-of: <twin>` for a scalar projection, `x-projection: true` for a non-owned collection. An unmarked projection embed is persisted as owned state.
 
 **Don't**
 - Don't inline enums.
@@ -2411,6 +2468,12 @@ async function retryWithBackoff(operation, maxRetries = 3) {
 - **Don't use `sortBy` or `sortOrder`**: Use the standardized `sort` parameter that supports multiple fields and order.
 - **Don't add filterable fields without updating `filterableProperties`**: All fields usable in `filter` expressions must be declared.
 - **Don't forget `searchableProperties` for text search**: All fields included in `search` must be declared.
+- **Don't declare both `x-references: <T>` and `belongsTo: <T>`**: composition and association are mutually exclusive per target. There is no precedence rule and no "marker degrades to a hint" fallback. See §9.5.
+- **Don't put `x-references` and `x-fk-for` on the same property**: they declare opposite ownership.
+- **Don't use `x-fk-for` without a matching `belongsTo`**: it binds an existing declaration, it cannot create one.
+- **Don't nest a route under a parent the child only references**: `POST`/`GET /{parents}/{parentId}/{children}` requires the child to `belongsTo <Parent>`. For an association, use a flat route with a filter.
+- **Don't mark a projection `required`**: the server may decline to populate it.
+- **Don't put projection markers on `New*`/`Update*` derivatives**: a client cannot write a projection.
 
 ---
 
