@@ -244,7 +244,8 @@ NewCustomer:
 ### 1.5 Partial update (PATCH)
 - **Schema name:** `Update{Resource}` (e.g., `UpdateCustomer`).
 - **Semantics:** partial update; all properties optional; unknown fields ignored per global rule.
-- **Content-Type:** `application/json` (server performs merge).
+- **Content-Type:** `application/json`.
+- **Tri-state, decided per field:** a property **absent** from the body is untouched; a property **present** carries the field's new value. For collection-typed properties, "the new value" means the complete desired set — see §1.5.1.
 
 ```yaml
 UpdateCustomer:
@@ -255,6 +256,68 @@ UpdateCustomer:
     lastName:  { type: string }
     status:    { $ref: '#/components/schemas/CustomerStatus' }
 ```
+
+### 1.5.1 Collection properties in `Update{Resource}` — complete-set reconcile
+
+PATCH decides at the **field** level: absent means untouched, present means "here is the new value". What that means for a collection is the part worth spelling out, because the intuitive reading — merge the incoming elements into the stored ones — is **not** the contract.
+
+**A collection property present in the body is the complete desired set. There is no merge mode.**
+
+| Collection kind | Semantics when present in the body |
+|---|---|
+| Value-object / scalar arrays (tags, metadata, …) | The stored array is **replaced entirely**, not merged. The property `description` must say so. |
+| Child-entity collections (arrays of `Update{Child}` backing a `hasMany`) | Identity-based reconcile against the tracked children — see below. |
+
+#### Child-entity reconcile
+
+| Incoming element | Behaviour |
+|---|---|
+| Carries a **known `id`** | Update that child **in place**. The PK is preserved, so `x-references` FKs pointing at this child from other aggregates stay valid. |
+| Carries **no `id`** | Create. The element is validated **as a create** — the child's client-settable required fields are enforced, and a violating element fails the whole PATCH with `400`. |
+| Carries an **unknown `id`** | `404`. Never a silent create-with-client-supplied-id. |
+| Tracked child **absent from the array** | **Delete, permanently.** |
+
+**Deletion is a hard delete and is not recoverable.** Reconciled children are aggregate-internal state — the same category as the elements of a replaced value-object array — so a project-wide soft-delete convention for top-level resources does **not** extend to reconcile removals. Consumer-facing descriptions must state that omitted children are permanently removed. Getting this wrong in prose is worse than getting it wrong in code: a client that believes omission is recoverable will discover otherwise in production.
+
+**What fences the accidental-deletion risk** is machinery the contract already mandates, not a special case:
+
+- **`If-Match` is required on every PATCH** (§2). That forces read-modify-write, so a client cannot send a partial array without having first read the current one.
+- **`?validateOnly=true`** gives a dry run before committing.
+
+#### DTO shape rule
+
+An `Update{Child}` DTO used as an array element inside a parent's `Update{Parent}` MUST expose an **optional** identity property:
+
+```yaml
+UpdateOrderLine:
+  type: object
+  additionalProperties: false
+  properties:
+    id:
+      type: string
+      format: uuid
+      description: >-
+        Identifies an existing line to update in place. Omit to create a new
+        line. Lines omitted from the array are permanently deleted.
+    quantity: { type: integer }
+    note:     { type: string }
+```
+
+Omitting `id` from the DTO entirely leaves the server unable to tell an update from a create, and the only available fallback — delete every tracked child and re-add the incoming ones — recreates rows with new PKs on every PATCH. That breaks `x-references` FKs pointing at those children, audit trails, and concurrency tokens. **Delete-then-add is forbidden as a fallback.** Instead:
+
+- **Spec validation raises a WARN** naming the spec file and property path: *child collection reconcile requires an optional `id` on `Update{Child}` — add it*.
+- **Generation fails closed** rather than emitting the destructive fallback.
+
+The rule fires **only** on the specific shape — an `Update*` DTO used as an array element inside another `Update*` DTO. A blunt "every `Update*` DTO needs an `id`" rule would be a false-positive storm, since most `Update*` DTOs are the body of a PATCH addressed by URL, where the identity is in the path.
+
+#### Rejected alternatives
+
+Recorded so the convention does not drift back:
+
+| Alternative | Why it was rejected |
+|---|---|
+| **Upsert-only** — elements present are created/updated, absent children left untouched | Forks the semantics *inside a single PATCH body*: scalar fields would be "present = new value" while collections would be "present = partial merge". It is also inexpressible in OpenAPI, and it leaves no way to remove a child without adding child `DELETE` routes for every collection. |
+| **Deletion markers** — `_delete: true` on an element | Violates the property naming rules, pollutes every child DTO with a field that is not part of the model, and has zero OpenAPI expressibility — nothing in the schema says what the flag does. |
 
 ### 1.6 Search
 - **Schema name:** `{Resource}SearchRequest` (e.g., `CustomerSearchRequest`).
@@ -2455,6 +2518,7 @@ async function retryWithBackoff(operation, maxRetries = 3) {
 - **Relationship classification**: Classify every `format: uuid` FK-shaped property exactly once — `belongsTo` for composition, `x-references: <Entity>` for a non-owning association, `x-references: none` (with a justifying description) for a uuid that is not a foreign key. Inference was retired; an unmarked property is an omission, not a default. See §9.5.
 - **Legacy FK names**: When an owning FK cannot be named `{Entity}Id`, bind it with `x-fk-for: <Entity>` alongside the declared `belongsTo`, so composition and Cascade survive the naming exception.
 - **Projections**: Mark read-only embeds — `x-expand-of: <twin>` for a scalar projection, `x-projection: true` for a non-owned collection. An unmarked projection embed is persisted as owned state.
+- **PATCH collections are complete sets**: a collection property present in an `Update{Resource}` body replaces the stored set — value-object arrays wholesale, child-entity arrays by identity reconcile (known `id` updates in place, no `id` creates, unknown `id` is `404`, omitted children are permanently deleted). Give `Update{Child}` an optional `id`, and say in the property description that omitted children are not recoverable. See §1.5.1.
 
 **Don't**
 - Don't inline enums.
@@ -2474,6 +2538,9 @@ async function retryWithBackoff(operation, maxRetries = 3) {
 - **Don't nest a route under a parent the child only references**: `POST`/`GET /{parents}/{parentId}/{children}` requires the child to `belongsTo <Parent>`. For an association, use a flat route with a filter.
 - **Don't mark a projection `required`**: the server may decline to populate it.
 - **Don't put projection markers on `New*`/`Update*` derivatives**: a client cannot write a projection.
+- **Don't use deletion markers** (`_delete: true` and friends) to remove children in a PATCH: omission from the array is the removal signal. See §1.5.1.
+- **Don't document a child collection as upsert-only or absent-means-untouched**: it contradicts the complete-set contract, and prose that disagrees with the server is worse than no prose.
+- **Don't omit `id` from an `Update{Child}` used inside a parent collection**: without it the server cannot tell an update from a create, and delete-then-add is forbidden because it recreates rows with new PKs, breaking `x-references` FKs, audit trails, and concurrency tokens.
 
 ---
 
