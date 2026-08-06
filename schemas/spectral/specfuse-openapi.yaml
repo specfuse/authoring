@@ -27,6 +27,10 @@
 
 extends: "spectral:oas"
 formats: [oas3]
+
+functions:
+  - openapiProjectionCoherence
+
 rules:
 
   # ===== Disabled / downgraded built-in rules =====
@@ -862,6 +866,88 @@ rules:
         schema:
           type: array
           uniqueItems: true
+
+  # ===== Relationship classification and projection markers =====
+  # Vendor_Extensions.md §1.7-1.9, API_Handbook.md §9.5.
+  #
+  # Since implicit `{Entity}Id` -> `belongsTo` inference was retired in 0.5.4, a
+  # uuid property carries no relationship meaning on its own. These rules police
+  # the shape of the explicit markers. Whether a given FK-shaped property was
+  # classified AT ALL needs the entity graph and is generator-side —
+  # see compatibility.md.
+
+  specfuse-x-references-shape:
+    description: "x-references must name a PascalCase entity, or the literal 'none' for a uuid that is not a foreign key."
+    message: "x-references must be a PascalCase entity name or 'none'. See Vendor_Extensions.md §1.7."
+    severity: error
+    given: $.components.schemas[*].properties[*]["x-references"]
+    then:
+      function: pattern
+      functionOptions:
+        match: "^(none|[A-Z][A-Za-z0-9]*)$"
+
+  specfuse-opaque-reference-justified:
+    description: "x-references: none suppresses relationship classification, so it must carry a description saying why the uuid is not a foreign key."
+    message: "x-references: none requires a description justifying why this uuid identifies no entity. Without one it is indistinguishable from an unclassified FK. See Vendor_Extensions.md §1.7."
+    severity: error
+    given: $.components.schemas[*].properties[?(@ && @["x-references"] === 'none')]
+    then:
+      field: description
+      function: truthy
+
+  specfuse-x-fk-for-shape:
+    description: "x-fk-for must name a PascalCase entity; an owning FK always has a target, so 'none' is not valid."
+    message: "x-fk-for must be a PascalCase entity name. See Vendor_Extensions.md §1.8."
+    severity: error
+    given: $.components.schemas[*].properties[*]["x-fk-for"]
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[A-Z][A-Za-z0-9]*$"
+
+  specfuse-fk-marker-exclusive:
+    description: "x-references and x-fk-for declare opposite ownership and must not appear on the same property."
+    message: "A property carries both x-references (association, NoAction) and x-fk-for (composition, Cascade). Pick one — they mean opposite things. See API_Handbook.md §9.5."
+    severity: error
+    given: $.components.schemas[*].properties[?(@ && @["x-references"] && @["x-fk-for"])]
+    then:
+      field: x-fk-for
+      function: falsy
+
+  specfuse-projection-coherence:
+    description: "x-expand-of must name a sibling identifier property; x-projection must mark a non-required array of $ref."
+    message: "{{error}}"
+    severity: error
+    # Unresolved: a collection projection is REQUIRED to be an array of $ref, so
+    # linting the resolved document would inline the very $ref the rule checks
+    # for and flag every correct projection. This is the resolution-sensitivity
+    # trap described in schemas/README.md — the rule inspects schema shape, so it
+    # must see the document as authored.
+    resolved: false
+    given: $.components.schemas[?(@ && @["x-entity"])]
+    then:
+      function: openapiProjectionCoherence
+
+  # Projections and relationship markers are read-only server-side concerns.
+  # A client cannot write a projection, and a derivative DTO does not own the
+  # relationship — so these markers have no meaning on New*/Update* shapes.
+  specfuse-no-projection-markers-on-derivatives:
+    description: "Projection markers must not appear on New{Resource} or Update{Resource} derivatives."
+    message: "Projection markers are read-only and belong on the main resource, not on a request derivative. See Vendor_Extensions.md §1.9."
+    severity: error
+    given: $.components.schemas[?(@property.match("^(New|Update)[A-Z]"))].properties[*]
+    then:
+      field: x-projection
+      function: falsy
+
+  specfuse-no-expand-of-on-derivatives:
+    description: "x-expand-of must not appear on New{Resource} or Update{Resource} derivatives."
+    message: "x-expand-of is a read-only projection and belongs on the main resource, not on a request derivative. See Vendor_Extensions.md §1.9."
+    severity: error
+    given: $.components.schemas[?(@property.match("^(New|Update)[A-Z]"))].properties[*]
+    then:
+      field: x-expand-of
+      function: falsy
 
   # ===== HTTP response correctness =====
   specfuse-409-on-delete:
