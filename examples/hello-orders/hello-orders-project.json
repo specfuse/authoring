@@ -1,32 +1,24 @@
 {
-  "$schema": "https://specfuse.dev/schemas/project.schema.json",
   "name": "hello-orders",
   "description": "Bundled example project for the spec-authoring-kit. Exercises the kit's full surface (2 domains, 3 entities, 1 cross-domain scenario, 1 recipe chain) and serves as the kit's CI regression net.",
-  "specs": {
-    "openapi": "api/specs/v1/openapi.yaml",
-    "asyncapi": "api/specs/v1/asyncapi.yaml",
-    "arazzoGlob": "api/specs/v1/**/*.arazzo.yaml"
-  },
-  "bundle": {
-    "outputDir": "output",
-    "openapiBundled": "output/openapi-bundled.yaml",
-    "asyncapiBundled": "output/asyncapi-bundled.yaml"
-  },
-  "Workers": {
-    "_comment": "Backend-language settings for generated worker classes. TODO once generator integration ships.",
-    "language": "TODO",
-    "outputDir": "TODO",
-    "namespace": "TODO"
-  },
-  "Backend": {
-    "_comment": "Backend-language settings for generated controllers/services/repositories. TODO once generator integration ships.",
-    "language": "TODO",
-    "outputDir": "TODO",
-    "namespace": "TODO"
-  },
-  "Frontend": {
-    "_comment": "Frontend-language settings for generated client SDK and types. TODO once generator integration ships.",
-    "language": "TODO",
-    "outputDir": "TODO"
-  }
+  "openApiSpecifications": "./output/openapi-bundled.yaml",
+  "asyncSpecifications": "./output/asyncapi-bundled.yaml",
+  "arazzoSpecifications": "./api/specs/v1",
+  "asyncSourceRoot": "./api/specs/v1",
+  "dbContextClassname": "HelloOrdersDbContext",
+  "stateDir": "./.specfuse/state",
+  "groups": [
+    {
+      "language": "C#",
+      "name": "Domain",
+      "basePackage": "HelloOrders.Domain",
+      "destination": "./out/Backend/",
+      "cleanGenerated": true,
+      "artifacts": [
+        "entity",
+        "valueObject",
+        "enum"
+      ]
+    }
+  ]
 }
