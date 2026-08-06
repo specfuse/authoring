@@ -1,0 +1,76 @@
+# =============================================================================
+# Regression fixture: null tolerance + duplicate-enum detection
+# =============================================================================
+# Guards two properties of schemas/spectral/specfuse-openapi.yaml at once:
+#
+#   1. Linting this document must NOT crash. Nulls appear here in every shape
+#      that has been observed to abort a Spectral run: a property-level
+#      `example: null`, a meaningful null inside an example payload, and a null
+#      schema node. The upstream `spectral:oas` rule `duplicated-entry-in-enum`
+#      uses an unguarded recursive-descent filter and throws
+#      "Cannot read properties of null (reading 'enum')" on any of them, which
+#      aborts the whole run and emits zero findings — a crash that reads as a
+#      clean pass. See authoring issue #14.
+#
+#   2. `specfuse-no-duplicate-enum-entries` must still FIRE on `BadEnum` below.
+#      This half matters as much as the first: a rule that stops crashing by
+#      never running is indistinguishable from a fixed rule if you only check
+#      that the error count went down. The CI step asserts the warning is
+#      present, not merely that the process exited.
+#
+# Expected result (see .github/workflows/example-regen.yml):
+#   - process exits 0 or 1, never >= 2
+#   - exactly one specfuse-no-duplicate-enum-entries finding, on BadEnum
+#
+# This fixture is deliberately NOT Specfuse-conformant — it is a lint-engine
+# regression test, not an example of how to author a spec. Do not copy it.
+# =============================================================================
+openapi: 3.0.3
+info:
+  title: Null and duplicate-enum regression fixture
+  version: "1.0.0"
+paths: {}
+components:
+  schemas:
+    # Must be flagged: 'draft' appears twice.
+    BadEnum:
+      type: string
+      enum: [draft, active, draft]
+
+    # Must NOT be flagged.
+    GoodEnum:
+      type: string
+      enum: [draft, active]
+
+    # A null schema node — crashes any filter that dereferences `@` without a
+    # leading `@ &&` guard, including several of this kit's own rules before
+    # they were hardened.
+    NullSchema: null
+
+    WithNulls:
+      type: object
+      properties:
+        # Property-level null example.
+        note:
+          type: string
+          example: null
+        # Null inside a nested structure.
+        window:
+          type: object
+          properties:
+            effectiveFrom:
+              type: string
+              format: date-time
+            effectiveTo:
+              type: string
+              format: date-time
+      # Meaningful nulls in an example payload: `effectiveTo: null` means
+      # open-ended, `roleId: null` means unfiltered. These carry information
+      # that `nullable: true` does not, which is why the fix belongs in the
+      # ruleset rather than in a rule against ever writing a null.
+      example:
+        note: null
+        window:
+          effectiveFrom: "2026-01-01T00:00:00Z"
+          effectiveTo: null
+        roleId: null

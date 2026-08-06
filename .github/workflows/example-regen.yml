@@ -7,12 +7,18 @@
 #
 # Two jobs run today:
 #   - validate: YAML parseability + project.json validity (the floor).
-#   - spectral: bundle the OpenAPI surface with redocly, then lint the bundle
-#     against the kit's OpenAPI ruleset; fail on any `error`-severity finding.
+#   - spectral: bundle the OpenAPI surface with redocly, then lint all three
+#     surfaces against the kit's rulesets; fail on any `error`-severity finding.
+#
+# Every Spectral invocation goes through scripts/spectral-lint.sh rather than
+# calling `spectral lint` directly. The wrapper exists because the default
+# failure mode of a lint tool is silence: a crash, a timeout, or a bad ruleset
+# path makes Spectral emit no findings at all, which is byte-for-byte
+# indistinguishable from a clean spec if you only look at the report. The
+# wrapper treats "produced no output" and "exited >= 2" as failures. See
+# authoring issue #14.
 #
 # Still to come as the toolchain grows:
-#   - Spectral linting of the AsyncAPI and Arazzo surfaces (needs an
-#     AsyncAPI/Arazzo bundling step; the rulesets already exist).
 #   - End-to-end generator regeneration + diff (once wired into CI).
 # =============================================================================
 
@@ -102,24 +108,131 @@ jobs:
 
       - name: Lint the bundle against the kit's OpenAPI ruleset
         run: |
-          # Fails the job on any error-severity finding; warnings/hints do not fail.
-          spectral lint \
-            --ruleset schemas/spectral/specfuse-openapi.yaml \
-            --fail-severity error \
+          # The wrapper fails the job on error-severity findings AND on any
+          # Spectral crash or empty report, which would otherwise look like a
+          # clean run. See scripts/spectral-lint.sh.
+          scripts/spectral-lint.sh "OpenAPI (hello-orders bundle)" \
+            schemas/spectral/specfuse-openapi.yaml \
             "${RUNNER_TEMP}/hello-orders.bundle.yaml"
 
       # AsyncAPI and Arazzo need no bundling — Spectral resolves their $refs
       # directly (no operation-level-$ref antipattern as in OpenAPI).
       - name: Lint the AsyncAPI surface
         run: |
-          spectral lint \
-            --ruleset schemas/spectral/specfuse-asyncapi.yaml \
-            --fail-severity error \
+          scripts/spectral-lint.sh "AsyncAPI (hello-orders)" \
+            schemas/spectral/specfuse-asyncapi.yaml \
             examples/hello-orders/api/specs/v1/asyncapi.yaml
 
       - name: Lint the Arazzo scenarios and recipes
         run: |
-          spectral lint \
-            --ruleset schemas/spectral/specfuse-arazzo.yaml \
-            --fail-severity error \
+          scripts/spectral-lint.sh "Arazzo (hello-orders scenarios)" \
+            schemas/spectral/specfuse-arazzo.yaml \
             "examples/hello-orders/api/specs/v1/scenarios/**/*.yaml"
+
+      # Regression net for authoring issue #14. Asserts two things that a
+      # passing hello-orders run cannot assert on its own, because the example
+      # contains no nulls and no duplicate enums:
+      #
+      #   1. A document full of nulls does not abort the run. The upstream
+      #      `duplicated-entry-in-enum` rule crashes on any null; the kit turns
+      #      it off and ships a null-safe replacement.
+      #   2. That replacement still FIRES. A rule that stops crashing by never
+      #      running looks identical to a fixed rule if you only watch the error
+      #      count fall — so check for the finding, not for the exit code.
+      - name: Null tolerance and duplicate-enum detection (regression)
+        run: |
+          # GitHub runs `run:` blocks under `bash -e`, which would abort this
+          # step the moment `spectral lint` exits non-zero — before $? can be
+          # inspected. This step needs to distinguish exit 1 (expected findings
+          # on a deliberately invalid fixture) from exit >= 2 (a crash), so
+          # disable errexit explicitly.
+          set +e
+          set -uo pipefail
+          REPORT="${RUNNER_TEMP}/null-regression.txt"
+
+          spectral lint \
+            --ruleset schemas/spectral/specfuse-openapi.yaml \
+            schemas/spectral/fixtures/null-and-enum-regression.yaml \
+            >"$REPORT" 2>&1
+          STATUS=$?
+          cat "$REPORT"
+
+          # The fixture intentionally contains invalid constructs (a null schema
+          # node), so error-severity findings are expected and fine. Only a
+          # crash — exit 2 or above — is a failure here.
+          if [[ $STATUS -ge 2 ]]; then
+            echo "::error::Spectral crashed on the null fixture (exit ${STATUS})." >&2
+            echo "A null in the document is aborting the run and emitting zero" >&2
+            echo "findings. Check for an unguarded '[?(' filter missing its" >&2
+            echo "leading '@ &&' null check, in this kit's rules or an upstream" >&2
+            echo "ruleset it extends. See authoring issue #14." >&2
+            exit 1
+          fi
+
+          if ! grep -q "specfuse-no-duplicate-enum-entries" "$REPORT"; then
+            echo "::error::specfuse-no-duplicate-enum-entries did not fire on the" >&2
+            echo "fixture's BadEnum, which contains a duplicate entry. The rule is" >&2
+            echo "silently not running — duplicate enum entries are unguarded." >&2
+            exit 1
+          fi
+
+          echo "==> Null tolerance and duplicate-enum detection both verified."
+
+      # Regression net for authoring issue #13. The updatedAt requirement is
+      # exempted for entities declaring a non-mutable write policy. Both
+      # directions are asserted: an exemption that accidentally swallows every
+      # entity is indistinguishable from a working one if you only watch the
+      # error count fall.
+      - name: x-entity.mutability exemption matrix (regression)
+        run: |
+          # See the note on the previous step: `bash -e` would abort here on
+          # the fixture's expected error-severity findings.
+          set +e
+          set -uo pipefail
+          REPORT="${RUNNER_TEMP}/mutability-regression.txt"
+
+          spectral lint \
+            --ruleset schemas/spectral/specfuse-openapi.yaml \
+            schemas/spectral/fixtures/mutability-exemption.yaml \
+            >"$REPORT" 2>&1
+          STATUS=$?
+          cat "$REPORT"
+
+          if [[ $STATUS -ge 2 ]]; then
+            echo "::error::Spectral crashed on the mutability fixture (exit ${STATUS})." >&2
+            exit 1
+          fi
+
+          fail=0
+          flagged() { grep -q "components.schemas.$1.properties" "$REPORT"; }
+
+          # Must still fire: no declaration means mutable, and so does an
+          # explicit `mutable`.
+          for entity in MutableThing DefaultedThing; do
+            if ! flagged "$entity"; then
+              echo "::error::${entity} should require updatedAt but was not flagged." >&2
+              echo "The exemption is over-matching — it is now excusing mutable entities." >&2
+              fail=1
+            fi
+          done
+
+          # Must be exempt: rows are never modified, so updatedAt would be a
+          # field asserting something untrue.
+          for entity in ImmutableThing AppendOnlyThing GoodMutable; do
+            if flagged "$entity"; then
+              echo "::error::${entity} was flagged for a missing updatedAt but should be exempt." >&2
+              fail=1
+            fi
+          done
+
+          # The closed value set is what keeps the exemption from being an
+          # escape hatch. If an unknown write policy stops being rejected,
+          # any entity can opt out of updatedAt silently.
+          if ! grep -q "specfuse-xentity-shape.*BogusMutability\|BogusMutability.x-entity.mutability" "$REPORT"; then
+            echo "::error::An unknown x-entity.mutability value was accepted." >&2
+            echo "The exemption is only safe while the value set stays closed." >&2
+            fail=1
+          fi
+
+          [[ $fail -eq 0 ]] || exit 1
+          echo "==> mutability exemption matrix verified in both directions."

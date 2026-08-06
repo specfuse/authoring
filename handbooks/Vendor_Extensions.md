@@ -34,6 +34,7 @@ x-entity:
   searchableProperties: string[] # Optional: Fields available for free-text search
   encryptedProperties: string[]  # Optional: Fields requiring encryption at rest
   requiresPagination: boolean    # Optional: Whether lists require pagination (default: true for aggregates)
+  mutability: string             # Optional: "mutable" | "immutable" | "appendOnly" (default: "mutable")
   valueObjects: object           # Optional: Value object storage configuration
   aiAccess: object               # Optional: AI agent access policy (see 1.1.1). Absent = no AI access.
 ```
@@ -53,6 +54,53 @@ x-entity:
   - Has identity but belongs to an aggregate
   - Managed through aggregate operations
   - Examples: `OrderLine`, `CustomerPreferences`, `CatalogItem`
+
+**`mutability` (optional, default `mutable`).** Declares the write policy for the entity's rows after insert.
+
+| Value | Meaning | Typical entities |
+|---|---|---|
+| `mutable` | Rows are updated in place. The default; omitting the property means this. | Most entities |
+| `immutable` | Rows are never modified after insert. | Audit trails, ledger transactions |
+| `appendOnly` | New rows are added; existing rows are never modified. | Event logs, append-only histories |
+
+Declare it when the entity's write policy is a real constraint rather than an
+accident of the current implementation. The reason to bother is that it turns a
+narrative claim into a machine-readable one: an entity whose description says
+*"there is no separate `updatedAt` because audit rows are immutable"* is stating
+a constraint no tool can act on. Declaring `mutability` makes it checkable.
+
+**What consumes it today:** `specfuse-main-resource-has-updatedAt`. That rule
+requires every entity to expose `updatedAt`, which silently assumes every entity
+mutates. For an immutable or append-only entity, an `updatedAt` column
+permanently equals `createdAt` — a field asserting something untrue — so a
+declared non-mutable write policy exempts the entity from the requirement. `id`
+and `createdAt` remain required regardless; only `updatedAt` is meaningless for
+rows that never change.
+
+This is not an escape hatch from the `updatedAt` requirement. The value is
+validated against the closed set above by `specfuse-xentity-shape`, so
+mislabelling a mutable entity to dodge the rule is a visible, reviewable edit
+rather than a silent suppression.
+
+> **Runtime enforcement is not implemented.** Nothing currently prevents an
+> update to a row on an entity declared `immutable` — the property drives lint
+> behaviour, not generated persistence code. Treat it as a declared and
+> lint-checked intent, not an enforced guarantee. Generator-side enforcement is
+> tracked in `compatibility.md`.
+
+```yaml
+AuditEntry:
+  type: object
+  x-entity:
+    domain: compliance
+    type: entity
+    mutability: immutable       # audit rows are never modified; no updatedAt
+  properties:
+    id: { type: string, format: uuid }
+    createdAt: { type: string, format: date-time }
+    actorId: { type: string, format: uuid }
+    action: { $ref: './AuditAction.yaml' }
+```
 
 **Relationship Cardinality**:
 
@@ -273,6 +321,24 @@ x-value-object:
 ```
 
 > **Naming note:** the generator's internal extension constant uses the camelCase form `x-valueObject` as an alias. The kit's canonical kebab-case form is `x-value-object`. Either form is accepted by the parser; new specs should use the kebab-case form.
+
+> **`validationRules` is a value-object sub-key and nothing else.** It is scoped
+> to `x-value-object`, and it expresses **self-contained invariants** — rules
+> decidable from the value object's own properties alone, such as `min <= max`.
+> There is no entity-level `validationRules`; `x-entity` does not accept the key.
+>
+> The name invites a specific confusion, so it is worth stating the boundary
+> explicitly. A rule that queries other rows, reads request context, or depends
+> on which operation is being performed is **not** an invariant — it is an entity
+> business rule, and it belongs in the HTTP contract as a `409 Conflict` response
+> on the operations that can violate it (see `API_Handbook.md`). Signs you have
+> crossed the line: the rule needs fields like `appliesTo`, `autoResolve`, or a
+> resolution policy, or it cannot be evaluated without a second database read.
+>
+> The two views are the same gap seen from opposite ends. An entity declaring a
+> business rule this way is usually paired with an operation missing its `409` —
+> `specfuse-409-on-put-patch` and `specfuse-409-on-delete` flag that end
+> independently.
 
 **Value Object Characteristics**:
 - **Immutable**: Value objects represent immutable data without identity

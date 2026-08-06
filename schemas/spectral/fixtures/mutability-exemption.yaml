@@ -1,0 +1,88 @@
+# =============================================================================
+# Regression fixture: x-entity.mutability exemption from updatedAt
+# =============================================================================
+# `specfuse-main-resource-has-updatedAt` requires every entity to expose
+# `updatedAt`. That requirement assumes every entity mutates. Audit trails,
+# ledger transactions and append-only event logs do not: for those, an
+# `updatedAt` column permanently equals `createdAt` — a field asserting
+# something untrue. Before `x-entity.mutability` existed, the only ways out were
+# to write the false field or to hardcode an allowlist of entity names.
+#
+# This fixture pins the exemption in BOTH directions, which is the part that
+# matters. An exemption that accidentally swallows every entity looks exactly
+# like a working one if you only check that the error count went down.
+#
+# Expected findings (asserted by .github/workflows/example-regen.yml):
+#
+#   MutableThing      updatedAt REQUIRED  (no mutability declared -> defaults mutable)
+#   DefaultedThing    updatedAt REQUIRED  (mutability: mutable, stated explicitly)
+#   ImmutableThing    exempt              (mutability: immutable)
+#   AppendOnlyThing   exempt              (mutability: appendOnly)
+#   GoodMutable       clean               (mutable and has updatedAt)
+#   BogusMutability   specfuse-xentity-shape error on the mutability value
+#
+# That last one is the load-bearing case. `mutability` is validated against a
+# closed set, so mislabelling a mutable entity to dodge the updatedAt rule is a
+# visible, reviewable edit — not a silent suppression. If the shape rule ever
+# stops rejecting unknown values, the exemption becomes an escape hatch, and
+# this fixture fails.
+#
+# See authoring issue #13. Not a Specfuse-conformant example — do not copy.
+# =============================================================================
+openapi: 3.0.3
+info:
+  title: x-entity.mutability exemption fixture
+  version: "1.0.0"
+paths: {}
+components:
+  schemas:
+    # No mutability declared. Absence means mutable, so updatedAt is required.
+    MutableThing:
+      type: object
+      x-entity: { domain: orders, type: entity }
+      properties:
+        id: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    # Same requirement, stated explicitly rather than by omission.
+    DefaultedThing:
+      type: object
+      x-entity: { domain: orders, type: entity, mutability: mutable }
+      properties:
+        id: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    # Audit-trail shape: rows are never modified after insert. Exempt.
+    ImmutableThing:
+      type: object
+      x-entity: { domain: orders, type: entity, mutability: immutable }
+      properties:
+        id: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    # Event-log shape: new rows only, existing rows never modified. Exempt.
+    AppendOnlyThing:
+      type: object
+      x-entity: { domain: orders, type: entity, mutability: appendOnly }
+      properties:
+        id: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    # Mutable and correctly carries updatedAt. No finding.
+    GoodMutable:
+      type: object
+      x-entity: { domain: orders, type: entity }
+      properties:
+        id: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    # Unknown write policy. Must be rejected by specfuse-xentity-shape, which is
+    # what keeps the exemption honest.
+    BogusMutability:
+      type: object
+      x-entity: { domain: orders, type: entity, mutability: sortaMutable }
+      properties:
+        id: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }

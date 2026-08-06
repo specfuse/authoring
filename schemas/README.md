@@ -69,7 +69,7 @@ rules:
   myproject-auth-roles-enum:
     description: "x-roles values must come from common/enums.yaml#/Role"
     severity: error
-    given: $.paths[*][*][?(@.security)]["x-roles"][*]
+    given: $.paths[*][*][?(@ && @.security)]["x-roles"][*]
     then:
       function: enumeration
       functionOptions:
@@ -84,6 +84,176 @@ rules:
       functionOptions:
         match: "^myproject\\.events$"
 ```
+
+## Running Spectral so a crash cannot pass as clean
+
+**The failure mode of a validation tool is silence.** When Spectral cannot run —
+a null it chokes on, an unresolvable `$ref`, a mistyped ruleset path, an OOM, a
+timeout — it emits no findings. A wrapper that asks *"did Spectral report
+errors?"* gets **no**, and concludes the spec is clean. There is no partial
+output and no non-zero finding count to notice. A project can sit in that state
+for months believing it is gated.
+
+So do not ask whether findings were reported. Ask whether Spectral ran:
+
+| Exit code | Meaning | Verdict |
+|---|---|---|
+| `0` | findings below the fail severity | pass |
+| `1` | findings at or above the fail severity | fail — real findings |
+| `>= 2` | Spectral itself failed | **fail — a crash, not a clean spec** |
+| any, empty report | Spectral produced nothing at all | **fail — a crash** |
+
+The kit ships this as [`scripts/spectral-lint.sh`](../scripts/spectral-lint.sh)
+and routes every CI invocation through it. Copy it, or inline the check:
+
+```bash
+spectral lint --ruleset "$RULESET" --fail-severity error "$TARGET" >"$REPORT" 2>&1
+STATUS=$?
+cat "$REPORT"
+
+if [[ $STATUS -ge 2 ]]; then
+  echo "Spectral FAILED TO RUN (exit $STATUS) — this is not a clean spec." >&2
+  exit "$STATUS"
+fi
+if [[ ! -s "$REPORT" ]]; then
+  echo "Spectral produced no report — treat as failure, not a clean run." >&2
+  exit 1
+fi
+```
+
+Adopt this in any wrapper you write, including ones that never touch these
+rulesets. It is not specific to a rule or a bug; it is specific to the fact that
+silence is the default shape of a broken lint run.
+
+### Nulls abort the whole run
+
+A concrete instance of the above, worth knowing because it is invisible without
+deliberately checking. The upstream `spectral:oas` rule
+`duplicated-entry-in-enum` has an unguarded recursive-descent filter:
+
+```
+$..[?(@property !== 'properties' && @.enum && @.enum.constructor.name === 'Array')]
+```
+
+There is no `@ &&` before `@.enum`. Any null value anywhere in the document
+makes it throw `Cannot read properties of null (reading 'enum')`, which aborts
+the entire run and emits zero findings. Reproduced with Spectral CLI 6.16.2 /
+nimma 0.7.2 against a twelve-line OpenAPI document containing one
+`example: null`. Nulls that trigger it include property-level `example: null`,
+meaningful nulls inside example payloads (`effectiveTo: null` meaning
+open-ended), and null schema nodes.
+
+The kit turns that rule off and ships the null-safe
+`specfuse-no-duplicate-enum-entries` in its place, so extending
+`specfuse-openapi.yaml` gets the fix. **Overlay rules you write yourself are
+still your responsibility**: put `@ &&` first in every filter that dereferences
+`@`.
+
+```yaml
+given: $.components.schemas[?(@ && @["x-entity"])]     # safe
+given: $.components.schemas[?(@["x-entity"])]          # crashes on a null schema node
+```
+
+Filters that only test `@property` never dereference `@` and need no guard.
+
+Two regression fixtures under [`spectral/fixtures/`](spectral/fixtures/) pin this
+in CI. Note that they assert the replacement rule still **fires**, not merely
+that the run survives — a rule that stops crashing by never running is
+indistinguishable from a fixed one if you only watch the error count fall.
+
+## `$ref` resolution: which rules must run unresolved
+
+**Spectral resolves `$ref`s before linting by default.** For most rules that is
+what you want. For any rule that inspects *schema shape*, it inverts the rule's
+meaning.
+
+Take a rule forbidding inline enums. A compliant property —
+
+```yaml
+status:
+  $ref: './StatusEnum.yaml'
+```
+
+— is inlined during resolution, at which point it is indistinguishable from a
+hand-written inline enum. The rule fires. Worse, the finding is reported at the
+*target's* location rather than the referencing property, so the paths look
+nothing like where the supposed violation is. The net effect is a rule that
+flags precisely the pattern it exists to require: every correct `$ref` is a
+violation, an actual inline enum is also a violation, and the rule cannot tell
+them apart.
+
+The fix is `resolved: false`, which keeps `$ref`s intact — the whole point,
+since a `$ref` *is* the compliant form:
+
+```yaml
+specfuse-no-inline-enums:
+  resolved: false
+  given: $.components.schemas[*].properties[?(@ && @.enum)]
+  then:
+    function: falsy
+```
+
+Both kit rules of this shape (`specfuse-no-inline-enums`,
+`specfuse-no-inline-objects`) already carry it. If you write overlay rules that
+inspect schema shape, they need it too.
+
+### Auditing your own ruleset for resolution sensitivity
+
+`$ref` resolution affects **every rule that inspects schema shape**, not just
+the obvious two. The audit is cheap and worth doing once: run the whole ruleset
+forced-unresolved and diff the per-rule finding counts against the resolved run.
+Anything that moves is resolution-sensitive and needs a deliberate decision
+about which mode is correct for it.
+
+When you fix a rule this way, verify it in both directions. **A rule that stops
+false-positiving by never firing at all looks identical to a fixed rule if you
+only measure the error count going down.** Build a fixture with a genuine inline
+enum, a genuine inline object, and a compliant `$ref`, then assert the rule
+catches the first two and ignores the third.
+
+## Turning the ruleset on against existing specs
+
+Switching a lint gate on against specs that predate it tends to produce a large
+first number. Both obvious responses fail:
+
+- **Block every PR until all of them are fixed.** Nothing merges for weeks, so
+  in practice the gate gets disabled or bypassed — which is usually how a gate
+  ends up broken in the first place.
+- **Run it non-blocking.** Errors accumulate exactly as before and the gate
+  reports into a void.
+
+Neither converges. What works is a **per-rule baseline ratchet**: commit the
+current error count for each rule, then fail only on regression.
+
+```json
+{ "specfuse-emits-required-on-writes": 33 }
+```
+
+| Condition | Result |
+|---|---|
+| A rule exceeds its baseline | fail — regression |
+| A rule absent from the baseline reports anything | fail — newly violated rule |
+| A rule is below its baseline | pass, and report that it can be lowered |
+
+Inherited debt does not block PRs; new debt does. The gate is useful from day
+one without a cleanup project as a precondition.
+
+Three details decide whether it actually converges:
+
+1. **Per-rule, never a single total.** A total-only ratchet lets someone
+   introduce three new violations while fixing three old ones and call it even.
+   Per-rule means a fix in one area cannot mask a regression in another.
+2. **Report improvements and prompt to lock them in.** When a count drops, say
+   so and tell the author to re-baseline. Otherwise the baseline silently
+   retains headroom for errors that no longer exist, and the ratchet stops
+   ratcheting.
+3. **Test that it fails.** A ratchet that never fires is indistinguishable from
+   one that works. Delete a required field from an entity and confirm the gate
+   fails with the right message — do not settle for watching a clean tree pass.
+
+Same principle as the empty-report check above: the failure mode of a validation
+tool is silence, so the thing worth testing is that it makes noise when it
+should.
 
 ## Rename tracking
 

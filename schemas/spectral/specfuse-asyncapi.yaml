@@ -635,7 +635,7 @@ rules:
     description: "Worker operations (on-* receive handlers and run-* scheduled dispatchers) should declare x-observability. Excludes emit-* operations, which are publishing declarations and not workers — observability lives on the consuming on-*/run-* operation that owns the publish via x-emits or x-scheduled-job."
     message: "Operation '{{path}}' is a worker (has x-worker) but is missing x-observability. Add criticality and SLA thresholds."
     severity: warn
-    given: $.operations[?(@['x-worker'])]
+    given: $.operations[?(@ && @['x-worker'])]
     then:
       field: x-observability
       function: truthy
@@ -807,7 +807,7 @@ rules:
     description: "x-ai with enabled: true must declare entities (reads/creates/updates/deletes)"
     message: "x-ai at '{{path}}' is enabled but missing 'entities'. Declare which entities the AI worker reads and writes."
     severity: error
-    given: $.operations[*].x-ai[?(@.enabled == true)]
+    given: $.operations[*].x-ai[?(@ && @.enabled == true)]
     then:
       field: entities
       function: truthy

@@ -32,6 +32,21 @@ rules:
   # ===== Disabled / downgraded built-in rules =====
   operation-tag-defined: off
 
+  # Upstream `spectral:oas` ships this rule with an unguarded recursive-descent
+  # filter — `$..[?(@property !== 'properties' && @.enum && …)]` — with no `@ &&`
+  # null check. Any null value anywhere in the document (a meaningful
+  # `effectiveTo: null` in an example payload, a property-level `example: null`,
+  # a null schema node) makes it throw
+  #   Cannot read properties of null (reading 'enum')
+  # which aborts the ENTIRE Spectral run: no findings are emitted, the process
+  # exits 2, and any wrapper that only inspects the report reads it as a clean
+  # pass. Reproduced against Spectral CLI 6.16.2 / nimma 0.7.2 with a 12-line
+  # OpenAPI document. See authoring issue #14.
+  #
+  # Disabled here and replaced by the null-safe `specfuse-no-duplicate-enum-entries`
+  # below, which keeps the coverage without the crash.
+  duplicated-entry-in-enum: off
+
   # ===== Casing & naming =====
   specfuse-path-casing:
     description: "Paths must use camelCase segments (no hyphens/underscores); allow :operations and {params}."
@@ -66,7 +81,7 @@ rules:
     description: "Enum values must be camelCase (skipped when x-enum-case is declared)."
     severity: error
     given:
-      - $.components.schemas[?(!@["x-enum-case"] && @.enum)].enum[*]
+      - $.components.schemas[?(@ && !@["x-enum-case"] && @.enum)].enum[*]
     then:
       function: casing
       functionOptions:
@@ -84,7 +99,7 @@ rules:
   specfuse-xenumcase-on-enums-only:
     description: "x-enum-case must only be applied to schemas that define enum values."
     severity: error
-    given: $.components.schemas[?(@["x-enum-case"] && !@.enum)]
+    given: $.components.schemas[?(@ && @["x-enum-case"] && !@.enum)]
     then:
       function: falsy
       field: x-enum-case
@@ -137,7 +152,7 @@ rules:
   specfuse-415-when-request-body:
     description: "Endpoints with requestBody should define 415."
     severity: warn
-    given: $.paths[*][post,put,patch,delete][?(@.requestBody)]
+    given: $.paths[*][post,put,patch,delete][?(@ && @.requestBody)]
     then:
       field: responses.415
       function: truthy
@@ -145,7 +160,7 @@ rules:
   specfuse-406-when-alt-accept:
     description: "If multiple response media types are declared, include 406."
     severity: warn
-    given: $.paths[*][get,post,put,patch,delete][?(@.responses && @.responses["200"] && @.responses["200"].content)]
+    given: $.paths[*][get,post,put,patch,delete][?(@ && @.responses && @.responses["200"] && @.responses["200"].content)]
     then:
       field: responses.406
       function: truthy
@@ -189,7 +204,7 @@ rules:
   specfuse-401-required:
     description: "Protected operations must declare 401."
     severity: error
-    given: $.paths[*][get,post,put,patch,delete][?(@.security)]
+    given: $.paths[*][get,post,put,patch,delete][?(@ && @.security)]
     then:
       field: responses.401
       function: truthy
@@ -197,7 +212,7 @@ rules:
   specfuse-401-predefined:
     description: "Protected operations must use components.responses.UnauthorizedError for 401."
     severity: error
-    given: $.paths[*][get,post,put,patch,delete][?(@.security)].responses.401
+    given: $.paths[*][get,post,put,patch,delete][?(@ && @.security)].responses.401
     then:
       field: $ref
       function: pattern
@@ -207,7 +222,7 @@ rules:
   specfuse-403-required:
     description: "Protected operations must declare 403."
     severity: error
-    given: $.paths[*][get,post,put,patch,delete][?(@.security)]
+    given: $.paths[*][get,post,put,patch,delete][?(@ && @.security)]
     then:
       field: responses.403
       function: truthy
@@ -215,7 +230,7 @@ rules:
   specfuse-403-predefined:
     description: "Protected operations must use components.responses.ForbiddenError for 403."
     severity: error
-    given: $.paths[*][get,post,put,patch,delete][?(@.security)].responses.403
+    given: $.paths[*][get,post,put,patch,delete][?(@ && @.security)].responses.403
     then:
       field: $ref
       function: pattern
@@ -243,7 +258,7 @@ rules:
   specfuse-400-required:
     description: "Operations with requestBody must declare 400 Bad Request."
     severity: error
-    given: $.paths[*][post,put,patch,delete][?(@.requestBody)]
+    given: $.paths[*][post,put,patch,delete][?(@ && @.requestBody)]
     then:
       field: responses.400
       function: truthy
@@ -251,7 +266,7 @@ rules:
   specfuse-400-predefined:
     description: "Operations with requestBody must use components.responses.BadRequestError for 400."
     severity: error
-    given: $.paths[*][post,put,patch,delete][?(@.requestBody)].responses.400
+    given: $.paths[*][post,put,patch,delete][?(@ && @.requestBody)].responses.400
     then:
       field: $ref
       function: pattern
@@ -265,7 +280,7 @@ rules:
   specfuse-list-response-requires-pagination-params:
     description: "If response is {Resource}List, all pagination parameters (page, pageSize, sort) must be present."
     severity: error
-    given: $.paths[*].get[?(@.responses && @.responses["200"])]
+    given: $.paths[*].get[?(@ && @.responses && @.responses["200"])]
     then:
       function: schema
       functionOptions:
@@ -331,7 +346,7 @@ rules:
   specfuse-auth-meta-present:
     description: "Secured operations must declare x-roles and x-scopes."
     severity: error
-    given: $.paths[*][get,post,put,patch,delete][?(@.security)]
+    given: $.paths[*][get,post,put,patch,delete][?(@ && @.security)]
     then:
       - field: x-roles
         function: schema
@@ -359,7 +374,7 @@ rules:
   specfuse-auth-roles-pascal:
     description: "x-roles values must be PascalCase identifiers. The kit does not bake in the closed value-set — projects add an overlay rule that constrains values to their declared role enum."
     severity: error
-    given: $.paths[*][get,post,put,patch,delete][?(@.security)]["x-roles"][*]
+    given: $.paths[*][get,post,put,patch,delete][?(@ && @.security)]["x-roles"][*]
     then:
       function: pattern
       functionOptions:
@@ -368,7 +383,7 @@ rules:
   specfuse-auth-scopes-pattern:
     description: "x-scopes values should be camelCase segments separated by dots (e.g., orders.read)."
     severity: warn
-    given: $.paths[*][get,post,put,patch,delete][?(@.security)]["x-scopes"][*]
+    given: $.paths[*][get,post,put,patch,delete][?(@ && @.security)]["x-scopes"][*]
     then:
       function: pattern
       functionOptions:
@@ -547,7 +562,7 @@ rules:
   specfuse-resource-naming-convention:
     description: "Resource-related schemas must follow naming: {Resource}, Basic{Resource}, New{Resource}, Update{Resource}, {Resource}List, {Resource}SearchRequest."
     severity: error
-    given: $.components.schemas[?(@["x-entity"] || @property.match("^(Basic|New|Update)[A-Z]") || @property.match("[A-Z][a-zA-Z0-9]*(List|SearchRequest)$"))]~
+    given: $.components.schemas[?(@ && @["x-entity"] || @property.match("^(Basic|New|Update)[A-Z]") || @property.match("[A-Z][a-zA-Z0-9]*(List|SearchRequest)$"))]~
     then:
       function: pattern
       functionOptions:
@@ -566,7 +581,7 @@ rules:
   specfuse-xentity-main-only:
     description: "x-entity must not appear on derivative schemas (Basic*, New*, Update*, *List, *SearchRequest)."
     severity: error
-    given: $.components.schemas[?((@property.match("^(Basic|New|Update)[A-Z]") || @property.match("[A-Z][a-zA-Z0-9]*(List|SearchRequest)$")) && @["x-entity"])]
+    given: $.components.schemas[?(@ && (@property.match("^(Basic|New|Update)[A-Z]") || @property.match("[A-Z][a-zA-Z0-9]*(List|SearchRequest)$")) && @["x-entity"])]
     then:
       function: falsy
       field: x-entity
@@ -574,7 +589,7 @@ rules:
   specfuse-xentity-shape:
     description: "x-entity must follow the required shape."
     severity: error
-    given: $.components.schemas[?(@["x-entity"])]["x-entity"]
+    given: $.components.schemas[?(@ && @["x-entity"])]["x-entity"]
     then:
       function: schema
       functionOptions:
@@ -586,6 +601,18 @@ rules:
             domain: { type: string, pattern: "^[a-z][a-z0-9-]*$" }
             type: { type: string, enum: ["entity","aggregate"] }
             requiresPagination: { type: boolean, default: true }
+            # Write policy for the entity's rows after insert. Omitted means
+            # `mutable`, so declaring nothing keeps the previous behaviour.
+            #   mutable     rows are updated in place (the default)
+            #   immutable   rows are never modified after insert (audit trails,
+            #               ledger transactions)
+            #   appendOnly  new rows are added, existing rows are never modified
+            #               (event logs)
+            # Consumed by specfuse-main-resource-has-updatedAt: a non-mutable
+            # entity is exempt from the updatedAt requirement, because an
+            # updatedAt on a row that never changes permanently equals createdAt
+            # and asserts something untrue. See authoring issue #13.
+            mutability: { type: string, enum: ["mutable","immutable","appendOnly"], default: "mutable" }
             hasMany:
               type: array
               uniqueItems: true
@@ -712,7 +739,7 @@ rules:
   specfuse-belongsto-explicit-cardinality:
     description: "belongsTo should use explicit cardinality (oneOf, allOf, oneOrMore, etc.) instead of simple array syntax for clarity"
     severity: warn
-    given: $.components.schemas[?(@["x-entity"] && @["x-entity"].belongsTo)]["x-entity"].belongsTo
+    given: $.components.schemas[?(@ && @["x-entity"] && @["x-entity"].belongsTo)]["x-entity"].belongsTo
     then:
       function: schema
       functionOptions:
@@ -723,7 +750,7 @@ rules:
   specfuse-belongsto-entity-validation:
     description: "Entities (type: entity) must have belongsTo defined to specify their aggregate context"
     severity: error
-    given: $.components.schemas[?(@["x-entity"])]["x-entity"]
+    given: $.components.schemas[?(@ && @["x-entity"])]["x-entity"]
     then:
       function: schema
       functionOptions:
@@ -786,7 +813,7 @@ rules:
   specfuse-xvalueobject-not-main-resource:
     description: "x-value-object should not be used on main resources (schemas with x-entity); value objects are embedded types."
     severity: warn
-    given: $.components.schemas[?(@["x-entity"] && @["x-value-object"])]
+    given: $.components.schemas[?(@ && @["x-entity"] && @["x-value-object"])]
     then:
       function: falsy
       field: x-value-object
@@ -794,7 +821,7 @@ rules:
   specfuse-xvalueobject-no-xentity:
     description: "Schemas with x-value-object should not have x-entity; value objects are not entities."
     severity: error
-    given: $.components.schemas[?(@["x-value-object"] && @["x-entity"])]
+    given: $.components.schemas[?(@ && @["x-value-object"] && @["x-entity"])]
     then:
       function: falsy
       field: x-entity
@@ -819,6 +846,22 @@ rules:
     given: $.components.schemas[*].properties[?(@ && @.type === 'object' && @.properties)]
     then:
       function: falsy
+
+  specfuse-no-duplicate-enum-entries:
+    description: "Enum values must not have duplicate entries."
+    message: "{{error}}"
+    severity: warn
+    # Null-safe replacement for the built-in `duplicated-entry-in-enum`, which is
+    # turned off above because its filter omits the leading `@ &&` guard and
+    # therefore crashes the whole run on any null in the document.
+    given: $..[?(@ && @property !== 'properties' && @.enum && @.enum.constructor.name === 'Array')]
+    then:
+      field: enum
+      function: schema
+      functionOptions:
+        schema:
+          type: array
+          uniqueItems: true
 
   # ===== HTTP response correctness =====
   specfuse-409-on-delete:
@@ -878,7 +921,7 @@ rules:
   specfuse-main-resource-has-id:
     description: "Main resources (schemas with x-entity) must have 'id' property."
     severity: error
-    given: $.components.schemas[?(@["x-entity"])]
+    given: $.components.schemas[?(@ && @["x-entity"])]
     then:
       field: properties.id
       function: truthy
@@ -886,15 +929,26 @@ rules:
   specfuse-main-resource-has-createdAt:
     description: "Main resources (schemas with x-entity) must have 'createdAt' property."
     severity: error
-    given: $.components.schemas[?(@["x-entity"])]
+    given: $.components.schemas[?(@ && @["x-entity"])]
     then:
       field: properties.createdAt
       function: truthy
 
   specfuse-main-resource-has-updatedAt:
-    description: "Main resources (schemas with x-entity) must have 'updatedAt' property."
+    description: "Mutable main resources (schemas with x-entity) must have 'updatedAt' property."
+    message: "Mutable entities must expose 'updatedAt'. If this entity's rows are never modified after insert, declare x-entity.mutability: immutable or appendOnly instead of adding the field."
     severity: error
-    given: $.components.schemas[?(@["x-entity"])]
+    # Entities that declare a non-mutable write policy are exempt: an updatedAt
+    # on a row that never changes permanently equals createdAt, so requiring it
+    # makes the spec assert something untrue. `id` and `createdAt` stay required
+    # for every entity regardless of write policy — only updatedAt is meaningless
+    # for append-only and immutable rows.
+    #
+    # This is not an escape hatch. `mutability` is itself validated against a
+    # closed set by specfuse-xentity-shape, so mislabelling a mutable entity to
+    # dodge this rule is a visible, reviewable edit rather than a silent
+    # suppression. See authoring issue #13.
+    given: $.components.schemas[?(@ && @["x-entity"] && @["x-entity"].mutability !== "immutable" && @["x-entity"].mutability !== "appendOnly")]
     then:
       field: properties.updatedAt
       function: truthy
