@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "specfuse-authoring"
-version = "0.5.5"
+version = "0.5.6"
 description = "Specfuse authoring kit: handbooks, samples, Claude assets, project bootstrap, and the generator launcher."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -20,7 +20,7 @@ classifiers = [
 dependencies = []
 
 [project.scripts]
-specfuse-authoring = "specfuse.authoring.cli:main"
+specfuse-authoring = "specfuse.authoring.cli:_run"
 
 [project.urls]
 Homepage = "https://github.com/Specfuse/authoring"

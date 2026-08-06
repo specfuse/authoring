@@ -43,6 +43,83 @@ jobs:
           test -d /tmp/smoke/api/specs/v1/domains/cart
           /tmp/ci/bin/python -c "import json; s=json.load(open('/tmp/smoke/.claude/settings.json')); assert s['enabledPlugins']['specfuse-authoring@specfuse'] is True; assert s['extraKnownMarketplaces']['specfuse']['source']['repo']=='specfuse/specfuse'"
           ! find /tmp/smoke -name '*.template' | grep -q .
+          test -f /tmp/smoke/.specfuse/authoring/VERSION
+          test -f /tmp/smoke/.specfuse/authoring/.scaffold-manifest
+          test -f /tmp/smoke/.specfuse/authoring/schemas/spectral/specfuse-openapi.yaml
+
+      # The overlay's whole job is reaching projects that already exist. Each
+      # case below is one the manifest was added to make possible — without it
+      # an upgrade can only clobber everything or touch nothing.
+      - name: Upgrade overlay behaviour
+        run: |
+          set -euo pipefail
+          CLI=/tmp/ci/bin/specfuse-authoring
+          P=/tmp/smoke
+
+          # Idempotent: a current project is a no-op, not a rewrite.
+          $CLI upgrade "$P" | tee /tmp/up1.txt
+          grep -q "0 file(s) written" /tmp/up1.txt
+
+          # A locally-modified kit file is restored, and the user is told.
+          # Note: capture to a file rather than piping into `grep -q`. grep -q
+          # exits on first match and closes the pipe, which under `pipefail`
+          # surfaces as a SIGPIPE failure of the CLI rather than a passing
+          # assertion. (The CLI now handles EPIPE gracefully too.)
+          echo "# local edit" >> "$P/.specfuse/authoring/handbooks/API_Handbook.md"
+          $CLI upgrade "$P" >/tmp/up2.txt 2>/tmp/up2.err
+          grep -q "1 file(s) written" /tmp/up2.txt
+          grep -q "overwriting locally-modified" /tmp/up2.err
+          ! grep -q "local edit" "$P/.specfuse/authoring/handbooks/API_Handbook.md"
+
+          # --dry-run reports without writing.
+          echo "# again" >> "$P/.specfuse/authoring/handbooks/API_Handbook.md"
+          $CLI upgrade "$P" --dry-run >/dev/null 2>&1
+          grep -q "again" "$P/.specfuse/authoring/handbooks/API_Handbook.md"
+          $CLI upgrade "$P" >/dev/null 2>&1
+
+          # A project-authored file inside a kit directory is never deleted.
+          echo mine > "$P/.specfuse/authoring/samples/my-notes.md"
+          $CLI upgrade "$P" >/dev/null 2>&1
+          test -f "$P/.specfuse/authoring/samples/my-notes.md"
+
+          # A project scaffolded by a NEWER kit is refused, not silently rolled back.
+          echo "99.0.0" > "$P/.specfuse/authoring/VERSION"
+          if $CLI upgrade "$P" >/dev/null 2>/tmp/up3.err; then
+            echo "::error::upgrade did not refuse a downgrade"; exit 1
+          fi
+          grep -q "refusing downgrade" /tmp/up3.err
+          grep -q "99.0.0" "$P/.specfuse/authoring/VERSION"   # untouched
+
+          # A pre-overlay project (no VERSION, no manifest) is adopted and
+          # receives kit content it never had. This is the case that motivated
+          # the overlay: before it, nothing could reach an existing project.
+          /tmp/ci/bin/specfuse-authoring init /tmp/legacy \
+            --name old-shop --token old --domain cart --yes >/dev/null
+          rm -rf /tmp/legacy/.specfuse/authoring/schemas \
+                 /tmp/legacy/.specfuse/authoring/.scaffold-manifest \
+                 /tmp/legacy/.specfuse/authoring/VERSION
+          $CLI upgrade /tmp/legacy | tee /tmp/up4.txt
+          grep -q "unversioned -> " /tmp/up4.txt
+          test -f /tmp/legacy/.specfuse/authoring/schemas/spectral/specfuse-openapi.yaml
+          test -f /tmp/legacy/.specfuse/authoring/VERSION
+
+          # `refresh` still works, and says it is deprecated.
+          $CLI refresh /tmp/legacy >/tmp/up5.txt 2>&1
+          grep -q "deprecated" /tmp/up5.txt
+
+          # Piping into a reader that exits early (`| head`) closes stdout under
+          # the CLI. That must end the pipeline quietly, not print a
+          # BrokenPipeError traceback that reads as a crash.
+          set +o pipefail
+          PIPED="$($CLI upgrade "$P" 2>&1 | head -1)"
+          set -o pipefail
+          case "$PIPED" in
+            *BrokenPipeError*)
+              echo "::error::CLI leaked a BrokenPipeError traceback when piped into head" >&2
+              exit 1 ;;
+          esac
+
+          echo "==> upgrade overlay behaviour verified."
 
       - name: Versions agree (pyproject == __version__ == generator.lock)
         run: |
