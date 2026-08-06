@@ -293,3 +293,59 @@ jobs:
 
           [[ $fail -eq 0 ]] || exit 1
           echo "==> relationship and projection marker rules verified in both directions."
+
+      # Regression net for authoring issue #20. The reconcile identity rule
+      # covers exactly one shape — an Update* DTO used as an array element
+      # inside another Update* DTO — because requiring `id` on every Update*
+      # DTO would be a false-positive storm. So the silent direction is the
+      # one that matters most here, and it gets four cases to the violations'
+      # two.
+      - name: PATCH child-collection reconcile rule (regression)
+        run: |
+          # See the note further up: `bash -e` would abort on the fixture's
+          # expected findings.
+          set +e
+          set -uo pipefail
+          REPORT="${RUNNER_TEMP}/reconcile-regression.txt"
+
+          spectral lint \
+            --ruleset schemas/spectral/specfuse-openapi.yaml \
+            schemas/spectral/fixtures/child-collection-reconcile.yaml \
+            >"$REPORT" 2>&1
+          STATUS=$?
+          cat "$REPORT"
+
+          if [[ $STATUS -ge 2 ]]; then
+            echo "::error::Spectral crashed on the reconcile fixture (exit ${STATUS})." >&2
+            exit 1
+          fi
+
+          fail=0
+
+          # Fires: element DTO with no identity property.
+          if ! grep -q "UpdateOrderLineNoId" "$REPORT"; then
+            echo "::error::specfuse-child-collection-reconcile-id did not fire on" >&2
+            echo "UpdateOrder.lines, whose element DTO has no 'id'. The reconcile" >&2
+            echo "contract is unimplementable for that shape." >&2
+            fail=1
+          fi
+
+          # Fires: `id` present but required, which forbids the create leg.
+          if ! grep -q "UpdateInvoiceRow" "$REPORT"; then
+            echo "::error::specfuse-child-collection-reconcile-id did not fire on" >&2
+            echo "UpdateInvoiceRow, which requires 'id' and so cannot express a create." >&2
+            fail=1
+          fi
+
+          # Stays silent everywhere else. A rule that flags every Update* DTO
+          # would bury the two real findings above in noise.
+          for clean in UpdateGoodOrderLine UpdateCustomer UpdateBasket UpdateCatalog; do
+            if grep "reconcile-id" "$REPORT" | grep -q "$clean"; then
+              echo "::error::specfuse-child-collection-reconcile-id flagged ${clean}," >&2
+              echo "which is outside the rule's intended shape. It is over-matching." >&2
+              fail=1
+            fi
+          done
+
+          [[ $fail -eq 0 ]] || exit 1
+          echo "==> child-collection reconcile rule verified in both directions."

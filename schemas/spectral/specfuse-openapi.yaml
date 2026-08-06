@@ -30,6 +30,7 @@ formats: [oas3]
 
 functions:
   - openapiProjectionCoherence
+  - openapiChildCollectionReconcile
 
 rules:
 
@@ -948,6 +949,25 @@ rules:
     then:
       field: x-expand-of
       function: falsy
+
+  # ===== PATCH child-collection reconcile =====
+  # API_Handbook.md §1.5.1. A collection present in a PATCH body is the complete
+  # desired set; child-entity collections reconcile by identity. That contract
+  # needs an optional `id` on the element DTO — without it the only fallback is
+  # delete-then-add, which recreates rows with new PKs on every PATCH.
+  #
+  # WARN kit-side, matching the validate-time severity; the generator fails
+  # closed at generation time rather than emitting the destructive fallback.
+  specfuse-child-collection-reconcile-id:
+    description: "An Update{Child} used as an array element inside an Update{Parent} must expose an optional 'id'."
+    message: "{{error}}"
+    severity: warn
+    # Unresolved: the rule keys off `items.$ref` naming an Update* schema, and
+    # resolution inlines the target and erases the name. See schemas/README.md.
+    resolved: false
+    given: $.components.schemas
+    then:
+      function: openapiChildCollectionReconcile
 
   # ===== HTTP response correctness =====
   specfuse-409-on-delete:

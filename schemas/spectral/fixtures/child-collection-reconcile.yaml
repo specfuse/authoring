@@ -1,0 +1,113 @@
+# =============================================================================
+# Regression fixture: PATCH child-collection reconcile identity rule
+# =============================================================================
+# Pins specfuse-child-collection-reconcile-id in both directions — that it fires
+# on the shapes that make the reconcile contract unimplementable, and that it
+# stays silent everywhere else. The silent half matters more than usual here:
+# the rule deliberately covers only ONE shape (an Update* DTO used as an array
+# element inside another Update* DTO), because requiring `id` on every Update*
+# DTO would be a false-positive storm. Most Update* DTOs are the body of a PATCH
+# addressed by URL, where identity lives in the path.
+#
+# Expected findings (asserted by .github/workflows/example-regen.yml):
+#
+#   UpdateOrder.lines           -> flagged: UpdateOrderLineNoId has no `id`
+#   UpdateInvoice.rows          -> flagged: UpdateInvoiceRow requires `id`
+#   UpdateGoodOrder.lines       -> clean: element DTO has an optional `id`
+#   UpdateCustomer              -> clean: no collection of Update* elements
+#   UpdateBasket.tags           -> clean: scalar array, wholesale replace
+#   UpdateCatalog.items         -> clean: array of a non-Update schema
+#
+# See handbooks/API_Handbook.md §1.5.1.
+# Not a Specfuse-conformant example — do not copy.
+# =============================================================================
+openapi: 3.0.3
+info:
+  title: Child-collection reconcile fixture
+  version: "1.0.0"
+paths: {}
+components:
+  schemas:
+    # ---- Violation: element DTO has no identity property at all. ----
+    UpdateOrder:
+      type: object
+      additionalProperties: false
+      properties:
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/UpdateOrderLineNoId' }
+
+    UpdateOrderLineNoId:
+      type: object
+      additionalProperties: false
+      properties:
+        quantity: { type: integer }
+
+    # ---- Violation: `id` exists but is required, forbidding the create leg. ----
+    UpdateInvoice:
+      type: object
+      additionalProperties: false
+      properties:
+        rows:
+          type: array
+          items: { $ref: '#/components/schemas/UpdateInvoiceRow' }
+
+    UpdateInvoiceRow:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id:     { type: string, format: uuid }
+        amount: { type: number }
+
+    # ---- Correct: optional `id`, omit-to-create. No finding expected. ----
+    UpdateGoodOrder:
+      type: object
+      additionalProperties: false
+      properties:
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/UpdateGoodOrderLine' }
+
+    UpdateGoodOrderLine:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: >-
+            Identifies an existing line to update in place. Omit to create a new
+            line. Lines omitted from the array are permanently deleted.
+        quantity: { type: integer }
+
+    # ---- Out of scope: a plain PATCH body addressed by URL. Must stay clean. ----
+    UpdateCustomer:
+      type: object
+      additionalProperties: false
+      properties:
+        firstName: { type: string }
+        lastName:  { type: string }
+
+    # ---- Out of scope: scalar array. Replaced wholesale, no identity needed. ----
+    UpdateBasket:
+      type: object
+      additionalProperties: false
+      properties:
+        tags:
+          type: array
+          items: { type: string }
+
+    # ---- Out of scope: array of a schema that is not an Update* element. ----
+    UpdateCatalog:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CatalogEntry' }
+
+    CatalogEntry:
+      type: object
+      properties:
+        sku: { type: string }
