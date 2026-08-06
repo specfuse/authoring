@@ -91,6 +91,20 @@ PreconditionRequiredError:
       schema:
         $ref: '#/Error'
 
+# The 412 body is a named schema rather than an inline one: the generator
+# rejects inline response schemas (INLINE_RESPONSE_SCHEMA), because a response
+# shape with no name cannot be generated into a typed DTO.
+PreconditionFailedBody:
+  type: object
+  properties:
+    errors:
+      type: array
+      items:
+        $ref: '#/Error'
+    currentResource:
+      description: Current state of the resource (for merge-and-retry)
+      type: object
+
 PreconditionFailedError:
   description: >
     The `If-Match` ETag did not match the resource's current state.
@@ -101,12 +115,4 @@ PreconditionFailedError:
   content:
     application/json:
       schema:
-        type: object
-        properties:
-          errors:
-            type: array
-            items:
-              $ref: '#/Error'
-          currentResource:
-            description: Current state of the resource (for merge-and-retry)
-            type: object
+        $ref: '#/PreconditionFailedBody'
