@@ -16,6 +16,10 @@
 # business role yet.
 Role:
   type: string
+  # Roles are PascalCase identifiers, not camelCase values. Declaring the
+  # formatting strategy exempts this enum from specfuse-enum-camel; without it
+  # every role below is reported as an error.
+  x-enum-case: PascalCase
   enum:
     - Admin           # System administrator — full access
     - Manager         # Tenant-level manager

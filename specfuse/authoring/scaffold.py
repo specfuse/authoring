@@ -49,16 +49,39 @@ VERSION_FILE = SCAFFOLD_SUBDIR / "VERSION"
 # `scripts` lands at the project root because that is where the plugin skills
 # look for it (`./scripts/serve-docs.sh`). Everything else is contract material
 # and lives under .specfuse/authoring/.
+# A source may be a directory (copied recursively) or a single file.
+#
+# `templates/` is NOT overlaid wholesale: `templates/project-init/` is the
+# scaffold source that `init` expands, and shipping it into a project would drop
+# a second, unexpanded copy of the skeleton on top of the real one.
 OVERLAY: tuple[tuple[str, str], ...] = (
     ("handbooks", ".specfuse/authoring/handbooks"),
     ("samples", ".specfuse/authoring/samples"),
     ("schemas", ".specfuse/authoring/schemas"),
+    (
+        "templates/ai-access-policy-template.md",
+        ".specfuse/authoring/templates/ai-access-policy-template.md",
+    ),
+    (
+        "templates/initiative-backlog.template.md",
+        ".specfuse/authoring/templates/initiative-backlog.template.md",
+    ),
+    (
+        "templates/initiative-idea-dossier.template.md",
+        ".specfuse/authoring/templates/initiative-idea-dossier.template.md",
+    ),
     ("templates/project-init/scripts", "scripts"),
 )
 
 # Destination roots whose contents are pruned when the kit stops shipping a
-# file. Scoped by the manifest — see prune logic in `upgrade`.
-PRUNE_DIRS: tuple[str, ...] = tuple(dest for _, dest in OVERLAY)
+# file. Scoped by the manifest — see prune logic in `upgrade`. Single-file
+# entries contribute their parent directory.
+PRUNE_DIRS: tuple[str, ...] = tuple(
+    dict.fromkeys(
+        dest if "." not in Path(dest).name else Path(dest).parent.as_posix()
+        for _, dest in OVERLAY
+    )
+)
 
 
 class DowngradeError(RuntimeError):
@@ -76,18 +99,37 @@ def _parse_version(v: str) -> tuple[int, ...]:
     return tuple(int(p) for p in parts)
 
 
+# Build residue that must never be delivered into a project. The overlay copies
+# source directories wholesale, so anything a maintainer generates in the kit
+# tree — running the bundled Python helper is enough — would otherwise ship.
+_JUNK_DIRS = frozenset({"__pycache__", ".pytest_cache", ".ruff_cache", ".mypy_cache"})
+_JUNK_SUFFIXES = (".pyc", ".pyo")
+_JUNK_NAMES = frozenset({".DS_Store"})
+
+
+def _is_junk(path: Path) -> bool:
+    return (
+        path.name in _JUNK_NAMES
+        or path.suffix in _JUNK_SUFFIXES
+        or any(part in _JUNK_DIRS for part in path.parts)
+    )
+
+
 def overlay_files() -> list[tuple[str, bytes]]:
     """Every kit-owned file as (project-relative path, content)."""
     root = kit_root()
     out: list[tuple[str, bytes]] = []
     for src_rel, dest_rel in OVERLAY:
         src = root / src_rel
+        if src.is_file():
+            out.append((dest_rel, src.read_bytes()))
+            continue
         if not src.is_dir():
-            # A kit that ships no scripts yet is not an error; the overlay is
-            # declared ahead of the content it will carry.
+            # A kit that does not ship this source yet is not an error; the
+            # overlay may be declared ahead of the content it will carry.
             continue
         for path in sorted(src.rglob("*")):
-            if not path.is_file():
+            if not path.is_file() or _is_junk(path):
                 continue
             rel = f"{dest_rel}/{path.relative_to(src).as_posix()}"
             out.append((rel, path.read_bytes()))

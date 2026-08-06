@@ -121,6 +121,50 @@ jobs:
 
           echo "==> upgrade overlay behaviour verified."
 
+      # A bootstrapped project must validate cleanly with the scripts the kit
+      # hands it. Until now CI only linted examples/hello-orders/, so defects
+      # fixed there could survive in the template it came from — and did: every
+      # new project started with 4 Spectral errors and an invalid AsyncAPI root
+      # `tags` key, because nothing ever linted the scaffold.
+      - name: Scaffolded project validates with its own scripts
+        run: |
+          set -euo pipefail
+          npm install -g @redocly/cli @stoplight/spectral-cli >/dev/null 2>&1
+          # bundle-async-spec.sh post-processes the bundle with a PyYAML helper.
+          python -m pip install --quiet PyYAML
+          /tmp/ci/bin/specfuse-authoring init /tmp/scripted \
+            --name beta-shop --token beta --domain cart --yes >/dev/null
+          cd /tmp/scripted
+
+          test -x scripts/validate-spectral.sh
+          test -f scripts/README.md
+
+          # `pip install` byte-compiles the Python helper the kit ships under
+          # templates/, so site-packages carries a __pycache__/ the wheel never
+          # did. Only an installed-wheel run catches this; a source-tree run
+          # cannot.
+          if find . \( -name '__pycache__' -o -name '*.pyc' \) | grep -q .; then
+            echo "::error::build residue was delivered into the scaffolded project" >&2
+            find . \( -name '__pycache__' -o -name '*.pyc' \) >&2
+            exit 1
+          fi
+
+          # Servers and the generator-driven docs build need external tooling or
+          # block by design; everything else must exit 0 on a fresh project.
+          for s in validate-structure validate-redocly validate-spectral \
+                   validate-async-structure validate-async-spectral \
+                   validate-arazzo validate-arazzo-spectral \
+                   bundle-spec bundle-async-spec build-prompt-index; do
+            echo "--- $s"
+            ./scripts/$s.sh
+          done
+
+          # The Spectral validators must be linting against the kit rulesets
+          # delivered by the overlay, not a stale project-local copy.
+          grep -q ".specfuse/authoring/schemas/spectral/" scripts/validate-spectral.sh
+
+          echo "==> scaffolded project validates with the shipped scripts."
+
       - name: Versions agree (pyproject == __version__ == generator.lock)
         run: |
           PKG=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
