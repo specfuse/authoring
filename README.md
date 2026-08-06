@@ -12,6 +12,14 @@ pipx install specfuse-authoring     # CLI; recommended
 specfuse-authoring init ~/projects/my-new-project
 ```
 
+> **Already have the `specfuse` umbrella?** Install the kit *through* it —
+> `pipx install --force --include-deps 'specfuse[all]'` — not standalone. Both
+> paths expose a `specfuse-authoring` command, and pipx will not let the second
+> one overwrite the first's shim in `~/.local/bin` (`File exists at … and points
+> to … Not modifying.`). Installing both leaves the command resolving to
+> whichever won, so upgrading the other changes nothing. `specfuse doctor`
+> (umbrella 0.9.4+) reports the conflict and the fix.
+
 You'll be prompted for the project name, the project token (channel-address prefix), and the initial domain. The CLI substitutes placeholders, scaffolds the authoring contract (handbooks + samples + Spectral schemas) into `.specfuse/authoring/`, wires the `specfuse-authoring` Claude Code plugin into `.claude/settings.json`, and prints next steps. Pass `--name`/`--token`/`--domain` to run non-interactively.
 
 The Claude Code authoring assets (skills + agents) ship as the `specfuse-authoring` plugin in the shared `specfuse` marketplace. `init` auto-wires the plugin, but you install it once in Claude Code with:
