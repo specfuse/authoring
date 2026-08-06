@@ -1,0 +1,34 @@
+type: object
+description: >
+  The tenancy root. Every other aggregate in this example belongs to exactly
+  one Tenant, and every resource route is scoped by `/tenants/{tenantId}`.
+x-entity:
+  domain: tenant
+  type: aggregate
+  # No `belongsTo`: Tenant is the tenancy root, so it belongs to nothing. An
+  # aggregate with no parent is the one legitimate case for omitting it —
+  # see API_Handbook.md §9.4 "Entity type by polymorphic shape".
+  hasMany: [Customer, Order]
+  searchableProperties: [name]
+  aiAccess:
+    operations: []
+    reason: >
+      Tenancy is an infrastructure boundary, not application data. Agents
+      operate inside a tenant that the caller's token already establishes;
+      they never enumerate or select tenants.
+required: [id, createdAt, updatedAt, name, status]
+properties:
+  id:
+    type: string
+    format: uuid
+  createdAt:
+    type: string
+    format: date-time
+  updatedAt:
+    type: string
+    format: date-time
+  name:
+    type: string
+    description: Display name of the tenant organisation.
+  status:
+    $ref: './TenantStatus.yaml'

@@ -1082,7 +1082,22 @@ x-manual: boolean   # true = consumer provides the service implementation; defau
 x-default: <any>   # Literal default value matching the property's type
 ```
 
-**Relationship with OpenAPI `default`**: prefer the standard OpenAPI `default` keyword where it works. Use `x-default` for cases the standard keyword does not cover (e.g., conditional defaults that the generator should respect during test-data generation but not declare as a schema-level default).
+**Relationship with OpenAPI `default` — on an enum schema, declare both.** OpenAPI Generator does not reliably pick up `default` alone on an enum, so the two keywords must appear together and carry the same value. Declaring `default` without `x-default` is an error (`ENUM_MISSING_X_DEFAULT`):
+
+```yaml
+# CustomerStatus.yaml
+type: string
+description: Lifecycle status of a Customer.
+default: active
+x-default: active      # must match `default`
+enum: [active, inactive, suspended]
+```
+
+**A required enum property needs one.** An entity with a required enum property and no default has no defined state at creation, which is an error (`REQUIRED_ENUM_MISSING_DEFAULT`). Either give the enum a default as above, or make the property required in the `New{Entity}` schema so the client must supply it. Suppress deliberately with `x-skip-default-validation: true` on the property.
+
+**Where it goes.** On the **enum schema**, not beside the `$ref` that points at it — OpenAPI 3.0 ignores keywords declared as siblings of `$ref`, so a default written next to the reference is silently dropped.
+
+Outside enum schemas, prefer the standard `default` keyword on its own. Use `x-default` alone for cases the standard keyword does not cover — e.g. a value the generator should use for test data without declaring it as a schema-level default.
 
 ---
 

@@ -1,10 +1,9 @@
 type: string
-description: Lifecycle status of a Customer.
+description: Lifecycle status of a Tenant.
 # `default` and `x-default` must agree and both be present: OpenAPI Generator
 # does not reliably pick up `default` alone (ENUM_MISSING_X_DEFAULT).
 default: active
 x-default: active
 enum:
   - active
-  - inactive
   - suspended
