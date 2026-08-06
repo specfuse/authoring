@@ -31,31 +31,30 @@ MARKETPLACE_KEY = "specfuse"
 MARKETPLACE_VALUE = {"source": {"source": "github", "repo": "specfuse/specfuse"}}
 PLUGIN_KEY = "specfuse-authoring@specfuse"
 
-# The authoring contract the skills read at runtime, scaffolded into the project.
-# `schemas` joins handbooks/samples here: the skills and a project's own
-# .spectral.yaml both reference the shipped rulesets, so a project that never
-# received them could not lint against the contract it was handed.
-CONTRACT_DIRS = ("handbooks", "samples", "schemas")
+# What gets scaffolded is defined once, in scaffold.OVERLAY — see
+# scaffold_contract below.
 SCAFFOLD_SUBDIR = Path(".specfuse") / "authoring"
 
 
 def scaffold_contract(target: Path) -> None:
-    """Copy the authoring contract into <target>/.specfuse/authoring/.
+    """Write every kit-owned file into a project being created.
 
-    Used by `init` only. Wholesale replacement is safe here because the project
-    is being created; for an existing project the overlay in `scaffold.py`
-    handles this, and it knows which files the project has since edited.
+    Deliberately shares `scaffold.OVERLAY` with `upgrade` rather than keeping
+    its own list. When the two drifted, `init` delivered files that `upgrade`
+    never refreshed — and the kit shipped content (schemas, scripts, the
+    AI-access-policy template) that no project ever received.
     """
-    root = kit_root()
-    dest_base = target / SCAFFOLD_SUBDIR
-    for sub in CONTRACT_DIRS:
-        src = root / sub
-        if not src.is_dir():
-            sys.exit(f"Error: kit content missing: {src}")
-        dst = dest_base / sub
-        if dst.exists():
-            shutil.rmtree(dst)
-        shutil.copytree(src, dst)
+    from . import scaffold
+
+    files = scaffold.overlay_files()
+    if not files:
+        sys.exit(f"Error: kit content missing under {kit_root()}")
+    for rel, content in files:
+        dest = target / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(content)
+        if rel.startswith("scripts/") and rel.endswith(".sh"):
+            dest.chmod(0o755)
 
 
 def upgrade(target: Path, *, dry_run: bool = False) -> int:
@@ -171,9 +170,18 @@ def init(
     target = target.resolve()
     print(f"\nBootstrapping Specfuse project.\n  Kit:    {kit_root()}\n  Target: {target}\n")
 
-    # Copy template tree, excluding any bootstrap script/README at the template root.
+    # Copy template tree, excluding any bootstrap script/README at the template
+    # root. `scripts/README.md` is skipped here and delivered by the overlay
+    # instead, which does not apply the root exclusions.
+    #
+    # Junk filtering matters even though the wheel is clean: `pip install`
+    # byte-compiles the Python helper the kit ships under templates/, so
+    # site-packages grows a `__pycache__/` next to it that the wheel never
+    # contained. Copying the installed tree verbatim would deliver it.
+    from . import scaffold
+
     for src in template_root.rglob("*"):
-        if not src.is_file():
+        if not src.is_file() or scaffold._is_junk(src):
             continue
         if src.name in ("init.sh", "README.md"):
             continue

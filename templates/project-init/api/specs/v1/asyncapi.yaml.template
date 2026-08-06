@@ -8,10 +8,12 @@ info:
     authoritative rules; this file is the project's AsyncAPI root.
   version: 1.0.0
 
-# Tags — one per domain (PascalCase). Match the OpenAPI tags.
-tags:
-  - name: TODO
-    description: Replace with one entry per domain (e.g., Customers, Orders, etc.)
+  # Tags — one per domain (PascalCase). Match the OpenAPI tags.
+  # These belong under `info`: a root-level `tags` key is valid in AsyncAPI 2.x
+  # but not in 3.0, where it fails schema validation.
+  tags:
+    - name: TODO
+      description: Replace with one entry per domain (e.g., Customers, Orders, etc.)
 
 # Channels and operations — references resolve to per-domain files.
 # The shared event topic ({project}.events) is defined in
