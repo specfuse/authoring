@@ -178,6 +178,18 @@ jobs:
           done
           [ $missing -eq 0 ] || exit 1
 
+          # The OpenAPI-generator layer must select spec files by content, not
+          # by extension: the documented layout puts asyncapi.yaml beside
+          # openapi.yaml, so a *.yaml glob feeds an AsyncAPI document to
+          # openapi-generator and the layer can never pass. Asserted here
+          # rather than by running the layer, which needs the generator CLI.
+          grep -qF '"?openapi"?' scripts/validate-openapi-generator.sh \
+            || { echo "::error::validate-openapi-generator.sh no longer selects specs by content" >&2; exit 1; }
+          if grep -qE 'find .*-maxdepth 1 -name "\*\.yaml" -o' scripts/validate-openapi-generator.sh; then
+            echo "::error::validate-openapi-generator.sh globs by extension again — it will pick up asyncapi.yaml" >&2
+            exit 1
+          fi
+
           echo "==> scaffolded project validates with the shipped scripts."
 
       - name: Versions agree (pyproject == __version__ == generator.lock)
