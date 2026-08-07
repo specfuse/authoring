@@ -126,12 +126,51 @@ jobs:
       # fixed there could survive in the template it came from — and did: every
       # new project started with 4 Spectral errors and an invalid AsyncAPI root
       # `tags` key, because nothing ever linted the scaffold.
-      - name: Scaffolded project validates with its own scripts
+      # Installed once here: several regression steps below shell out to
+      # spectral, and the first of them used to carry the install inline —
+      # so reordering the steps broke them.
+      - name: Install the lint toolchain
         run: |
-          set -euo pipefail
           npm install -g @redocly/cli @stoplight/spectral-cli >/dev/null 2>&1
           # bundle-async-spec.sh post-processes the bundle with a PyYAML helper.
           python -m pip install --quiet PyYAML
+
+      # The x-entity allow-list is `additionalProperties: false`, so it must
+      # track the handbooks exactly: a documented key missing from it fails
+      # lint at error severity on every entity that uses it. That has happened
+      # twice (#13, #36). This pins the documented surface AND the typo guard
+      # that justifies keeping the list closed.
+      - name: x-entity allow-list covers the documented keys (regression)
+        run: |
+          set +e
+          set -uo pipefail
+          REPORT="${RUNNER_TEMP}/xentity-keys.txt"
+          spectral lint --ruleset schemas/spectral/specfuse-openapi.yaml \
+            schemas/spectral/fixtures/xentity-shape-keys.yaml >"$REPORT" 2>&1
+          STATUS=$?
+          cat "$REPORT"
+          [ $STATUS -ge 2 ] && { echo "::error::Spectral crashed on the x-entity fixture" >&2; exit 1; }
+
+          fail=0
+          # A schema using every documented key must lint clean.
+          if grep "specfuse-xentity-shape" "$REPORT" | grep -q "FullyDocumented"; then
+            echo "::error::FullyDocumented uses only documented x-entity keys but was flagged." >&2
+            echo "The allow-list has fallen behind the handbooks again." >&2
+            fail=1
+          fi
+          # Each malformed value must still be caught.
+          for bad in BadCascadeValue BadChildName BadStorage UnknownSubKey TypoKey; do
+            if ! grep "specfuse-xentity-shape" "$REPORT" | grep -q "$bad"; then
+              echo "::error::specfuse-xentity-shape did not flag $bad." >&2
+              fail=1
+            fi
+          done
+          [ $fail -eq 0 ] || exit 1
+          echo "==> x-entity allow-list verified in both directions."
+
+      - name: Scaffolded project validates with its own scripts
+        run: |
+          set -euo pipefail
           /tmp/ci/bin/specfuse-authoring init /tmp/scripted \
             --name beta-shop --token beta --domain cart --yes >/dev/null
           cd /tmp/scripted

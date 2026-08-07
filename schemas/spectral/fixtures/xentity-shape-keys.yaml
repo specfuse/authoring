@@ -1,0 +1,124 @@
+# =============================================================================
+# Regression fixture: x-entity allow-list covers every documented key
+# =============================================================================
+# `specfuse-xentity-shape` validates x-entity with `additionalProperties: false`.
+# That is deliberate — it is what turns a typo into an error rather than a
+# silently ignored key — but it means the allow-list must track the handbooks
+# exactly. When it does not, a spec that follows the documentation fails lint
+# at error severity, across every entity that uses the missing key.
+#
+# That has now happened twice (authoring #13, #36), which is why this fixture
+# exists: it pins the documented surface so the next omission fails here rather
+# than in a consumer's project.
+#
+# Expected (asserted by .github/workflows/example-regen.yml):
+#
+#   FullyDocumented    no specfuse-xentity-shape finding — uses every documented key
+#   BadCascadeValue    flagged: cascadeDelete outside the closed set
+#   BadChildName       flagged: children entry is not PascalCase
+#   BadStorage         flagged: valueObjects storage outside the closed set
+#   UnknownSubKey      flagged: unknown key inside a valueObjects entry
+#   TypoKey            flagged: unknown x-entity key (the additionalProperties guard)
+#
+# The last case is the one that matters most: relaxing the schema to fix a
+# false positive must not disable the typo-catching that justifies the closed
+# allow-list in the first place.
+#
+# See handbooks/Vendor_Extensions.md §1.1, §2 and API_Handbook.md §"Cascade Deletion".
+# Not a Specfuse-conformant example — do not copy.
+# =============================================================================
+openapi: 3.0.3
+info:
+  title: x-entity allow-list fixture
+  version: "1.0.0"
+paths: {}
+components:
+  schemas:
+    # ---- Every documented key, correctly shaped. No finding expected. ----
+    FullyDocumented:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        mutability: mutable
+        requiresPagination: true
+        hasMany: [OrderLine]
+        hasOne: [Invoice]
+        belongsTo: { allOf: [Tenant] }
+        filterableProperties: [status]
+        searchableProperties: [reference]
+        encryptedProperties: [taxId]
+        cascadeDelete: soft
+        children: [OrderLine, Payment]
+        valueObjects:
+          shippingAddress:
+            storage: 'single_json'
+            queryable: false
+          contactDetails:
+            storage: 'flatten'
+            propertyPrefix: 'contact_'
+            indexHints: [email]
+          tags:
+            storage: 'collection_json'
+            queryable: ['type', 'value']
+          receipt:
+            storage: 'serialized'
+            serializer: 'protobuf'
+          priceBand: {}          # inherits every default from x-value-object
+        aiAccess:
+          operations: []
+          reason: Fixture entity; no agent surface.
+      properties:
+        id: { type: string, format: uuid }
+
+    # ---- One violation each. ----
+    BadCascadeValue:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        cascadeDelete: maybe            # not in the closed set
+      properties:
+        id: { type: string, format: uuid }
+
+    BadChildName:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        children: [orderLine]           # not PascalCase
+      properties:
+        id: { type: string, format: uuid }
+
+    BadStorage:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        valueObjects:
+          address:
+            storage: 'sqlite_blob'      # not a documented storage pattern
+      properties:
+        id: { type: string, format: uuid }
+
+    UnknownSubKey:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        valueObjects:
+          address:
+            storage: 'flatten'
+            prefix: 'addr_'             # misspelling of propertyPrefix
+      properties:
+        id: { type: string, format: uuid }
+
+    # ---- The guard that justifies the closed allow-list must still fire. ----
+    TypoKey:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        searchablePropertys: [name]     # typo — must not be silently accepted
+      properties:
+        id: { type: string, format: uuid }

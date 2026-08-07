@@ -606,6 +606,38 @@ rules:
             domain: { type: string, pattern: "^[a-z][a-z0-9-]*$" }
             type: { type: string, enum: ["entity","aggregate"] }
             requiresPagination: { type: boolean, default: true }
+            # Cascade policy on delete (API_Handbook.md §"Cascade Deletion").
+            # `children` names the entities the cascade reaches.
+            cascadeDelete: { type: string, enum: ["soft", "hard"] }
+            children:
+              type: array
+              uniqueItems: true
+              items: { type: string, pattern: "^[A-Z][A-Za-z0-9]*$" }
+            # Per-property value-object storage configuration
+            # (Vendor_Extensions.md §1.1 and §2). An empty object is valid and
+            # means "inherit every default from the value object's
+            # x-value-object block".
+            valueObjects:
+              type: object
+              additionalProperties:
+                type: object
+                additionalProperties: false
+                properties:
+                  storage:
+                    type: string
+                    enum: ["collection_json", "single_json", "flatten", "serialized", "separate_table"]
+                  queryable:
+                    oneOf:
+                      - type: boolean
+                      - type: array
+                        uniqueItems: true
+                        items: { type: string }
+                  indexHints:
+                    type: array
+                    uniqueItems: true
+                    items: { type: string }
+                  propertyPrefix: { type: string }
+                  serializer: { type: string }
             # Write policy for the entity's rows after insert. Omitted means
             # `mutable`, so declaring nothing keeps the previous behaviour.
             #   mutable     rows are updated in place (the default)

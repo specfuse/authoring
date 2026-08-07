@@ -3,7 +3,7 @@
 from importlib.resources import files
 from pathlib import Path
 
-__version__ = "0.5.10"
+__version__ = "0.5.11"
 
 
 def kit_root() -> Path:
