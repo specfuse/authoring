@@ -13,6 +13,9 @@ info:
   # Every x-entity.domain and every AsyncAPI/Arazzo x-domain must reference a
   # key here. See handbooks/API_Handbook.md §0.1.
   x-domains:
+    tenant:
+      title: Tenants
+      description: The tenancy root that every other aggregate belongs to.
     customer:
       title: Customers
       description: Customer accounts and profiles.
@@ -92,6 +95,9 @@ components:
     Error:           { $ref: './common/responses/errors.yaml#/Error' }
     Role:            { $ref: './common/enums.yaml#/Role' }
     PaginationLinks: { $ref: './common/schemas/PaginationLinks.yaml' }
+
+    Tenant:                 { $ref: './domains/tenant/models/Tenant.yaml' }
+    TenantStatus:           { $ref: './domains/tenant/models/TenantStatus.yaml' }
 
     Customer:               { $ref: './domains/customer/models/Customer.yaml' }
     BasicCustomer:          { $ref: './domains/customer/models/BasicCustomer.yaml' }

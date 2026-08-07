@@ -1,5 +1,9 @@
 type: string
 description: Lifecycle status of an Order. Only `draft` → `placed` is supported in the hello-orders example.
+# `default` and `x-default` must agree and both be present: OpenAPI Generator
+# does not reliably pick up `default` alone (ENUM_MISSING_X_DEFAULT).
+default: draft
+x-default: draft
 enum:
   - draft
   - placed
