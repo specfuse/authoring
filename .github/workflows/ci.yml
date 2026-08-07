@@ -121,11 +121,6 @@ jobs:
 
           echo "==> upgrade overlay behaviour verified."
 
-      # A bootstrapped project must validate cleanly with the scripts the kit
-      # hands it. Until now CI only linted examples/hello-orders/, so defects
-      # fixed there could survive in the template it came from — and did: every
-      # new project started with 4 Spectral errors and an invalid AsyncAPI root
-      # `tags` key, because nothing ever linted the scaffold.
       # Installed once here: several regression steps below shell out to
       # spectral, and the first of them used to carry the install inline —
       # so reordering the steps broke them.
@@ -168,6 +163,45 @@ jobs:
           [ $fail -eq 0 ] || exit 1
           echo "==> x-entity allow-list verified in both directions."
 
+      # AsyncAPI_Handbook.md §2.3 promises three snapshot guardrails; none
+      # existed in any ruleset (#37). The two that compare a snapshot to its
+      # source entity stay generator-side — the entity is in the OpenAPI
+      # document. What is pinned here is the size rule and the shape/honesty of
+      # both overrides: an override that can be malformed, or can name a field
+      # the snapshot lacks, silently covers nothing.
+      - name: Snapshot guardrails (regression)
+        run: |
+          set +e
+          set -uo pipefail
+          REPORT="${RUNNER_TEMP}/snapshot-guardrails.txt"
+          spectral lint --ruleset schemas/spectral/specfuse-asyncapi.yaml \
+            schemas/spectral/fixtures/snapshot-guardrails.yaml >"$REPORT" 2>&1
+          STATUS=$?
+          cat "$REPORT"
+          [ $STATUS -ge 2 ] && { echo "::error::Spectral crashed on the snapshot fixture" >&2; exit 1; }
+
+          fail=0
+          for bad in BareListAck ShortJustification NonStringJustification StaleAck BadSizeAck WideSnapshot; do
+            if ! grep "snapshot-guardrails" "$REPORT" | grep -q "$bad"; then
+              echo "::error::specfuse-async-snapshot-guardrails did not flag $bad." >&2
+              fail=1
+            fi
+          done
+          # The overrides must actually suppress, or they are decoration.
+          for clean in GoodSnapshot WideButAcknowledged; do
+            if grep "snapshot-guardrails" "$REPORT" | grep -q "$clean"; then
+              echo "::error::$clean is correctly acknowledged but was flagged." >&2
+              fail=1
+            fi
+          done
+          [ $fail -eq 0 ] || exit 1
+          echo "==> snapshot guardrails verified in both directions."
+
+      # A bootstrapped project must validate cleanly with the scripts the kit
+      # hands it. Until now CI only linted examples/hello-orders/, so defects
+      # fixed there could survive in the template it came from — and did: every
+      # new project started with 4 Spectral errors and an invalid AsyncAPI root
+      # `tags` key, because nothing ever linted the scaffold.
       - name: Scaffolded project validates with its own scripts
         run: |
           set -euo pipefail

@@ -86,7 +86,7 @@ The kit is upstream of both: it defines *what* a Specfuse spec must look like. T
 
 ## Status
 
-**Incubating** (`v0.5.11`), Apache-2.0. Handbooks, samples, schemas, the `project-init` template, the bundled `hello-orders` example, the `specfuse-authoring` plugin (in the `specfuse/specfuse` marketplace), and the `specfuse-authoring` CLI are all in place. Generator-side alignment items are tracked in [`compatibility.md`](compatibility.md#outstanding-generator-side-follow-ups).
+**Incubating** (`v0.5.12`), Apache-2.0. Handbooks, samples, schemas, the `project-init` template, the bundled `hello-orders` example, the `specfuse-authoring` plugin (in the `specfuse/specfuse` marketplace), and the `specfuse-authoring` CLI are all in place. Generator-side alignment items are tracked in [`compatibility.md`](compatibility.md#outstanding-generator-side-follow-ups).
 
 The kit is distributed on PyPI as `specfuse-authoring` and hosted under [`Specfuse/authoring`](https://github.com/Specfuse/authoring). The code generator it drives is distributed separately as a pinned, checksum-verified release asset (see [`generator.lock`](generator.lock)); `specfuse-authoring generate` resolves, verifies, and runs it on demand.
 
