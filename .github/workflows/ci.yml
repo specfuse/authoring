@@ -126,6 +126,15 @@ jobs:
       # fixed there could survive in the template it came from — and did: every
       # new project started with 4 Spectral errors and an invalid AsyncAPI root
       # `tags` key, because nothing ever linted the scaffold.
+      # Installed once here: several regression steps below shell out to
+      # spectral, and the first of them used to carry the install inline —
+      # so reordering the steps broke them.
+      - name: Install the lint toolchain
+        run: |
+          npm install -g @redocly/cli @stoplight/spectral-cli >/dev/null 2>&1
+          # bundle-async-spec.sh post-processes the bundle with a PyYAML helper.
+          python -m pip install --quiet PyYAML
+
       # The x-entity allow-list is `additionalProperties: false`, so it must
       # track the handbooks exactly: a documented key missing from it fails
       # lint at error severity on every entity that uses it. That has happened
@@ -162,9 +171,6 @@ jobs:
       - name: Scaffolded project validates with its own scripts
         run: |
           set -euo pipefail
-          npm install -g @redocly/cli @stoplight/spectral-cli >/dev/null 2>&1
-          # bundle-async-spec.sh post-processes the bundle with a PyYAML helper.
-          python -m pip install --quiet PyYAML
           /tmp/ci/bin/specfuse-authoring init /tmp/scripted \
             --name beta-shop --token beta --domain cart --yes >/dev/null
           cd /tmp/scripted
