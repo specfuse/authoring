@@ -52,18 +52,51 @@ GENERATOR_VERSION=$(openapi-generator-cli version 2>/dev/null || echo "unknown")
 echo "✅ OpenAPI Generator CLI version: $GENERATOR_VERSION"
 echo ""
 
-# Find all OpenAPI spec files
-SPEC_FILES=$(find "$SPEC_DIR" -maxdepth 1 -name "*.yaml" -o -name "*.yml" -o -name "*.json" 2>/dev/null)
+# Find OpenAPI spec files.
+#
+# Selecting by extension is wrong here: the documented layout puts BOTH roots
+# side by side at the spec root --
+#
+#   api/specs/v1/
+#   ├── openapi.yaml     # OpenAPI 3.0.3
+#   └── asyncapi.yaml    # AsyncAPI 3.0.0
+#
+# -- so a *.yaml glob hands the AsyncAPI document to openapi-generator, which
+# rejects it by construction. The layer could then never pass in any project
+# with async specs, and validate-specs.sh aggregates it.
+#
+# Identify OpenAPI documents by their content instead: a top-level `openapi:`
+# key (or "openapi": in JSON). That also tolerates extra roots and any future
+# file added beside them.
+#
+# The parentheses matter: `-name a -o -name b` without them binds so that
+# -maxdepth applies only to the first term, and the rest match at any depth.
+CANDIDATES=$(find "$SPEC_DIR" -maxdepth 1 \( -name "*.yaml" -o -name "*.yml" -o -name "*.json" \) 2>/dev/null | sort)
+
+SPEC_FILES=""
+SKIPPED=""
+for candidate in $CANDIDATES; do
+    if head -n 20 "$candidate" | grep -qE '^[[:space:]]*"?openapi"?[[:space:]]*:'; then
+        SPEC_FILES="${SPEC_FILES}${candidate}"$'\n'
+    else
+        SKIPPED="${SKIPPED}  - $(basename "$candidate")"$'\n'
+    fi
+done
+SPEC_FILES=$(printf '%s' "$SPEC_FILES")
 
 if [ -z "$SPEC_FILES" ]; then
     echo "❌ No OpenAPI spec files found in: $SPEC_DIR"
-    echo "   Looking for: *.yaml, *.yml, *.json"
+    echo "   Looked for a top-level 'openapi:' key in *.yaml, *.yml, *.json"
     exit 1
 fi
 
 # Count spec files
 SPEC_COUNT=$(echo "$SPEC_FILES" | wc -l | tr -d ' ')
 echo "✅ Found $SPEC_COUNT OpenAPI spec file(s)"
+if [ -n "$SKIPPED" ]; then
+    echo "   Skipped (not OpenAPI documents):"
+    printf '%s' "$SKIPPED"
+fi
 echo ""
 
 # Validate each spec file
