@@ -29,7 +29,9 @@ This file tracks which Specfuse generator commits are known compatible with each
 
 | `v0.5.10` (incubating) | generator **`0.5.5`** (pin unchanged) | **Kit-only release — `validate-openapi-generator.sh` selects specs by content (authoring #38).** The script globbed `*.yaml` at the spec root, and the documented layout puts `asyncapi.yaml` beside `openapi.yaml` — so an AsyncAPI 3.0 document was handed to `openapi-generator-cli validate`, which rejects it by construction. The layer could never pass in any project with async specs, and `validate-specs.sh` aggregates it, so the full suite could never go green either. OpenAPI documents are now identified by a top-level `openapi:` key, and skipped files are reported rather than silently failing. Also fixes an unparenthesised `-o` in the same `find` that let `-maxdepth 1` apply only to the first term, so `*.yml` and `*.json` matched at any depth. CI asserts both, and the assertions fire on a simulated regression. **Spec-author action:** `specfuse-authoring upgrade <project>`. |
 
-| `v0.5.11` (incubating, current) | generator **`0.5.5`** (pin unchanged) | **Kit-only release — `specfuse-xentity-shape` accepts the documented keys (authoring #36).** The rule validates `x-entity` with `additionalProperties: false`, and three keys the same kit version documents were missing from the allow-list: `valueObjects` (`Vendor_Extensions.md` §1.1 and §2, with worked examples, and consumed by the generator for value-object storage), `cascadeDelete` and `children` (`API_Handbook.md` §Cascade Deletion). Any spec following the handbook failed lint at **error** severity on every entity using them. All three are now in the schema with their documented shapes. The closed allow-list is kept deliberately — it is what turns a typo into an error rather than a silently ignored key — so the fixture asserts both directions: a schema using every documented key lints clean, **and** a misspelled key is still rejected. This is the second occurrence of this drift (after #13), so the fixture now pins the documented surface. **Note:** `cascadeDelete` is constrained to `soft | hard`; only `soft` appears in the handbooks, and `hard` is admitted on the strength of the reporter's description — worth confirming against the generator. **Spec-author action:** none; this only stops rejecting conformant specs. |
+| `v0.5.11` (incubating) | generator **`0.5.5`** (pin unchanged) | **Kit-only release — `specfuse-xentity-shape` accepts the documented keys (authoring #36).** The rule validates `x-entity` with `additionalProperties: false`, and three keys the same kit version documents were missing from the allow-list: `valueObjects` (`Vendor_Extensions.md` §1.1 and §2, with worked examples, and consumed by the generator for value-object storage), `cascadeDelete` and `children` (`API_Handbook.md` §Cascade Deletion). Any spec following the handbook failed lint at **error** severity on every entity using them. All three are now in the schema with their documented shapes. The closed allow-list is kept deliberately — it is what turns a typo into an error rather than a silently ignored key — so the fixture asserts both directions: a schema using every documented key lints clean, **and** a misspelled key is still rejected. This is the second occurrence of this drift (after #13), so the fixture now pins the documented surface. **Note:** `cascadeDelete` is constrained to `soft | hard`; only `soft` appears in the handbooks, and `hard` is admitted on the strength of the reporter's description — worth confirming against the generator. **Spec-author action:** none; this only stops rejecting conformant specs. |
+
+| `v0.5.12` (incubating, current) | generator **`0.5.5`** (pin unchanged) | **Kit-only release — snapshot guardrails now exist (authoring #37).** `AsyncAPI_Handbook.md` §2.3 and `Vendor_Extensions.md` §11.2 both described three snapshot guardrails as Spectral-enforced; **none existed in any shipped ruleset**, and `x-classification` appeared in no ruleset at all. New `specfuse-async-snapshot-guardrails` enforces the size limit (>25 scalar fields, warn, `x-snapshot-size-acknowledged: true` override) and the shape and honesty of both overrides: a bare list is rejected, a justification under 20 characters is rejected, and an acknowledgement naming a property the snapshot does not carry is rejected — a stale entry otherwise reads as a considered privacy decision while covering nothing. The two guardrails that compare a snapshot to its source entity remain **generator-side** (follow-up #15): the entity lives in the OpenAPI document, unreachable from the AsyncAPI surface. **Spec-author action:** none for conformant specs — `examples/hello-orders/` already acknowledged its three PII fields correctly and passes unchanged. Note the gate is still only partly automatic: a snapshot carrying a classified field with no acknowledgement at all passes kit lint. |
 
 ## How to update this matrix
 
@@ -260,6 +262,27 @@ Accidental-deletion risk is fenced by the already-mandatory `If-Match` (forcing 
 **Rejected alternatives** (recorded so the contract does not drift back): upsert-only / absent-means-untouched forks the semantics inside one PATCH body, is inexpressible in OpenAPI, and requires child `DELETE` route coverage to remove anything; `_delete`-style deletion markers violate the property naming rules, pollute every child DTO, and carry no OpenAPI expressibility.
 
 **Severity:** the contract is a clarification of what PATCH already meant, but consumer-facing **descriptions** must now state that omitted children are permanently removed. Prose that documents upsert-only semantics contradicts the server and is worse than no prose.
+
+### 15. Snapshot-to-entity guardrails (kit `v0.5.12`, authoring #37)
+
+**Status:** kit enforces the within-document half (`specfuse-async-snapshot-guardrails`); the two cross-spec checks are generator-side and not implemented.
+
+`AsyncAPI_Handbook.md` §2.3 promises three snapshot guardrails. Two of them compare a snapshot against its **source entity**, which lives in the OpenAPI document — not reachable while Spectral is linting the AsyncAPI surface, and not reconstructable from it:
+
+| Guardrail | Where it can live |
+|---|---|
+| Snapshot has > 25 scalar fields (warn, `x-snapshot-size-acknowledged` override) | **kit** — decidable from the snapshot alone |
+| `x-snapshot-pii-acknowledged` well-formed, justification ≥ 20 chars, and naming a property the snapshot actually has | **kit** — decidable from the snapshot alone |
+| Snapshot field whose source entity property carries `x-classification: [pii \| sensitive]` must be acknowledged (**error**) | **generator** — needs the entity |
+| Snapshot field name must exist on the source entity (**error**) | **generator** — needs the entity |
+
+**Generator action:** implement the two entity-comparing rules. Until then the privacy gate the handbook describes is only partly automatic: the kit guarantees an acknowledgement is *well-formed and on-target*, not that every classified field *has* one. A snapshot can still carry a `pii` field with no acknowledgement and pass lint.
+
+**Why not solve it kit-side:** a Spectral function could walk the filesystem from the document's directory to find `../models/<Entity>.yaml`, but it would silently do nothing when linting a bundle (where the paths are gone) — and a privacy control that silently does nothing is the failure this guardrail exists to prevent. Better an honest gap than a rule that looks like enforcement.
+
+**Severity:** the missing half is an unenforced **error**-severity promise in the handbooks. Consumers should not read a green AsyncAPI lint as evidence that snapshot PII has been reviewed.
+
+---
 
 ---
 

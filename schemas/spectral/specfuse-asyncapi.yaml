@@ -68,6 +68,7 @@ functions:
   - asyncFirstAppearanceCreated
   - asyncInboxDedupCoherence
   - asyncAuditableEventEnvelopeShape
+  - asyncSnapshotGuardrails
 
 overrides:
   - files: ["**"]
@@ -76,6 +77,29 @@ overrides:
       asyncapi-3-tags: off
 
 rules:
+
+  # ===== Snapshot guardrails (AsyncAPI_Handbook.md §2.3) =====
+  # The handbook promises three. Two compare the snapshot against its SOURCE
+  # ENTITY -- is the field classified pii/sensitive, does the field exist on
+  # the entity -- and the entity lives in the OpenAPI document, which Spectral
+  # cannot see while linting the AsyncAPI surface. Those stay generator-side;
+  # see compatibility.md.
+  #
+  # What this enforces is the size guardrail plus the SHAPE AND HONESTY of both
+  # override mechanisms, none of which existed in any shipped ruleset. An
+  # override that can be written malformed, or that can name a field the
+  # snapshot does not have, silently does nothing -- which is the failure this
+  # guardrail exists to prevent.
+  specfuse-async-snapshot-guardrails:
+    description: "Snapshots must stay narrow, and their PII/size acknowledgements must be well-formed and actually cover a field on the snapshot."
+    message: "{{error}}"
+    severity: warn
+    given:
+      - $.channels[*].messages[*].payload.properties[*]
+      - $.components.messages[*].payload.properties[*]
+      - $.components.schemas[*]
+    then:
+      function: asyncSnapshotGuardrails
 
   # ===========================================================================
   # CHANNEL RULES

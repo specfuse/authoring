@@ -1,0 +1,147 @@
+# =============================================================================
+# Regression fixture: snapshot size and acknowledgement guardrails
+# =============================================================================
+# AsyncAPI_Handbook.md §2.3 promises three snapshot guardrails; none existed in
+# any shipped ruleset (authoring #37). Two of the three compare a snapshot
+# against its source entity, which lives in the OpenAPI document and is not
+# reachable from the AsyncAPI surface — those remain generator-side.
+#
+# This pins the parts Spectral can decide, which are the ones that keep the
+# overrides meaningful:
+#
+#   GoodSnapshot          clean — acknowledgements well-formed and on-target
+#   BareListAck           flagged: a bare list is not an acknowledgement
+#   ShortJustification    flagged: justification under 20 characters
+#   NonStringJustification flagged: justification is not a string
+#   StaleAck              flagged: acknowledges a property the snapshot lacks
+#   BadSizeAck            flagged: x-snapshot-size-acknowledged is not `true`
+#   WideSnapshot          flagged: 26 scalar fields with no size acknowledgement
+#   WideButAcknowledged   clean — 26 scalar fields, deliberately acknowledged
+#
+# The last pair is the point of the size rule: it must fire on the wide
+# snapshot AND stay silent once the width is acknowledged, or the override is
+# decoration.
+#
+# Not a Specfuse-conformant example — do not copy.
+# =============================================================================
+asyncapi: 3.0.0
+info:
+  title: Snapshot guardrail fixture
+  version: "1.0.0"
+  tags:
+    - name: Fixture
+channels: {}
+operations: {}
+components:
+  schemas:
+    # ---- Correct. No finding expected. ----
+    GoodSnapshot:
+      type: object
+      x-snapshot-pii-acknowledged:
+        email: "Notification workers send order confirmations to the customer's email address."
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+
+    # ---- Acknowledgement shape violations. ----
+    BareListAck:
+      type: object
+      x-snapshot-pii-acknowledged:
+        - email
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+
+    ShortJustification:
+      type: object
+      x-snapshot-pii-acknowledged:
+        email: "needed"
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+
+    NonStringJustification:
+      type: object
+      x-snapshot-pii-acknowledged:
+        email: true
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+
+    # ---- Acknowledges a field the snapshot does not carry. ----
+    StaleAck:
+      type: object
+      x-snapshot-pii-acknowledged:
+        phoneNumber: "Support agents call customers about delivery exceptions on this line."
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+
+    BadSizeAck:
+      type: object
+      x-snapshot-size-acknowledged: "yes"
+      properties:
+        id: { type: string, format: uuid }
+
+    # ---- 26 scalar fields, unacknowledged. ----
+    WideSnapshot:
+      type: object
+      properties:
+        f01: { type: string }
+        f02: { type: string }
+        f03: { type: string }
+        f04: { type: string }
+        f05: { type: string }
+        f06: { type: string }
+        f07: { type: string }
+        f08: { type: string }
+        f09: { type: string }
+        f10: { type: string }
+        f11: { type: string }
+        f12: { type: string }
+        f13: { type: string }
+        f14: { type: string }
+        f15: { type: string }
+        f16: { type: string }
+        f17: { type: string }
+        f18: { type: string }
+        f19: { type: string }
+        f20: { type: string }
+        f21: { type: string }
+        f22: { type: string }
+        f23: { type: string }
+        f24: { type: string }
+        f25: { type: string }
+        f26: { type: string }
+
+    # ---- Same width, acknowledged. Must be silent. ----
+    WideButAcknowledged:
+      type: object
+      x-snapshot-size-acknowledged: true
+      properties:
+        f01: { type: string }
+        f02: { type: string }
+        f03: { type: string }
+        f04: { type: string }
+        f05: { type: string }
+        f06: { type: string }
+        f07: { type: string }
+        f08: { type: string }
+        f09: { type: string }
+        f10: { type: string }
+        f11: { type: string }
+        f12: { type: string }
+        f13: { type: string }
+        f14: { type: string }
+        f15: { type: string }
+        f16: { type: string }
+        f17: { type: string }
+        f18: { type: string }
+        f19: { type: string }
+        f20: { type: string }
+        f21: { type: string }
+        f22: { type: string }
+        f23: { type: string }
+        f24: { type: string }
+        f25: { type: string }
+        f26: { type: string }
