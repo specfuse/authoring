@@ -68,3 +68,11 @@ publishes to PyPI via **OIDC trusted publishing** (no API token).
 - The **Claude assets** (skills + agents) are released from the
   [`specfuse/specfuse`](https://github.com/specfuse/specfuse) plugin marketplace,
   not from this package — bump the plugin's `plugin.json` version there.
+- **No umbrella change is needed to deliver a release.** Since umbrella
+  `0.11.0` the suite hard-depends on this package rather than carrying it as an
+  `authoring` extra, so `pipx upgrade specfuse` / `uv tool upgrade specfuse`
+  re-resolves and pulls whatever is newest on PyPI. Ask the umbrella to raise
+  its floor only when *its own* code requires a specific kit version — and open
+  that PR at the same time if you rename `specfuse.authoring.cli:_run` or the
+  module holding it, because the umbrella dispatches `specfuse authoring …`
+  into that dotted path and a rename becomes a run-time `ImportError`.

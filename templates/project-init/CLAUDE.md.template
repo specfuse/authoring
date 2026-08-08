@@ -25,7 +25,7 @@ Canonical samples to copy from:
 - `.specfuse/authoring/samples/scenario-samples.yaml`
 - `.specfuse/authoring/samples/recipe-samples.yaml`
 
-The authoring contract (handbooks + samples) is scaffolded into `.specfuse/authoring/` by `specfuse-authoring init` and kept current with `specfuse-authoring refresh`.
+The authoring contract (handbooks + samples) is scaffolded into `.specfuse/authoring/` by `specfuse authoring init` and kept current with `specfuse authoring upgrade`.
 
 ---
 
@@ -119,7 +119,7 @@ This project uses the `specfuse-authoring` Claude Code plugin (skills + design a
 When the kit ships updates, re-sync the authoring contract and plugin config:
 
 ```bash
-specfuse-authoring refresh $(pwd)
+specfuse authoring upgrade $(pwd)
 ```
 
 Pull newer skills with `/plugin update specfuse-authoring@specfuse`.

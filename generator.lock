@@ -1,5 +1,5 @@
 {
-  "kit_version": "0.5.9",
+  "kit_version": "0.5.10",
   "min_java": 17,
   "generator": {
     "version": "0.5.5",
@@ -8,5 +8,5 @@
     "release_repo": "Specfuse/generator-dist",
     "release_tag": "v0.5.5"
   },
-  "_note": "Pin the kit<->generator contract here. On each generator release: set version/asset/sha256/release_tag, then publish a matching kit patch. sha256=PENDING means no generator is bundled yet; `specfuse-authoring generate` will refuse with a clear message until a real jar is pinned."
+  "_note": "Pin the kit<->generator contract here. On each generator release: set version/asset/sha256/release_tag, then publish a matching kit patch. sha256=PENDING means no generator is bundled yet; `specfuse authoring generate` will refuse with a clear message until a real jar is pinned."
 }

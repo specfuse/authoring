@@ -32,7 +32,7 @@ except ImportError:
     sys.stderr.write(
         "dedupe-async-bundle.py requires PyYAML, which is not installed.\n"
         "\n"
-        "  pip install PyYAML          (or: pipx inject specfuse-authoring PyYAML)\n"
+        "  pip install PyYAML          (or: pipx inject specfuse PyYAML)\n"
         "\n"
         "It is used to slim the bundled AsyncAPI document after redocly expands\n"
         "it; without it the bundle stays large enough to hit the generator's\n"

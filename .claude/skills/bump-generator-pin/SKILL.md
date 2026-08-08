@@ -6,7 +6,7 @@ description: Kit-side half of a generator release — pin a newly published gene
 # bump-generator-pin
 
 Pins a released generator jar in the kit and completes the kit-side lockstep so
-`specfuse-authoring generate` resolves and verifies the new jar.
+`specfuse authoring generate` resolves and verifies the new jar.
 
 Use this **after** the generator's own release script has published
 `specfuse-generator-<X.Y.Z>.jar` to `Specfuse/generator-dist` (tag `v<X.Y.Z>`)

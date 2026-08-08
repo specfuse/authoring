@@ -20,7 +20,7 @@ Please do **not** open a public issue for security vulnerabilities.
 ## Scope note
 
 The kit ships handbooks, samples, templates, Claude assets, and a thin
-generator launcher (`specfuse-authoring generate`). The generator binary itself is
+generator launcher (`specfuse authoring generate`). The generator binary itself is
 distributed separately as a pinned, checksum-verified release asset; the
 launcher refuses any jar whose SHA-256 does not match the pin in
 `generator.lock`. Report launcher/verification issues here; report generator

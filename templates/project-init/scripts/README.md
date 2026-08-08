@@ -1,7 +1,7 @@
 # `scripts/`
 
 Tooling the Specfuse authoring skills invoke. **These files are owned by the
-kit**: `specfuse-authoring upgrade` replaces them wholesale so fixes reach every
+kit**: `specfuse authoring upgrade` replaces them wholesale so fixes reach every
 project. Editing one in place works until the next upgrade, which will overwrite
 it and tell you it did. Send changes upstream instead — see the kit's
 `CONTRIBUTING.md`.
@@ -46,8 +46,10 @@ yet exits 0.
 | `build-prompt-index.sh` | Reverse index of `api/docs/implementation-prompts/`, for `/prepare-handoff`. |
 
 `generate-scenario-docs.sh` drives the generator through
-`specfuse-authoring generate`, which resolves and checksum-verifies the version
+`specfuse authoring generate`, which resolves and checksum-verifies the version
 pinned in the kit's `generator.lock`. There is no jar to keep in this directory.
+(The script falls back to the deprecated flat `specfuse-authoring` command when
+the suite CLI is not installed, and `SPECFUSE_AUTHORING` overrides both.)
 
 ## External dependencies
 
@@ -58,7 +60,7 @@ npm install -g @redocly/cli                        # bundling, preview, validate
 npm install -g @stoplight/spectral-cli             # the Spectral validators
 npm install -g @openapitools/openapi-generator-cli # validate-openapi-generator
 npm install -g @asyncapi/cli                       # serve-async-docs
-pipx install specfuse-authoring                    # generation
+pipx install specfuse                              # generation (the whole Specfuse suite)
 pip install PyYAML                                 # bundle-async-spec (dedup pass)
 ```
 
