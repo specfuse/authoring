@@ -36,6 +36,17 @@ jobs:
           python -m venv /tmp/ci
           /tmp/ci/bin/pip install --quiet "$(ls dist/*.whl)"
           /tmp/ci/bin/python -c "import specfuse.authoring as a; print('import OK', a.__version__)"
+          # The umbrella dispatches `specfuse authoring …` into this exact
+          # dotted path (specfuse.authoring.cli:_run). Renaming the module or
+          # the function turns the subcommand into a run-time ImportError that
+          # only surfaces after this package is on PyPI, so assert it here.
+          /tmp/ci/bin/python -c "from specfuse.authoring.cli import _run; assert callable(_run)"
+          # Usage must read as the suite subcommand for every invocation except
+          # the deprecated flat script, which keeps printing the name typed.
+          /tmp/ci/bin/python -m specfuse.authoring.cli --help >/tmp/help.txt
+          grep -q '^usage: specfuse authoring' /tmp/help.txt
+          # The flat script stays until the coordinated 1.0.0 removal; CI
+          # installs this package alone, so it is also what CI drives below.
           /tmp/ci/bin/specfuse-authoring --version
           /tmp/ci/bin/specfuse-authoring init /tmp/smoke \
             --name beta-shop --token beta --domain cart --yes

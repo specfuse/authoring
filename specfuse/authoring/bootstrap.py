@@ -234,7 +234,7 @@ def init(
         "   .claude/settings.json — the commands above are the manual equivalent.)\n\n"
         "  Then design with /specfuse-authoring:design-scenario or :design-async.\n"
         "  After a kit update, pull the new contract, schemas and scripts with:\n"
-        f"    specfuse-authoring upgrade {target}\n"
+        f"    specfuse authoring upgrade {target}\n"
         "  (add --dry-run to see what would change first.)\n"
     )
     return 0

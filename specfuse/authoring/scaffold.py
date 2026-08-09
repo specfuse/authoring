@@ -225,11 +225,12 @@ def upgrade(target: Path, *, dry_run: bool = False) -> int:
                 raise DowngradeError(
                     f"refusing downgrade: {target} was scaffolded by kit {recorded}, "
                     f"but the installed kit is {__version__}. "
-                    f"Upgrade the CLI first: pipx upgrade specfuse-authoring"
+                    f"Upgrade the CLI first: pipx upgrade specfuse "
+                    f"(or `pipx upgrade specfuse-authoring` on a standalone install)"
                 )
         except ValueError:
             print(
-                f"specfuse-authoring upgrade: WARNING — malformed {VERSION_FILE}: "
+                f"specfuse authoring upgrade: WARNING — malformed {VERSION_FILE}: "
                 f"{recorded!r}. Proceeding as if unversioned.",
                 file=sys.stderr,
             )
@@ -258,13 +259,13 @@ def upgrade(target: Path, *, dry_run: bool = False) -> int:
                 owned = old_manifest.get(rel)
                 if owned is None:
                     print(
-                        f"specfuse-authoring upgrade: WARNING — overwriting {rel}: "
+                        f"specfuse authoring upgrade: WARNING — overwriting {rel}: "
                         "not written by a prior init/upgrade (project-authored?).",
                         file=sys.stderr,
                     )
                 elif on_disk != owned:
                     print(
-                        f"specfuse-authoring upgrade: WARNING — overwriting locally-"
+                        f"specfuse authoring upgrade: WARNING — overwriting locally-"
                         f"modified {rel}. Kit files are replaced on upgrade; send "
                         "changes upstream rather than editing in place.",
                         file=sys.stderr,

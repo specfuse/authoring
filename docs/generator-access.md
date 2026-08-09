@@ -8,7 +8,7 @@ Licensed under the Apache License, Version 2.0. See LICENSE.
 The code generator is distributed as a **private** GitHub Release asset on
 [`Specfuse/generator-dist`](https://github.com/Specfuse/generator-dist). The kit
 itself is public; the generator binary is not. A client can author and validate
-specs with only the public kit — running `specfuse-authoring generate` is the one step
+specs with only the public kit — running `specfuse authoring generate` is the one step
 that needs access to the private distribution repo.
 
 This page is for **maintainers** granting access, and for **clients** setting it
@@ -75,7 +75,7 @@ the simplest.
 gh auth login        # authenticate as the user that was granted Read access
 ```
 
-`specfuse-authoring generate` detects `gh` and uses it transparently — no token to
+`specfuse authoring generate` detects `gh` and uses it transparently — no token to
 manage.
 
 ### Using a token (CI / headless)
@@ -84,7 +84,7 @@ Create a fine-grained PAT as described in Option C above, then:
 
 ```bash
 export SPECFUSE_TOKEN=github_pat_xxx
-specfuse-authoring generate <args>
+specfuse authoring generate <args>
 ```
 
 In CI, store it as a secret and export it for the generate step only.
@@ -105,7 +105,7 @@ In CI, store it as a secret and export it for the generate step only.
 |---|---|---|
 | `need the 'gh' CLI or SPECFUSE_TOKEN ...` | no auth available | `gh auth login`, or export `SPECFUSE_TOKEN` |
 | `404` / `release not found` on download | no Read access, or wrong account | confirm the maintainer granted access to the authenticated user |
-| `no generator is pinned for this kit version yet` | kit release predates a published generator | upgrade `specfuse-authoring` once a generator-bearing release ships |
+| `no generator is pinned for this kit version yet` | kit release predates a published generator | `pipx upgrade specfuse` once a generator-bearing release ships |
 | `checksum mismatch on downloaded generator jar` | corrupted download or a tampered asset | delete `~/.specfuse/jars/` and retry; if it persists, report it — do not use the jar |
 | `'java' not found` / wrong version | no JRE 17+ | install a JRE that meets `min_java` in `generator.lock` |
 

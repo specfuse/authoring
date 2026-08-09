@@ -1,4 +1,14 @@
-"""specfuse-authoring command-line entry point."""
+"""Command-line entry point for the authoring kit — `specfuse authoring`.
+
+The suite is driven through the single `specfuse` command; the umbrella
+dispatches `specfuse authoring …` into `specfuse.authoring.cli:_run` by dotted
+path, so that name is public API and must not be renamed without a matching
+change in the umbrella's DELEGATED_COMMANDS.
+
+The flat `specfuse-authoring` script stays in [project.scripts] as a deprecated
+alias for standalone installs; it comes out in the coordinated 1.0.0 release
+train, once every component has migrated its own references.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +17,20 @@ import sys
 from pathlib import Path
 
 from . import __version__
+
+
+def _prog() -> str:
+    """The command name to print in usage/--version.
+
+    Taken from how the CLI was actually invoked, because both spellings reach
+    this same function: the umbrella rewrites sys.argv when it dispatches
+    `specfuse authoring …`, while the deprecated flat script calls it directly.
+    Anything that is not literally the flat script — the umbrella, `python -m`,
+    a test harness — gets the subcommand form, so `specfuse authoring --help`
+    prints usage a reader can paste back.
+    """
+    invoked = Path(sys.argv[0] or "").name
+    return invoked if invoked == "specfuse-authoring" else "specfuse authoring"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -18,11 +42,12 @@ def main(argv: list[str] | None = None) -> int:
         from . import generator
         return generator.generate(raw[1:])
 
+    prog = _prog()
     parser = argparse.ArgumentParser(
-        prog="specfuse-authoring",
+        prog=prog,
         description="Bootstrap Specfuse projects and run the spec->code generator.",
     )
-    parser.add_argument("--version", action="version", version=f"specfuse-authoring {__version__}")
+    parser.add_argument("--version", action="version", version=f"{prog} {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_init = sub.add_parser("init", help="Bootstrap a new Specfuse project.")
@@ -65,7 +90,7 @@ def main(argv: list[str] | None = None) -> int:
     if ns.command in ("upgrade", "refresh"):
         if ns.command == "refresh":
             print(
-                "specfuse-authoring: `refresh` is deprecated — use `upgrade`.",
+                f"{prog}: `refresh` is deprecated — use `upgrade`.",
                 file=sys.stderr,
             )
         from . import bootstrap

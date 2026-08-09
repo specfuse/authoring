@@ -77,7 +77,7 @@ need a matrix bump — but a CLI change still bumps the package version.
   gating. `schemas/spectral/fixtures/` holds the fixtures that pin this for the
   null-tolerance and `mutability` behaviours; add one when you fix a rule.
 - **Build the package.** `python -m build --wheel` must succeed, and a wheel
-  installed in a clean environment must run `specfuse-authoring init` correctly
+  installed in a clean environment must run `specfuse authoring init` correctly
   (the wheel bundles handbooks, samples, templates, and schemas under the
   `specfuse/authoring/_kit/` path; Claude assets resolve from the plugin, not the wheel).
 - **Re-run the leak check.** Confirm no source-project brand names leaked back

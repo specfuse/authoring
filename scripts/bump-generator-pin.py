@@ -7,7 +7,7 @@
 #
 # This is the KIT-SIDE half of a generator release. The generator's own release
 # script publishes the jar to Specfuse/generator-dist and prints a version +
-# SHA-256; this script writes that pin into the kit so `specfuse-authoring generate`
+# SHA-256; this script writes that pin into the kit so `specfuse authoring generate`
 # resolves and verifies the new jar.
 #
 # It updates ONLY the mechanical, deterministic part (generator.lock). Bumping

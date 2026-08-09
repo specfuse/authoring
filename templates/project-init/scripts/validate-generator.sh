@@ -23,12 +23,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # The generator is resolved and checksum-verified by the kit CLI against the
 # version pinned in generator.lock; there is no jar to keep beside this script.
-SPECFUSE="${SPECFUSE_AUTHORING:-specfuse-authoring}"
-# `specfuse-authoring generate` runs the PINNED GENERATOR JAR with whatever
+# The suite is driven through the single `specfuse` command. The flat
+# `specfuse-authoring` script is a deprecated alias, kept working for standalone
+# installs until 1.0.0 — so prefer the subcommand, fall back to the alias, and
+# let SPECFUSE_AUTHORING override either (it may name a full path).
+if [ -n "${SPECFUSE_AUTHORING:-}" ]; then
+    SPECFUSE_CLI=("${SPECFUSE_AUTHORING}")
+elif command -v specfuse &> /dev/null; then
+    SPECFUSE_CLI=(specfuse authoring)
+else
+    SPECFUSE_CLI=(specfuse-authoring)
+fi
+# `specfuse authoring generate` runs the PINNED GENERATOR JAR with whatever
 # follows it, so the jar's own verb (generate / validate / validate-source) is
 # passed explicitly as the first argument below. Dropping it silently runs the
 # jar with no subcommand.
-RUN_GENERATOR=("${SPECFUSE}" generate)
+RUN_GENERATOR=("${SPECFUSE_CLI[@]}" generate)
 
 # The project file is named after the project, so find it rather than
 # hardcoding one project's name.
@@ -58,9 +68,9 @@ if ! command -v java &> /dev/null; then
     echo "❌ Java not found. Install Java 21+."
     exit 1
 fi
-if ! command -v "$SPECFUSE" &> /dev/null; then
-    echo "❌ specfuse-authoring not found on PATH."
-    echo "   Install it:  pipx install specfuse-authoring"
+if ! command -v "${SPECFUSE_CLI[0]}" &> /dev/null; then
+    echo "❌ ${SPECFUSE_CLI[*]} not found on PATH."
+    echo "   Install the suite:  pipx install specfuse   (or: uv tool install specfuse)"
     exit 1
 fi
 if [ -z "$PROJECT_CONFIG" ] || [ ! -f "$PROJECT_CONFIG" ]; then

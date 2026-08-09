@@ -11,8 +11,8 @@ This guide takes you from zero to a generated backend: install the kit, bootstra
 
 | Tool | Why | Check |
 |---|---|---|
-| **Python 3.10+** | runs the `specfuse-authoring` CLI | `python3 --version` |
-| **[pipx](https://pipx.pypa.io/)** | installs the CLI as an isolated app | `pipx --version` |
+| **Python 3.10+** | runs the `specfuse` CLI | `python3 --version` |
+| **[pipx](https://pipx.pypa.io/)** or **[uv](https://docs.astral.sh/uv/)** | installs the CLI as an isolated app | `pipx --version` / `uv --version` |
 | **Java 17+ (JRE)** | the code generator is a Java binary | `java -version` |
 | **[Claude Code](https://claude.com/claude-code)** (optional) | the `/specfuse-authoring:*` authoring skills | — |
 | **GitHub access token** | only needed to run `generate` (pulls the private generator) | see §6 |
@@ -22,14 +22,16 @@ You do **not** need to clone this repo. The CLI ships every kit asset (handbooks
 ## 2. Install the CLI and bootstrap a project
 
 ```bash
-pipx install specfuse-authoring     # recommended (isolated CLI app)
-#   (or, inside a venv you control: python3 -m pip install specfuse-authoring)
-specfuse-authoring init ~/projects/my-app
+pipx install specfuse               # the whole Specfuse suite (isolated CLI app)
+#   (or: uv tool install specfuse)
+specfuse authoring init ~/projects/my-app
 ```
 
-> A bare `pip install` into a system Python is blocked on PEP-668 externally-managed environments (Debian/Ubuntu, Homebrew). Use `pipx` (then `pipx upgrade specfuse-authoring`) or a virtualenv.
+The kit is one component of the suite, and the suite is driven through the single `specfuse` command: `specfuse authoring …` is this kit, and `pipx upgrade specfuse` / `uv tool upgrade specfuse` pulls every component's new release. There are no extras to name and no install flags to remember.
 
-> **If you already run the `specfuse` umbrella CLI, install the kit through it instead:** `pipx install --force --include-deps 'specfuse[all]'`. The umbrella's `authoring` extra and this standalone package both provide a `specfuse-authoring` command, and pipx refuses to point one venv's shim at another's — it warns `File exists at ~/.local/bin/specfuse-authoring and points to … Not modifying.` and moves on. The result is a command that silently keeps running the install you *didn't* just upgrade. Run `specfuse doctor` (umbrella 0.9.4+) to see which install owns each command.
+> A bare `pip install` into a system Python is blocked on PEP-668 externally-managed environments (Debian/Ubuntu, Homebrew). Use `pipx` (then `pipx upgrade specfuse`) or a virtualenv.
+
+> **Standalone install.** `pip install specfuse-authoring` remains supported for using the kit alone or as a library, and its flat `specfuse-authoring` command is a deprecated alias until 1.0.0 — drop the `specfuse ` prefix from the commands in this guide. Install one way or the other, not both: the two installs provide the same flat command name, pipx will not repoint a shim another venv owns (`File exists at ~/.local/bin/specfuse-authoring and points to … Not modifying.`), and the loser's upgrades stop changing what actually runs. `specfuse doctor` reports which install owns each command.
 
 You'll be prompted for three things (or pass them as flags for non-interactive use):
 
@@ -40,7 +42,7 @@ You'll be prompted for three things (or pass them as flags for non-interactive u
 | Initial domain | `--domain` | `order` | kebab-case |
 
 ```bash
-specfuse-authoring init ~/projects/my-app --name my-app --token myapp --domain order
+specfuse authoring init ~/projects/my-app --name my-app --token myapp --domain order
 ```
 
 This creates a complete project skeleton: the `api/specs/v1/` tree, a `{name}-project.json` generator config, a `CLAUDE.md`, the authoring contract (handbooks + samples) scaffolded into `.specfuse/authoring/`, and a `.claude/settings.json` wired to the `specfuse-authoring` plugin.
@@ -92,7 +94,7 @@ Inside Claude Code, the kit's skills validate your specs against the handbook ru
 The generator turns your validated specs into backend, frontend, and worker artifacts:
 
 ```bash
-specfuse-authoring generate <args>
+specfuse authoring generate <args>
 ```
 
 On first run the CLI resolves the generator pinned for your kit version (see [`generator.lock`](../generator.lock)), downloads it, **verifies its SHA-256**, caches it under `~/.specfuse/jars/`, and runs it. Subsequent runs use the cache.
@@ -116,7 +118,7 @@ If no generator is pinned yet for your kit version, `generate` exits with a clea
 When the kit ships an update, pull it into your project:
 
 ```bash
-specfuse-authoring upgrade ~/projects/my-app
+specfuse authoring upgrade ~/projects/my-app
 ```
 
 Add `--dry-run` to see what would change before anything is written.
@@ -140,7 +142,7 @@ A project scaffolded by a **newer** kit than the one installed is refused rather
 
 ```
 Error: refusing downgrade: … was scaffolded by kit 0.6.0, but the installed kit is 0.5.5.
-Upgrade the CLI first: pipx upgrade specfuse-authoring
+Upgrade the CLI first: pipx upgrade specfuse (or `pipx upgrade specfuse-authoring` on a standalone install)
 ```
 
 Projects created before the overlay existed have no manifest. They are adopted on first `upgrade` — it reports `kit unversioned -> <version>`, writes everything, and stays quiet about pre-existing edits it has no baseline for.
