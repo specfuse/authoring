@@ -22,10 +22,32 @@ Project-specific tooling belongs in a directory the kit does not own (`bin/`,
 | `validate-arazzo.sh` | Arazzo scenarios and recipes — structural + cross-spec. |
 | `validate-arazzo-spectral.sh` | Arazzo against the kit's Spectral ruleset. |
 | `validate-openapi-generator.sh` | The spec is consumable by openapi-generator. |
+| `check-extension-vocabulary.py` | The rulesets' closed vendor-extension guards still cover the generator's vocabulary — run by `validate-spectral.sh` before it lints. |
+
+**Why the vocabulary check exists.** Several rules validate a vendor extension
+with `additionalProperties: false`. That is a closed schema over a vocabulary
+the *generator* owns, so when the generator adds a key the ruleset does not
+know about, the consequence is not a missed warning — the first spec that
+declares the key fails lint outright, and the error names your spec rather than
+the ruleset. `check-extension-vocabulary.py` reads the key literals out of the
+pinned generator jar and fails when the generator knows a key no guard accepts.
+It is deliberately one-way: keys a ruleset accepts but the jar never mentions
+are reported and never fatal, because the generator reaches some keys through
+indirect constants that leave no literal behind.
+
+With no generator jar cached it skips **loudly** and exits 0 — a developer who
+has never run `generate` should not be blocked. CI should pass `--require-jar`
+so the skip cannot become the normal state. `SPECFUSE_GENERATOR_JAR` points it
+at a specific jar. A generator key that legitimately belongs to a different
+surface goes in `.specfuse/authoring/vocabulary-exceptions.yaml` with a reason —
+declared, not silently tolerated.
 
 The Spectral validators lint against the rulesets delivered into
 `.specfuse/authoring/schemas/spectral/`, so they follow the kit rather than a
-copy that drifts. Each resolves the spec version by looking for the newest
+copy that drifts. Keep it that way: a second, project-local copy of a ruleset
+is the same drift problem wearing a different hat, and the copy CI does not run
+is the one that rots. The vocabulary check flags ruleset files no script names,
+for exactly that reason — one ruleset, one runner. Each resolves the spec version by looking for the newest
 `api/specs/v*` directory; pass one explicitly to override
 (`./scripts/validate-spectral.sh v1`).
 

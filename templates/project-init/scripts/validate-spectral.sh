@@ -45,6 +45,28 @@ echo "Main Spec: $MAIN_SPEC"
 echo "Ruleset: $RULESET"
 echo ""
 
+# Vocabulary drift guard, BEFORE the lint.
+#
+# The ruleset closes several vendor extensions with `additionalProperties:
+# false`, over a vocabulary the generator owns. When the generator adds a key
+# and the ruleset does not learn about it, the first spec to declare that key
+# fails lint with an `additionalProperties` error — the feature cannot be
+# adopted, and the error names the spec rather than the ruleset. Running the
+# check first means the drift is reported as drift.
+#
+# Advisory here, fatal in CI (`--require-jar`): a developer who has never run
+# `generate` has no cached jar, and blocking their lint on that would be worse
+# than the drift. The skip is loud, never silent.
+if [ -f "$SCRIPT_DIR/check-extension-vocabulary.py" ]; then
+    python3 "$SCRIPT_DIR/check-extension-vocabulary.py" || {
+        echo ""
+        echo "❌ Vendor-extension vocabulary drift — see above."
+        echo "   Linting now would report the ruleset's gap as a spec error."
+        exit 1
+    }
+    echo ""
+fi
+
 # Check if main spec exists
 if [ ! -f "$MAIN_SPEC" ]; then
     echo "❌ Main OpenAPI spec not found: $MAIN_SPEC"
