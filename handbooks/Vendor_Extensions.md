@@ -35,6 +35,7 @@ x-entity:
   encryptedProperties: string[]  # Optional: Fields requiring encryption at rest
   requiresPagination: boolean    # Optional: Whether lists require pagination (default: true for aggregates)
   mutability: string             # Optional: "mutable" | "immutable" | "appendOnly" (default: "mutable")
+  delete: string | object        # Optional: "hard" | "soft", or { mode, retention } (default: "hard")
   valueObjects: object           # Optional: Value object storage configuration
   aiAccess: object               # Optional: AI agent access policy (see 1.1.1). Absent = no AI access.
 ```
@@ -100,6 +101,105 @@ AuditEntry:
     createdAt: { type: string, format: date-time }
     actorId: { type: string, format: uuid }
     action: { $ref: './AuditAction.yaml' }
+```
+
+**`delete` (optional, default `hard`).** Declares what an HTTP `DELETE` on this
+entity does to its own row: destroy it, or mark it archived and keep it.
+
+Before this key existed, the answer was invisible from the spec. The generator's
+delete template branched on whether a linked AsyncAPI message carried
+`x-trigger-when` — if one did, the generated service updated the entity; if not,
+it removed the row. An operation description could say *"stays in the database"*
+while the generated code hard-deleted it, and nothing anywhere disagreed.
+`delete` is that decision moved into the contract.
+
+Three authored forms:
+
+```yaml
+delete: hard                # shorthand — destroy the row
+delete: soft                # shorthand — stamp deletedAt, keep the row
+
+delete:                     # long form
+  mode: soft
+  retention: P30D           # ISO-8601 duration, or `none` = keep forever
+```
+
+| Value | Meaning |
+|---|---|
+| `hard` | The row is removed. The default; omitting the property means this. |
+| `soft` | The row is retained and stamped `deletedAt`; reads exclude it by default. |
+| `retention` | How long a soft-deleted row is kept before it may be destroyed. `none` means forever. Only meaningful with `mode: soft`. |
+
+Absent `delete` resolves to `hard`, which is the pre-FEAT-2026-0080 generator
+behaviour — adding this key to the vocabulary changes the meaning of no existing
+entity. **Note that this default is the opposite of the `API_Handbook.md`
+project-wide soft-delete convention.** If your project follows that convention,
+undeclared entities are silently hard-deleting today; see §"Deletion" in the API
+Handbook.
+
+**Not the same key as `cascadeDelete`.** `delete` scopes the entity's own row;
+`cascadeDelete` scopes what happens to its `children`. An aggregate may carry
+both, and they are not required to agree — a hard-deleted parent can still
+cascade a soft delete to children that outlive it.
+
+**The `deletedAt` shape contract.** A soft-delete entity declares the property
+itself, following the `createdAt`/`updatedAt` convention, so that it lands in
+read DTOs and clients can see when a record was archived. It must be:
+
+```yaml
+deletedAt:
+  type: string
+  format: date-time
+  nullable: true
+```
+
+`deletedByUserId` is optional. When present, the generated service stamps it
+from the caller context, and it is legal only on a soft-delete entity.
+
+**What consumes it today:** `specfuse-xentity-shape` validates the shape — the
+closed value sets, the long-form sub-keys, and that `retention` is `none` or an
+ISO-8601 duration with at least one component. Generator-side, gate 1 of
+FEAT-2026-0080 adds six ERROR and two WARNING coherence rules:
+
+| Rule | Severity | Fires when |
+|---|---|---|
+| `DELETE_SOFT_REQUIRES_DELETED_AT` | ERROR | `soft`, but no `deletedAt` property |
+| `DELETE_SOFT_DELETED_AT_SHAPE` | ERROR | `deletedAt` is not string / date-time / nullable |
+| `DELETE_HARD_DECLARES_DELETED_AT` | ERROR | `hard` (declared or defaulted) but `deletedAt` present |
+| `DELETE_AUDIT_REQUIRES_SOFT` | ERROR | `deletedByUserId` on a non-soft entity |
+| `DELETE_RETENTION_REQUIRES_SOFT` | ERROR | `retention` alongside `mode: hard` |
+| `DELETE_RETENTION_INVALID` | ERROR | `retention` is neither `none` nor a valid ISO-8601 duration |
+| `DELETE_SEMANTICS_UNDECLARED` | WARNING | the entity is the target of a DELETE operation and declares no `delete` |
+| `DELETE_SOFT_STATUS_ENUM_OVERLAP` | WARNING | a soft-delete entity whose status enum also carries a `deleted`/`archived` member |
+
+> **Gate 1 is validation only.** No stamping, no column, no read filtering is
+> generated yet — that lands in gate 2. An entity that declares `delete: soft`
+> and adds `deletedAt` before gate 2 ships has a real property in the contract
+> that nothing writes: an archived row reads back `deletedAt: null`. Sequence
+> the declaration accordingly.
+>
+> `retention` is declared-but-not-enforced in both gates. The cleanup worker
+> that acts on it is `FEAT-2026-0081`, which is blocked on this feature.
+>
+> `DELETE_SEMANTICS_UNDECLARED` ships at WARNING deliberately, so that adopting
+> the vocabulary does not turn `validate` red across a project mid-migration. It
+> tightens to ERROR in gate 2.
+
+```yaml
+Customer:
+  type: object
+  x-entity:
+    domain: crm
+    type: aggregate
+    delete:
+      mode: soft
+      retention: none         # kept until a manual privacy-request deletion
+  properties:
+    id: { type: string, format: uuid }
+    createdAt: { type: string, format: date-time }
+    updatedAt: { type: string, format: date-time }
+    deletedAt: { type: string, format: date-time, nullable: true }
+    deletedByUserId: { type: string, format: uuid, nullable: true }
 ```
 
 **Relationship Cardinality**:

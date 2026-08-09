@@ -11,13 +11,17 @@
 # exists: it pins the documented surface so the next omission fails here rather
 # than in a consumer's project.
 #
-# Expected (asserted by .github/workflows/example-regen.yml):
+# Expected (asserted by the `smoke-test` job in .github/workflows/ci.yml):
 #
 #   FullyDocumented    no specfuse-xentity-shape finding — uses every documented key
+#   ShorthandDelete    no finding — `delete` in its string shorthand form
 #   BadCascadeValue    flagged: cascadeDelete outside the closed set
 #   BadChildName       flagged: children entry is not PascalCase
 #   BadStorage         flagged: valueObjects storage outside the closed set
 #   UnknownSubKey      flagged: unknown key inside a valueObjects entry
+#   BadDeleteMode      flagged: delete mode outside the closed set
+#   BadRetention       flagged: retention is neither `none` nor an ISO-8601 duration
+#   DeleteUnknownKey   flagged: unknown key inside the long-form delete object
 #   TypoKey            flagged: unknown x-entity key (the additionalProperties guard)
 #
 # The last case is the one that matters most: relaxing the schema to fix a
@@ -48,6 +52,9 @@ components:
         filterableProperties: [status]
         searchableProperties: [reference]
         encryptedProperties: [taxId]
+        delete:
+          mode: soft
+          retention: P30D
         cascadeDelete: soft
         children: [OrderLine, Payment]
         valueObjects:
@@ -68,6 +75,16 @@ components:
         aiAccess:
           operations: []
           reason: Fixture entity; no agent surface.
+      properties:
+        id: { type: string, format: uuid }
+
+    # ---- The string shorthand of `delete`. No finding expected. ----
+    ShorthandDelete:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        delete: hard
       properties:
         id: { type: string, format: uuid }
 
@@ -110,6 +127,37 @@ components:
           address:
             storage: 'flatten'
             prefix: 'addr_'             # misspelling of propertyPrefix
+      properties:
+        id: { type: string, format: uuid }
+
+    BadDeleteMode:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        delete: archive                 # only hard | soft
+      properties:
+        id: { type: string, format: uuid }
+
+    BadRetention:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        delete:
+          mode: soft
+          retention: '30 days'          # not `none`, not an ISO-8601 duration
+      properties:
+        id: { type: string, format: uuid }
+
+    DeleteUnknownKey:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        delete:
+          mode: soft
+          purge: true                   # not a documented delete sub-key
       properties:
         id: { type: string, format: uuid }
 

@@ -655,17 +655,21 @@ What counts as "unchanged" is decided by the change-detection rules in `AsyncAPI
 
 ### Deletion Policy
 
-All DELETE operations use **soft delete** to simplify error management and enable recovery without database backup restoration.
+Soft delete is the recommended default for DELETE operations: it simplifies error management and enables recovery without a database backup restore.
+
+> **This is a convention, not a default.** Whether a given DELETE destroys a row or archives it is decided by `x-entity.delete` on the target entity (`Vendor_Extensions.md` §1.1), and an entity that declares nothing resolves to **`hard`**. Stating the convention here does not make it true of your entities — declaring `delete: soft` does. An entity whose operation description promises retention but carries no declaration is hard-deleting, and the generator's `DELETE_SEMANTICS_UNDECLARED` warning exists to surface exactly that gap.
 
 #### Soft Delete Behavior
 
-**All resources** use soft delete by marking them as deleted rather than removing from database.
+An entity that declares `delete: soft` is marked as deleted rather than removed from the database.
 
 **Mechanism:**
-- Resource status set to `deleted` (or equivalent terminal state)
-- `deletedAt` timestamp recorded
+- `deletedAt` timestamp recorded — this is the **sole owner** of deletion state
+- `deletedByUserId` recorded when the entity declares it
 - Returns `204 No Content`
 - Resource no longer appears in list/search results by default
+
+> **Do not also carry a `deleted` member in the entity's status enum.** It is a second, independent write of one fact: the two can disagree, and because `deleted` overwrites whatever status preceded it, restoring the record cannot recover the prior state. The generator flags the overlap as `DELETE_SOFT_STATUS_ENUM_OVERLAP` (WARNING). Filter on `deletedAt` instead. Removing an already-published `deleted` member is a breaking change for any client filtering on it — migrate deliberately.
 
 ```http
 DELETE /orders/123
@@ -679,12 +683,12 @@ Response: 204 No Content
 GET /orders/123
 Response: 404 Not Found
 
-GET /orders?filter=id eq '123' and status eq 'deleted'
+GET /orders?filter=id eq '123' and deletedAt ne null
 Response: 200 OK
 {
   "data": [{
     "id": "123",
-    "status": "deleted",
+    "status": "confirmed",
     "deletedAt": "2024-01-15T10:30:00Z",
     ...
   }]
@@ -693,9 +697,11 @@ Response: 200 OK
 
 #### Retention and Cleanup
 
-- **Retention period**: 30 days (project-tunable)
-- **Automatic cleanup**: Hard delete occurs after retention period expires
+- **Retention period**: declared per entity as `x-entity.delete.retention` — an ISO-8601 duration, or `none` to keep the row forever. 30 days (`P30D`) is a reasonable project default; a domain under a legal retention obligation typically declares `none` and hard-deletes only through a manual, audited process.
+- **Automatic cleanup**: hard delete after the retention period expires. **Not implemented yet** — `retention` is declared-but-not-enforced until the cleanup worker (`FEAT-2026-0081`) ships. Until then, no soft-deleted row is destroyed automatically, whatever it declares.
 - **Audit logs**: Preserved indefinitely regardless of resource deletion
+
+> There is no domain-level or project-level retention default that entities inherit. `retention` is per entity, so a policy such as *"30 days everywhere except `crm`"* is authored as a declaration on each entity, not as one default plus an override. Write the policy sentence once in the domain's documentation and keep the per-entity declarations consistent with it.
 
 #### Cascade Deletion
 
@@ -704,10 +710,10 @@ When a parent aggregate is soft-deleted, child entities are also soft-deleted:
 ```yaml
 # Example: Deleting an Order
 DELETE /orders/123
-→ Order status = deleted
-→ All OrderLines status = deleted
-→ All Payments status = deleted
-→ All Fulfillments status = deleted
+→ Order deletedAt stamped
+→ All OrderLines deletedAt stamped
+→ All Payments deletedAt stamped
+→ All Fulfillments deletedAt stamped
 ```
 
 **Cascade rules declared in `x-entity`:**
@@ -715,12 +721,15 @@ DELETE /orders/123
 Order:
   x-entity:
     type: aggregate
-    cascadeDelete: soft
+    delete: soft            # what happens to the Order's own row
+    cascadeDelete: soft     # what happens to its children
     children:
       - OrderLine
       - Payment
       - Fulfillment
 ```
+
+`delete` and `cascadeDelete` are separate keys answering separate questions, and are not required to agree. Each child named in `children` must declare its own `delete: soft` for the cascade to be coherent — `cascadeDelete` names the reach of the cascade, not the semantics of the entities it reaches.
 
 #### Deletion Constraints
 
@@ -747,7 +756,9 @@ Soft-deleted resources can be restored within the retention period via **restric
 **Public API behavior:**
 - Deleted resources return `404 Not Found`
 - Cannot be modified via standard endpoints
-- Can be queried using `filter` parameter: `?filter=status eq 'deleted'`
+- Can be queried using `filter` parameter: `?filter=deletedAt ne null`
+
+Restoring clears `deletedAt` and the record's prior state is intact, which is the practical reason deletion state lives in `deletedAt` alone: a status enum that was overwritten with `deleted` has no prior value left to restore.
 
 **Internal API behavior** (implementation detail):
 ```http
@@ -764,21 +775,23 @@ Use standard filtering to include deleted resources in queries:
 
 ```http
 # Include deleted resources
-GET /orders?filter=status eq 'deleted'
+GET /orders?filter=deletedAt ne null
 
 # Exclude deleted resources (default behavior)
-GET /orders?filter=status ne 'deleted'
+GET /orders?filter=deletedAt eq null
 
 # Get specific deleted resource
-GET /orders?filter=id eq '123' and status eq 'deleted'
+GET /orders?filter=id eq '123' and deletedAt ne null
 ```
 
 **Note**: Standard GET by ID (`GET /orders/123`) returns `404` for deleted resources. Use filter queries to access deleted resources.
 
+**Note**: `deletedAt` must appear in the entity's `x-entity.filterableProperties` for these queries to be valid — declaring `delete: soft` does not add it implicitly.
+
 #### AI Agent Considerations
 
 **When deleting:**
-- Understand that deletion is reversible (within retention window via internal APIs)
+- Check the target entity's `x-entity.delete` before assuming anything is recoverable — `soft` is reversible within the retention window via internal APIs, `hard` (declared or defaulted) is not
 - Check cascade implications (children will also be deleted)
 - Verify business rules allow deletion in current state
 - Include `If-Match` header for concurrency control
