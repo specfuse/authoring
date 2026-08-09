@@ -1,5 +1,5 @@
 {
-  "kit_version": "0.5.10",
+  "kit_version": "0.6.0",
   "min_java": 17,
   "generator": {
     "version": "0.5.5",
