@@ -12,6 +12,24 @@ This document provides a comprehensive specification of all vendor extensions (`
 - **Test generators** — happy-path and negative functional test scaffolding
 - **Scenario runners** — Arazzo workflow execution and assertions
 
+> **Adopting a key documented here is two edits, not one.** Several of these
+> extensions are validated by a Spectral rule that closes the schema
+> (`additionalProperties: false`) — a closed schema over a vocabulary the
+> *generator* owns. If the key is not also listed in that guard, the spec that
+> declares it fails lint with an `additionalProperties` error naming your spec,
+> not the ruleset, and the natural fix — deleting the key — abandons the
+> generator feature you were adopting. Three keys on `x-entity` reached exactly
+> that state (`domain`, across 78 entities, undetected for months;
+> `concurrency`; `delete`).
+>
+> Before adopting a key the project has not used: check the guard covering that
+> surface in `.specfuse/authoring/schemas/spectral/`, and run
+> `./scripts/check-extension-vocabulary.py`, which compares every closed guard
+> against the pinned generator's vocabulary and names any key the generator
+> knows and the rulesets reject. Kit maintainers run the same check at generator
+> pin time — see `bump-generator-pin` — so the drift is caught where it is born
+> rather than by the first spec author to trip over it.
+
 ---
 
 ## 1. Entity Modeling Extensions

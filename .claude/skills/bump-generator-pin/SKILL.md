@@ -47,14 +47,44 @@ If any are missing, ask for them. Do not guess a SHA-256.
    contract (or "no contract change — generator bugfix only"). Match the existing
    row format.
 
-5. **Verify** the pin resolves: run the resolver in dry mode if practical, or at
+5. **Check the extension vocabulary against the new jar — this is a gate, not a
+   nicety.** The kit's Spectral rules close several vendor extensions with
+   `additionalProperties: false`, over a vocabulary the generator owns. A pin
+   bump is the moment that vocabulary changes, and it is the last moment the
+   drift is cheap: after release, the first spec that declares a new key fails
+   lint with an `additionalProperties` error naming the spec, and the generator
+   feature cannot be adopted until someone patches the ruleset by hand. That has
+   happened three times on `x-entity` alone (`domain`, `concurrency`, `delete`).
+
+   ```sh
+   SPECFUSE_GENERATOR_JAR=~/.specfuse/jars/specfuse-generator-<version>.jar \
+     python3 templates/project-init/scripts/check-extension-vocabulary.py --require-jar
+   ```
+
+   Run it from the repo root against `schemas/spectral/` (the kit's own copies —
+   the same files the overlay delivers). If it reports keys the generator knows
+   and the rulesets reject:
+
+   - Add each key to the guard's schema **in this same PR**, with its value
+     constraint from the generator's release notes, and add a fixture case in
+     both directions to `schemas/spectral/fixtures/xentity-shape-keys.yaml` (or
+     the equivalent fixture for that guard).
+   - Update the handbook section that documents the extension. A key the ruleset
+     accepts but no handbook describes is undiscoverable by spec authors.
+   - If a key belongs to a different surface than the guard covers, record it in
+     `vocabulary-exceptions.yaml` with a reason rather than leaving it unexplained.
+
+   Do not proceed to the commit with a red check. A pin that ships with an
+   unpatched ruleset ships a blocked feature.
+
+6. **Verify** the pin resolves: run the resolver in dry mode if practical, or at
    minimum confirm `generator.lock` is valid JSON and the SHA-256 matches what the
    release published.
 
-6. **Commit** on a branch (one change per PR):
+7. **Commit** on a branch (one change per PR):
    `Pin generator <version>; bump kit to <kit-version>`.
 
-7. **Remind the maintainer** of the final, outward-facing step (do NOT do it
+8. **Remind the maintainer** of the final, outward-facing step (do NOT do it
    automatically): publish the kit patch to PyPi
    (`python -m build && twine upload dist/*`). Until that lands, clients still
    resolve the previously-pinned jar.

@@ -236,6 +236,57 @@ jobs:
             exit 1
           fi
 
+          # The vocabulary drift guard, in both directions, against a synthetic
+          # jar. The real generator is a private release asset CI cannot pull,
+          # but the check only reads `x-<ext>.<key>` string literals out of
+          # class files — so a zip carrying those literals exercises the whole
+          # comparison, and this runs on every PR instead of only where a token
+          # exists. The failing direction is the one that blocks spec authors:
+          # the generator knows a key the closed ruleset rejects.
+          python3 - <<'PY'
+          import pathlib, zipfile
+          out = pathlib.Path("/tmp/fakejars"); out.mkdir(exist_ok=True)
+          def jar(name, literals):
+              # A real constant pool: magic, version, count, then UTF8 entries
+              # (tag 1, u2 length, bytes). The check parses the pool, so the
+              # fixture has to be a pool — a bag of concatenated strings would
+              # test a reader this deliberately is not.
+              body = b"\xca\xfe\xba\xbe\x00\x00\x00\x34"
+              body += (len(literals) + 1).to_bytes(2, "big")
+              for s in literals:
+                  b = s.encode()
+                  body += b"\x01" + len(b).to_bytes(2, "big") + b
+              p = out / name
+              with zipfile.ZipFile(p, "w") as z:
+                  z.writestr("com/specfuse/Gen.class", body)
+              return p
+          # Every x-entity key the kit's guard declares -> clean.
+          jar("specfuse-generator-9.0.0.jar", ["x-entity.domain", "x-entity.type"])
+          # A key no guard accepts -> must fail.
+          jar("specfuse-generator-9.0.1.jar", ["x-entity.domain", "x-entity.warpFactor"])
+          PY
+
+          echo "--- vocabulary check: generator in sync"
+          SPECFUSE_GENERATOR_JAR=/tmp/fakejars/specfuse-generator-9.0.0.jar \
+            python3 scripts/check-extension-vocabulary.py --require-jar
+
+          echo "--- vocabulary check: generator ahead of the ruleset"
+          if SPECFUSE_GENERATOR_JAR=/tmp/fakejars/specfuse-generator-9.0.1.jar \
+               python3 scripts/check-extension-vocabulary.py --require-jar >/tmp/drift.out 2>&1; then
+            echo "::error::vocabulary drift guard passed a key no closed guard accepts" >&2
+            cat /tmp/drift.out >&2
+            exit 1
+          fi
+          grep -q "warpFactor" /tmp/drift.out
+
+          echo "--- vocabulary check: missing jar is a loud skip, fatal only with --require-jar"
+          SPECFUSE_HOME=/tmp/no-such-home python3 scripts/check-extension-vocabulary.py
+          if SPECFUSE_HOME=/tmp/no-such-home \
+               python3 scripts/check-extension-vocabulary.py --require-jar; then
+            echo "::error::--require-jar must fail when nothing was verified" >&2
+            exit 1
+          fi
+
           # Servers and the generator-driven docs build need external tooling or
           # block by design; everything else must exit 0 on a fresh project.
           for s in validate-structure validate-redocly validate-spectral \
