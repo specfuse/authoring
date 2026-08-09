@@ -606,8 +606,45 @@ rules:
             domain: { type: string, pattern: "^[a-z][a-z0-9-]*$" }
             type: { type: string, enum: ["entity","aggregate"] }
             requiresPagination: { type: boolean, default: true }
+            # Delete semantics for the entity's OWN row (generator
+            # FEAT-2026-0080, Vendor_Extensions.md §1.1). Absent resolves to
+            # `hard`, the pre-FEAT-2026-0080 generator behaviour, so no
+            # existing entity changes meaning by this key being added.
+            #
+            # Distinct from `cascadeDelete` below, which declares what happens
+            # to the entity's CHILDREN. An aggregate may legitimately carry
+            # both; they answer different questions and are not required to
+            # agree.
+            #
+            # Shorthand string form or long object form. `retention` is `none`
+            # (keep forever) or an ISO-8601 duration, and is only meaningful
+            # with `mode: soft`.
+            #
+            # Gate 1 is validation-only. The generator's DELETE_* rules check
+            # coherence (soft requires a `deletedAt` string/date-time/nullable
+            # property, hard forbids one, `deletedByUserId` implies soft), but
+            # no stamping, column, or read filtering is emitted yet — that is
+            # gate 2. Retention is declared-but-not-enforced until the cleanup
+            # worker (FEAT-2026-0081) exists.
+            delete:
+              oneOf:
+                - type: string
+                  enum: ["hard","soft"]
+                - type: object
+                  additionalProperties: false
+                  required: ["mode"]
+                  properties:
+                    mode: { type: string, enum: ["hard","soft"] }
+                    # `none`, or an ISO-8601 duration with at least one
+                    # component — a bare `P` is not a duration. The generator
+                    # rule DELETE_RETENTION_INVALID is the authoritative check;
+                    # this catches the malformed values at lint time.
+                    retention:
+                      type: string
+                      pattern: "^(none|P(?=\\d|T\\d)(\\d+Y)?(\\d+M)?(\\d+W)?(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?(\\d+S)?)?)$"
             # Cascade policy on delete (API_Handbook.md §"Cascade Deletion").
-            # `children` names the entities the cascade reaches.
+            # `children` names the entities the cascade reaches. Scopes the
+            # entity's CHILDREN — see `delete` above for the entity's own row.
             cascadeDelete: { type: string, enum: ["soft", "hard"] }
             children:
               type: array

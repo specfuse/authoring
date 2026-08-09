@@ -277,6 +277,23 @@ Accidental-deletion risk is fenced by the already-mandatory `If-Match` (forcing 
 
 **Severity:** the missing half is an unenforced **error**-severity promise in the handbooks. Consumers should not read a green AsyncAPI lint as evidence that snapshot PII has been reviewed.
 
+### 16. `x-entity.delete` semantics (kit-side shape; generator FEAT-2026-0080 gate 1)
+
+**Status:** kit accepts and shape-checks the key (`specfuse-xentity-shape`, `Vendor_Extensions.md` §1.1, `API_Handbook.md` §"Deletion Policy"). The eight coherence rules are generator-side; gate 1 is validation-only and emits no generated-code change.
+
+`x-entity.delete` (`hard` | `soft`, or `{ mode, retention }`; default `hard`) declares what a `DELETE` does to the entity's own row. It replaces an inference that was invisible from the spec: the generator's delete template branched on whether a linked AsyncAPI message carried `x-trigger-when` — a message-shaped signal deciding a persistence-shaped question. An operation description could promise retention while the generated service destroyed the row, with nothing in the contract disagreeing.
+
+**What the kit enforces:** the closed value sets, the long-form sub-keys, and that `retention` is `none` or an ISO-8601 duration with at least one component. Pinned by `schemas/spectral/fixtures/xentity-shape-keys.yaml` (`ShorthandDelete`, `BadDeleteMode`, `BadRetention`, `DeleteUnknownKey`).
+
+**What the generator enforces (gate 1):** `DELETE_SOFT_REQUIRES_DELETED_AT`, `DELETE_SOFT_DELETED_AT_SHAPE`, `DELETE_HARD_DECLARES_DELETED_AT`, `DELETE_AUDIT_REQUIRES_SOFT`, `DELETE_RETENTION_REQUIRES_SOFT`, `DELETE_RETENTION_INVALID` (ERROR); `DELETE_SEMANTICS_UNDECLARED`, `DELETE_SOFT_STATUS_ENUM_OVERLAP` (WARNING). Stamping, the column, and read filtering are gate 2. `retention` stays declared-but-not-enforced until the cleanup worker (`FEAT-2026-0081`).
+
+**Two overlaps the generator should reconcile before gate 2:**
+
+1. **`cascadeDelete` already exists** and already takes `soft` | `hard`. It scopes the entity's *children*; `delete` scopes the entity's *own row*. The kit now documents the distinction, but nothing checks that a `cascadeDelete: soft` parent names children that themselves declare `delete: soft` — a cascade whose targets hard-delete is a coherent-looking declaration with the opposite effect. There is no gate-1 rule for it.
+2. **The default is inverted relative to the handbook.** `API_Handbook.md` states soft delete as the project-wide convention; the vocabulary defaults to `hard`. That is the right default for backward compatibility — no existing entity changes meaning — but it means a project following the handbook has been hard-deleting everywhere it did not accidentally trip the `x-trigger-when` branch. `DELETE_SEMANTICS_UNDECLARED` is the detector for that, which is exactly why its WARNING severity is temporary.
+
+**Severity:** additive and backward-compatible as a vocabulary. As a *finding*, the gap it exposes is not: an entity documented as soft-deleting, with no declaration, is hard-deleting today. Projects should audit their DELETE operations against `DELETE_SEMANTICS_UNDECLARED` before treating the warning as migration bookkeeping.
+
 ---
 
 ---
