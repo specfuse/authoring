@@ -203,6 +203,70 @@ jobs:
           [ $fail -eq 0 ] || exit 1
           echo "==> x-entity allow-list verified in both directions."
 
+      # The ratchet is a reference implementation, not a supported kit tool —
+      # but a ratchet that never fires is indistinguishable from one that works,
+      # so it is asserted in both directions like any other gate here. The
+      # crash-shaped cases are the ones that matter: a ratchet is uniquely
+      # exposed to silence, because zero findings is under every baseline.
+      - name: Spectral ratchet (reference implementation, both directions)
+        run: |
+          set -uo pipefail
+          WORK="${RUNNER_TEMP}/ratchet"; mkdir -p "$WORK"
+          R=schemas/spectral/specfuse-openapi.yaml
+          S=scripts/spectral-ratchet.py
+
+          cat > "$WORK/specs.yaml" <<'YAML'
+          openapi: 3.0.3
+          info: { title: Ratchet fixture, version: "1.0.0" }
+          paths: {}
+          components:
+            schemas:
+              A:
+                type: object
+                x-entity: { domain: orders, type: aggregate, cascadeDelete: maybe }
+                properties: { id: { type: string, format: uuid } }
+          YAML
+          cat > "$WORK/clean.yaml" <<'YAML'
+          openapi: 3.0.3
+          info: { title: Clean, version: "1.0.0" }
+          paths: {}
+          YAML
+
+          fail=0
+          echo "--- seeds a baseline"
+          python3 "$S" --ruleset "$R" --baseline "$WORK/b.json" "$WORK/specs.yaml" --update \
+            || { echo "::error::ratchet could not seed a baseline" >&2; fail=1; }
+
+          echo "--- unchanged tree passes"
+          python3 "$S" --ruleset "$R" --baseline "$WORK/b.json" "$WORK/specs.yaml" \
+            || { echo "::error::ratchet failed on an unchanged tree" >&2; fail=1; }
+
+          echo "--- a new violation fails"
+          cat >> "$WORK/specs.yaml" <<'YAML'
+              B:
+                type: object
+                x-entity: { domain: orders, type: aggregate, cascadeDelete: nope }
+                properties: { id: { type: string, format: uuid } }
+          YAML
+          if python3 "$S" --ruleset "$R" --baseline "$WORK/b.json" "$WORK/specs.yaml"; then
+            echo "::error::ratchet passed a regression — it does not ratchet" >&2
+            fail=1
+          fi
+
+          echo "--- a crashed run is not a clean run"
+          python3 "$S" --ruleset "$R" --baseline "$WORK/b.json" /nonexistent.yaml >/dev/null 2>&1
+          [ $? -eq 2 ] || { echo "::error::ratchet did not treat a failed Spectral run as fatal" >&2; fail=1; }
+
+          echo "--- a collapse to zero cannot be locked in by --update"
+          BEFORE=$(cat "$WORK/b.json")
+          python3 "$S" --ruleset "$R" --baseline "$WORK/b.json" "$WORK/clean.yaml" --update >/dev/null 2>&1
+          [ $? -eq 2 ] || { echo "::error::ratchet let a suspicious collapse rewrite the baseline" >&2; fail=1; }
+          [ "$BEFORE" = "$(cat "$WORK/b.json")" ] \
+            || { echo "::error::ratchet modified the baseline while refusing" >&2; fail=1; }
+
+          [ $fail -eq 0 ] || exit 1
+          echo "==> ratchet verified: it fires on regressions and refuses to lock in silence."
+
       # AsyncAPI_Handbook.md §2.3 promises three snapshot guardrails; none
       # existed in any ruleset (#37). The two that compare a snapshot to its
       # source entity stay generator-side — the entity is in the OpenAPI

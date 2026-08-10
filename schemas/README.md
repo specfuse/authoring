@@ -255,6 +255,43 @@ Same principle as the empty-report check above: the failure mode of a validation
 tool is silence, so the thing worth testing is that it makes noise when it
 should.
 
+### A reference implementation
+
+`scripts/spectral-ratchet.py` implements the pattern above. It is a **reference
+implementation, not a supported kit tool** — documented, working, and carrying
+no compatibility guarantee across kit releases. Copy it into your project and
+own it. The kit is a spec-authoring contract, deliberately not a CI product.
+
+```bash
+# seed a baseline from where you are today
+scripts/spectral-ratchet.py --ruleset <ruleset> --baseline .spectral-baseline.json <targets> --update
+
+# then, in CI
+scripts/spectral-ratchet.py --ruleset <ruleset> --baseline .spectral-baseline.json <targets>
+```
+
+Exit `0` pass, `1` regression, `2` could not run. It counts error-severity
+findings only, per rule.
+
+Two behaviours worth knowing before you wire it up:
+
+**It refuses to accept silence.** A crashed Spectral produces no findings, and
+zero findings is under every baseline — so without a guard a crash reads as a
+clean run *and* as an improvement, and `--update` would then rewrite every
+baseline to zero and permanently disarm the gate. The script treats a Spectral
+exit `>= 2`, an empty or unparseable report, and a total of zero against a
+non-empty baseline as **could not run**. `--update` additionally refuses when
+half or more of the baselined rules go to zero at once, which is what a partial
+crash or a mistyped target looks like; pass `--force` when the cleanup is real.
+
+**Rule IDs in a committed baseline are a coupling surface.** This kit renamed
+every rule once already (`rm-*` → `specfuse-*`), and a rename turns *"rule not
+in the baseline"* into a hard failure on every rule simultaneously. The script
+detects that shape — every baselined rule silent while unknown rules fire — and
+tells you to re-baseline rather than reporting a wall of spurious regressions.
+Re-baseline deliberately across any release that renames rules, and read the
+diff rather than trusting the counts to carry over.
+
 ## Rename tracking
 
 The kit renamed all Spectral rule identifiers from the legacy `rm-*` prefix (inherited from the source project) to `specfuse-*`. The 12 rules whose renames were declared canonical in `compatibility.md` §1 are tracked there; this commit applied the same `rm-* -> specfuse-*` rule mechanically to every other ruleset entry as well. See `compatibility.md` for the generator-side follow-up.
