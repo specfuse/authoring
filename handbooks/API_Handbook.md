@@ -464,7 +464,11 @@ An order-processing endpoint (`POST /tenants/{tenantId}/orders/process`) follows
 
 ### Concurrency Control (Optimistic Locking)
 
-All mutable resources MUST support optimistic concurrency control via ETags to enable safe autonomous operations by AI agents and prevent lost updates.
+Every entity declares whether its writes are protected, via `x-entity.concurrency` (`Vendor_Extensions.md` §1.1). Optimistic concurrency control via ETags is the recommended default for any resource with more than one writer, and `concurrency: optimistic` is what makes it true of an entity — the key is **required with no default**, so an entity that declares nothing is undeclared, not protected.
+
+`concurrency: none` is a legitimate declaration for a genuinely single-writer or append-only resource, and it owes a `reason` whenever the entity also exposes an unsafe write.
+
+> **Two writers is not only an AI-vs-human question.** The rest of this section is written around agents because that is the case where the race is easiest to picture, but any two callers of the same row contend: an employee cancelling a request a manager is approving, two managers editing one roster, a retry racing its own original. Scoping ETags to the AI-reachable surface under-protects everything else — see `Vendor_Extensions.md` §1.1 for how to choose the mode.
 
 #### Why This Matters
 
@@ -490,9 +494,11 @@ Agent B updates with If-Match: "abc" → 412 Conflict (ETag changed to "def")
 
 - **Format**: Strong validator, quoted hash (e.g., `"a1b2c3d4"`)
 - **Generation**: Hash of resource state (implementation-specific: version number, timestamp hash, or content hash)
-- **Mandatory**: All GET responses for mutable resources MUST include `ETag` header
-- **Validation**: All PUT/PATCH requests MUST include `If-Match` header
+- **Mandatory**: On an entity declaring `concurrency: optimistic`, all GET responses MUST include the `ETag` header
+- **Validation**: On the same entity, all PUT/PATCH requests MUST include the `If-Match` header
 - **AI-Friendly**: Conflict responses include current state for intelligent merge
+
+An entity declaring `concurrency: none` emits no `ETag` and requires no `If-Match` — that is what the declaration means. Declare it deliberately, with its `reason`; do not arrive at it by leaving the key off.
 
 #### Behavior
 

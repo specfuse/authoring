@@ -606,6 +606,45 @@ rules:
             domain: { type: string, pattern: "^[a-z][a-z0-9-]*$" }
             type: { type: string, enum: ["entity","aggregate"] }
             requiresPagination: { type: boolean, default: true }
+            # Lost-update protection for the entity's rows (generator
+            # FEAT-2026-0078 / FEAT-2026-0088, Vendor_Extensions.md §1.1).
+            #
+            # Required with NO default. Absent means *undeclared* — a third
+            # state, distinguishable from a declared `none`, and the reason the
+            # key exists at all. Do not add a `default:` here: it would erase
+            # the distinction the generator's census depends on.
+            #
+            # `optimistic` — writes require `If-Match`; the generated service
+            # emits an ETag and rejects a stale write with 412.
+            # `none` — deliberately unprotected. When the entity also exposes an
+            # unsafe write (PUT/PATCH/DELETE) it owes a `reason`, which only the
+            # object form can carry. That condition needs the entity's path
+            # surface, which is not visible from inside this block, so the
+            # required-`reason` check is generator-side; the kit's readable
+            # nudge is `specfuse-xentity-concurrency-unprotected-needs-reason`
+            # below.
+            #
+            # The string arm accepts `none` deliberately. The generator accepts
+            # the bare scalar, and a closed guard that rejects a form the
+            # generator accepts does not produce better specs — it fails lint on
+            # a spec that generates fine, and the natural fix is to delete the
+            # key. See authoring #47 and the note at the top of
+            # Vendor_Extensions.md.
+            #
+            # `reason` is an open string here on purpose. The vocabulary is
+            # generator-owned and not yet frozen (FEAT-2026-0091); closing this
+            # set before the generator does is how `domain`, `concurrency` and
+            # `delete` each blocked adoption. Tighten it when the jar ships it.
+            concurrency:
+              oneOf:
+                - type: string
+                  enum: ["optimistic","none"]
+                - type: object
+                  additionalProperties: false
+                  required: ["mode"]
+                  properties:
+                    mode: { type: string, enum: ["optimistic","none"] }
+                    reason: { type: string, minLength: 1 }
             # Delete semantics for the entity's OWN row (generator
             # FEAT-2026-0080, Vendor_Extensions.md §1.1). Absent resolves to
             # `hard`, the pre-FEAT-2026-0080 generator behaviour, so no
@@ -809,6 +848,42 @@ rules:
                       writableProperties:
                         type: array
                         minItems: 1
+
+  # An unprotected entity is a claim about who writes its rows, and it is the
+  # one `concurrency` value that owes a justification. The shape guard above
+  # accepts every form the generator accepts — blocking a form at lint time that
+  # generates fine is how a guard stops an adoption instead of a bad spec — so
+  # the nudge toward the object form lives here, where it can carry a message an
+  # author can act on rather than a `oneOf` failure.
+  #
+  # WARNING, not ERROR, and unconditional rather than precise: the real rule is
+  # "`none` AND the entity exposes an unsafe write", and the unsafe-write half
+  # is not visible from inside the x-entity block. The generator owns the
+  # precise check (FEAT-2026-0088). Over-firing here on a genuinely read-only
+  # entity is the cost of catching it at authoring time; declaring the reason
+  # anyway is never wrong.
+  #
+  # Deliberate — do not "fix" this by dropping `none` from the string arm of
+  # specfuse-xentity-shape. See authoring #47.
+  specfuse-xentity-concurrency-unprotected-needs-reason:
+    description: "x-entity.concurrency 'none' declares the entity deliberately unprotected against lost updates. Use the object form and record why: { mode: none, reason: <why no second writer can race> }. See Vendor_Extensions.md §1.1."
+    message: "{{description}}"
+    severity: warn
+    given: $.components.schemas[?(@ && @["x-entity"] && @["x-entity"].concurrency)]["x-entity"].concurrency
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          not:
+            anyOf:
+              # The bare scalar has nowhere to put a reason.
+              - const: "none"
+              # The object form, with the reason left out.
+              - type: object
+                required: ["mode"]
+                properties:
+                  mode: { const: "none" }
+                not: { required: ["reason"] }
 
   specfuse-belongsto-explicit-cardinality:
     description: "belongsTo should use explicit cardinality (oneOf, allOf, oneOrMore, etc.) instead of simple array syntax for clarity"
