@@ -15,8 +15,6 @@
 #
 #   FullyDocumented    no specfuse-xentity-shape finding — uses every documented key
 #   ShorthandDelete    no finding — `delete` in its string shorthand form
-#   ConcurrencyUnprotected  no finding from either concurrency rule — `mode: none`
-#                      with the reason it owes
 #   BadCascadeValue    flagged: cascadeDelete outside the closed set
 #   BadChildName       flagged: children entry is not PascalCase
 #   BadStorage         flagged: valueObjects storage outside the closed set
@@ -24,15 +22,17 @@
 #   BadDeleteMode      flagged: delete mode outside the closed set
 #   BadRetention       flagged: retention is neither `none` nor an ISO-8601 duration
 #   DeleteUnknownKey   flagged: unknown key inside the long-form delete object
-#   BadConcurrencyMode flagged: concurrency mode outside the closed set
-#   ConcurrencyUnknownKey  flagged: unknown key inside the concurrency object
+#   BadConcurrencyMode flagged: concurrency value outside the closed set
+#   BareConcurrencyNone    flagged: `none` is reserved, not accepted (see below)
+#   ConcurrencyObjectForm  flagged: the object form is not accepted yet (see below)
 #   TypoKey            flagged: unknown x-entity key (the additionalProperties guard)
 #
-# And, by `specfuse-xentity-concurrency-unprotected-needs-reason` only — these
-# two must NOT appear in any specfuse-xentity-shape finding:
-#
-#   BareConcurrencyNone  flagged: `none` shorthand has nowhere to carry a reason
-#   UnprotectedNoReason  flagged: `mode: none` with the reason omitted
+# `concurrency` mirrors the PINNED generator, which accepts the bare scalar
+# `optimistic` and nothing else — `none` is reserved and the object form is
+# compared as a string, so both fail `validate` at ERROR
+# (ENTITY_CONCURRENCY_INVALID). Omitting the key is the documented opt-out.
+# The richer forms arrive with FEAT-2026-0088; widen these cases in the same
+# change that re-pins to the generator shipping it, not before.
 #
 # The last case is the one that matters most: relaxing the schema to fix a
 # false positive must not disable the typo-catching that justifies the closed
@@ -96,19 +96,6 @@ components:
         domain: orders
         type: aggregate
         delete: hard
-      properties:
-        id: { type: string, format: uuid }
-
-    # ---- `concurrency`, object form, deliberately unprotected with its
-    # ---- justification. Clean against both concurrency rules.
-    ConcurrencyUnprotected:
-      type: object
-      x-entity:
-        domain: orders
-        type: aggregate
-        concurrency:
-          mode: none
-          reason: reference-data
       properties:
         id: { type: string, format: uuid }
 
@@ -190,41 +177,31 @@ components:
       x-entity:
         domain: orders
         type: aggregate
-        concurrency: pessimistic        # only optimistic | none
+        concurrency: pessimistic        # `optimistic` is the only accepted value
       properties:
         id: { type: string, format: uuid }
 
-    ConcurrencyUnknownKey:
+    # ---- `none` is RESERVED on the pinned generator, not a legal opt-out.
+    # ---- Omitting the key is the opt-out. Accepting this at lint time would
+    # ---- pass a spec that fails `validate` at ERROR.
+    BareConcurrencyNone:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        concurrency: none
+      properties:
+        id: { type: string, format: uuid }
+
+    # ---- The object form arrives with FEAT-2026-0088. The pinned generator
+    # ---- compares the value as a string, so any object fails it.
+    ConcurrencyObjectForm:
       type: object
       x-entity:
         domain: orders
         type: aggregate
         concurrency:
           mode: optimistic
-          retries: 3                    # not a documented concurrency sub-key
-      properties:
-        id: { type: string, format: uuid }
-
-    # ---- Accepted by the shape guard, flagged by the reason rule. Both cases
-    # ---- must stay OUT of any specfuse-xentity-shape finding: the scalar is a
-    # ---- form the generator accepts, and failing lint on it would block the
-    # ---- adoption rather than improve the spec (authoring #47).
-    BareConcurrencyNone:
-      type: object
-      x-entity:
-        domain: orders
-        type: aggregate
-        concurrency: none               # shorthand — nowhere to put a reason
-      properties:
-        id: { type: string, format: uuid }
-
-    UnprotectedNoReason:
-      type: object
-      x-entity:
-        domain: orders
-        type: aggregate
-        concurrency:
-          mode: none                    # object form, reason omitted
       properties:
         id: { type: string, format: uuid }
 

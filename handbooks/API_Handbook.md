@@ -464,11 +464,11 @@ An order-processing endpoint (`POST /tenants/{tenantId}/orders/process`) follows
 
 ### Concurrency Control (Optimistic Locking)
 
-Every entity declares whether its writes are protected, via `x-entity.concurrency` (`Vendor_Extensions.md` §1.1). Optimistic concurrency control via ETags is the recommended default for any resource with more than one writer, and `concurrency: optimistic` is what makes it true of an entity — the key is **required with no default**, so an entity that declares nothing is undeclared, not protected.
+Optimistic concurrency control via ETags is the recommended default for any resource with more than one writer, and `x-entity.concurrency: optimistic` is what makes it true of an entity (`Vendor_Extensions.md` §1.1). The key is opt-in: omitting it is the documented way to leave protection off, and `none` is reserved rather than a legal opt-out.
 
-`concurrency: none` is a legitimate declaration for a genuinely single-writer or append-only resource, and it owes a `reason` whenever the entity also exposes an unsafe write.
+Pair the declaration with a single-resource `GET`. An entity that declares `concurrency: optimistic` and exposes an unsafe write, but has no safe operation returning it, is flagged by the generator — a client that cannot read the entity cannot obtain the validator, so every `If-Match` it sends is invented.
 
-> **Two writers is not only an AI-vs-human question.** The rest of this section is written around agents because that is the case where the race is easiest to picture, but any two callers of the same row contend: an employee cancelling a request a manager is approving, two managers editing one roster, a retry racing its own original. Scoping ETags to the AI-reachable surface under-protects everything else — see `Vendor_Extensions.md` §1.1 for how to choose the mode.
+> **Two writers is not only an AI-vs-human question.** The rest of this section is written around agents because that is the case where the race is easiest to picture, but any two callers of the same row contend: an employee cancelling a request a manager is approving, two managers editing one roster, a retry racing its own original. Scoping ETags to the AI-reachable surface under-protects everything else — see `Vendor_Extensions.md` §1.1.
 
 #### Why This Matters
 
@@ -498,7 +498,7 @@ Agent B updates with If-Match: "abc" → 412 Conflict (ETag changed to "def")
 - **Validation**: On the same entity, all PUT/PATCH requests MUST include the `If-Match` header
 - **AI-Friendly**: Conflict responses include current state for intelligent merge
 
-An entity declaring `concurrency: none` emits no `ETag` and requires no `If-Match` — that is what the declaration means. Declare it deliberately, with its `reason`; do not arrive at it by leaving the key off.
+An entity with no `concurrency` key emits no `ETag` and requires no `If-Match`. That is a real decision — record it in the entity description, because today the spec has no other place to say it was considered. A machine-readable form arrives with FEAT-2026-0088; `none` is reserved for it and errors until then.
 
 #### Behavior
 

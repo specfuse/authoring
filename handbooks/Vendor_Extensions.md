@@ -53,7 +53,7 @@ x-entity:
   encryptedProperties: string[]  # Optional: Fields requiring encryption at rest
   requiresPagination: boolean    # Optional: Whether lists require pagination (default: true for aggregates)
   mutability: string             # Optional: "mutable" | "immutable" | "appendOnly" (default: "mutable")
-  concurrency: string | object   # Required, NO default: "optimistic" | "none", or { mode, reason }
+  concurrency: string            # Optional today: "optimistic" is the only accepted value; omit to opt out
   delete: string | object        # Optional: "hard" | "soft", or { mode, retention } (default: "hard")
   valueObjects: object           # Optional: Value object storage configuration
   aiAccess: object               # Optional: AI agent access policy (see 1.1.1). Absent = no AI access.
@@ -221,34 +221,43 @@ Customer:
     deletedByUserId: { type: string, format: uuid, nullable: true }
 ```
 
-**`concurrency` (required, no default).** Declares whether writes to this
-entity's rows are protected against lost updates.
+**`concurrency` (optional today; `optimistic` is the only accepted value).**
+Opts the entity into optimistic locking: reads publish an `ETag`, and unsafe
+writes must carry `If-Match`.
 
 ```yaml
-concurrency: optimistic     # protected — writes require If-Match
+x-entity:
+  concurrency: optimistic     # protected
 
-concurrency:                # deliberately unprotected — owes a justification
-  mode: none
-  reason: reference-data
+x-entity:
+  # key omitted                 # the documented opt-out — no lost-update protection
 ```
 
-| Value | Meaning |
+| Form | Pinned generator (0.5.6) |
 |---|---|
-| `optimistic` | Reads return an `ETag`; unsafe writes require `If-Match` and a stale one is rejected with `412`. See `API_Handbook.md` §"Concurrency Control". |
-| `none` | No lost-update protection. A second writer silently overwrites the first. |
-| `reason` | Why `none` is safe for this entity. Required when the entity declares `none` *and* exposes an unsafe write (`PUT`/`PATCH`/`DELETE`); omitted otherwise. |
+| `concurrency: optimistic` | accepted — the only accepted value |
+| key absent | accepted; this is how you opt out |
+| `concurrency: none` | **ERROR** — `none` is reserved, not a legal opt-out |
+| `concurrency: { mode: … }` | **ERROR** — the value is compared as a string |
 
-**Absent is not `none`.** This key has no default, and that is the whole point
-of it. An entity that declares nothing is **undeclared** — a third state, and
-one the generator's census counts separately from a declared `none`. Reading
-absence as "defaults to unprotected" collapses "we decided this row has one
-writer" into "nobody has looked yet", which are the two facts the key exists to
-tell apart. Every entity is expected to carry a declaration.
+> **`none` is reserved, not "unprotected".** The generator's own message is
+> *"The only accepted value is `optimistic` (`none` is reserved). Omit the key
+> entirely to leave concurrency control off."* Writing `none` to mean "I
+> considered this and it needs no protection" fails `validate` at ERROR
+> (`ENTITY_CONCURRENCY_INVALID`). Today that intent has no machine-readable
+> home — leave the key off and say it in the entity description.
 
-**Choosing a mode is the part authors get wrong.** The reflex is to reach for
-`optimistic` only where an AI agent writes, and `none` everywhere else. That
-systematically under-declares, because *two writers* is not an AI-vs-human
-question:
+**A second generator check, easy to trip.** Declaring `concurrency: optimistic`
+on an entity that exposes an unsafe write but has **no safe operation returning
+that entity** is flagged: the client cannot obtain the validator before its first
+write, so every `If-Match` it could send would be invented. Fix by declaring a
+single-resource read (a `GET` whose 2xx response carries the entity schema), or
+by removing the declaration. Pair `concurrency: optimistic` with a `GET
+/{entities}/{id}`.
+
+**Choosing where to apply it is the part authors get wrong.** The reflex is to
+protect only what an AI agent writes. That systematically under-protects, because
+*two writers* is not an AI-vs-human question:
 
 - **Approval workflows.** An employee submits and cancels their own time-off
   request while a manager approves or rejects the same row. Two roles, two
@@ -262,55 +271,6 @@ containing `create`, `update` or `delete`, intersected with the entity's unsafe
 write surface — as a **floor, not the answer**. In one consumer's 86-entity
 audit that floor was 17 entities, and the human-vs-human contended set was
 strictly larger.
-
-**Recommended `reason` values.** Keep them to a small vocabulary so the
-declarations are auditable in aggregate rather than 80 near-identical sentences:
-
-| Value | Claim |
-|---|---|
-| `append-only` | Rows are never modified after insert, so there is no update to lose. |
-| `single-writer` | Exactly one role/process writes this row. |
-| `reference-data` | Administrative configuration, written rarely by one administrative caller. |
-| `rare-write` | Contention is possible but the write rate makes a race implausible. |
-| `not-assessed` | **Deferred work, not a justification** — see below. |
-| `other` | None of the above; state the reason in free text alongside. |
-
-> **`not-assessed` is a status, not a justification.** It means the entity is
-> genuinely contended-or-not-yet-known and the analysis has not been done. It
-> exists so that an adoption sweep can be honest, and so `reason: not-assessed`
-> becomes a work queue you can query. Without it, the cheapest path for an
-> author under time pressure is to claim `rare-write` — and one false
-> `rare-write` poisons the queue for everyone, because the audit that makes the
-> vocabulary worth having is *"find every `none` whose claim is not true"*.
->
-> `not-assessed` is the one value that is not a defensible end state. Expect it
-> to be refused when the key hardens to ERROR.
-
-**Do not try to derive this from `mutability`.** `appendOnly` looks like it
-implies `concurrency: none, reason: append-only`, and it does not carry enough
-population to be a source: in the same 86-entity audit, `mutability` was
-declared on 10 entities. An optional key with a permissive default cannot supply
-a required one.
-
-**What consumes it today:** `specfuse-xentity-shape` validates the shape — the
-closed value sets and the object form's sub-keys. `reason` is an open string in
-the ruleset on purpose: the vocabulary above is a recommendation until the
-generator freezes it (FEAT-2026-0091), and closing a set the kit does not own is
-how three earlier `x-entity` keys blocked their own adoption (see the note at
-the top of this document).
-
-`specfuse-xentity-concurrency-unprotected-needs-reason` (WARNING) fires on
-`concurrency: none` and on `{ mode: none }` with no `reason`. It fires
-unconditionally, including on entities with no unsafe write, because the write
-surface is not visible from inside the `x-entity` block — declaring the reason
-anyway is never wrong. The precise "`none` **and** an unsafe write" check is
-generator-side (FEAT-2026-0088).
-
-> **Both `concurrency: none` and `{ mode: none }` pass lint.** The shorthand is
-> accepted because the generator accepts it, and a lint rule that rejects a form
-> which generates fine blocks the adoption rather than the bad spec. Prefer the
-> object form: it is the only one with somewhere to put the reason, which is why
-> the shorthand draws the warning above.
 
 ```yaml
 EmployeeTimeOffRequest:
@@ -329,12 +289,41 @@ TaxRate:
   x-entity:
     domain: billing
     type: aggregate
-    concurrency:
-      mode: none
-      reason: reference-data    # one administrative writer, changed a few times a year
+    # No `concurrency` key: one administrative writer, changed a few times a
+    # year. Omission is the opt-out; `none` would be an error.
   properties:
     id: { type: string, format: uuid }
 ```
+
+**What consumes it today:** `specfuse-xentity-shape` accepts the scalar
+`optimistic` and nothing else, mirroring the pinned generator exactly. The
+generator enforces `ENTITY_CONCURRENCY_INVALID` at ERROR, including a near-miss
+check that catches a misspelled sub-key (an unrecognised `x-entity` sub-key close
+to `concurrency` is dropped silently, so the spec would look opted-in while
+generating unprotected code).
+
+> **What changes when FEAT-2026-0088 ships — not the contract today.**
+> The key becomes **required with no default**, and absence stops meaning
+> "opted out" and starts meaning *undeclared*, a third state counted separately
+> from a declared `none`. `none` becomes legal, in an object form
+> `{ mode: none, reason: … }` that can carry a justification, required when the
+> entity also exposes an unsafe write. FEAT-2026-0091 then freezes `reason` to a
+> closed vocabulary.
+>
+> The kit's position on that vocabulary, recorded in `compatibility.md` §18: it
+> must include a **`not-assessed`** member. In the 86-entity audit above, ~15
+> entities were genuinely contended and simply not analysed yet — a *status*,
+> not a justification. Forcing those into `rare-write` or a free-text escape
+> hatch manufactures exactly the false claims the vocabulary exists to make
+> auditable.
+>
+> **Do not author against this block yet.** Every form it describes fails
+> `validate` on the pinned generator. It is here so the migration is visible in
+> advance, not so it can be adopted early.
+
+**Do not try to derive this from `mutability`.** `appendOnly` looks like it
+implies "no second writer", and it does not carry enough population to be a
+source: in the same 86-entity audit, `mutability` was declared on 10 entities.
 
 **Relationship Cardinality**:
 

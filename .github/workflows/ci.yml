@@ -159,8 +159,7 @@ jobs:
 
           fail=0
           # A schema using every documented key must lint clean.
-          for good in FullyDocumented ShorthandDelete ConcurrencyUnprotected \
-                      BareConcurrencyNone UnprotectedNoReason; do
+          for good in FullyDocumented ShorthandDelete; do
             if grep "specfuse-xentity-shape" "$REPORT" | grep -q "$good"; then
               echo "::error::$good uses only documented x-entity keys but was flagged." >&2
               echo "The allow-list has fallen behind the handbooks again." >&2
@@ -170,29 +169,23 @@ jobs:
           # Each malformed value must still be caught.
           for bad in BadCascadeValue BadChildName BadStorage UnknownSubKey \
                      BadDeleteMode BadRetention DeleteUnknownKey \
-                     BadConcurrencyMode ConcurrencyUnknownKey TypoKey; do
+                     BadConcurrencyMode BareConcurrencyNone ConcurrencyObjectForm \
+                     TypoKey; do
             if ! grep "specfuse-xentity-shape" "$REPORT" | grep -q "$bad"; then
               echo "::error::specfuse-xentity-shape did not flag $bad." >&2
               fail=1
             fi
           done
 
-          # `concurrency: none` is accepted by the shape guard on purpose — the
-          # generator accepts it, and a guard that rejects what generates fine
-          # blocks the adoption rather than the bad spec (#47). The nudge toward
-          # the justified object form is a separate WARNING, and it is the only
-          # thing standing between "deliberately unprotected" and "nobody
-          # looked", so it is asserted in both directions here.
-          REASON_RULE=specfuse-xentity-concurrency-unprotected-needs-reason
-          for unjustified in BareConcurrencyNone UnprotectedNoReason; do
-            if ! grep "$REASON_RULE" "$REPORT" | grep -q "$unjustified"; then
-              echo "::error::$REASON_RULE did not flag $unjustified." >&2
-              fail=1
-            fi
-          done
-          for justified in FullyDocumented ConcurrencyUnprotected; do
-            if grep "$REASON_RULE" "$REPORT" | grep -q "$justified"; then
-              echo "::error::$REASON_RULE flagged $justified, which declares its concurrency." >&2
+          # `concurrency` must mirror the PINNED generator, which accepts the
+          # bare scalar `optimistic` and nothing else. The vocabulary drift
+          # guard is one-way — it fails only when the generator knows a key the
+          # ruleset rejects — so a ruleset that ACCEPTS a value the generator
+          # errors on is invisible to it. These cases are that guard.
+          for reserved in BareConcurrencyNone ConcurrencyObjectForm; do
+            if ! grep "specfuse-xentity-shape" "$REPORT" | grep -q "$reserved"; then
+              echo "::error::$reserved must be rejected — the pinned generator errors on it" >&2
+              echo "(ENTITY_CONCURRENCY_INVALID). Widen only when re-pinning to FEAT-2026-0088." >&2
               fail=1
             fi
           done
