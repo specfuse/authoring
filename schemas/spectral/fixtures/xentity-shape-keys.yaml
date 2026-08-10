@@ -26,6 +26,12 @@
 #   DeleteUnknownKey   flagged: unknown key inside the long-form delete object
 #   BadConcurrencyMode flagged: concurrency mode outside the closed set
 #   ConcurrencyUnknownKey  flagged: unknown key inside the concurrency object
+#   ConcurrencyOtherWithText  no finding — `reason: other` carrying its reasonText
+#   ConcurrencyTextNoReason   no finding — reasonText with no reason; the jar
+#                      accepts it, so the guard must not tighten past it
+#   ConcurrencyFreeTextReason flagged: free-text reason; the set closed in 0.5.7
+#   ConcurrencyOtherNoText    flagged: `other` without the reasonText it requires
+#   ConcurrencyTextWithoutOther flagged: reasonText rides with `other` and nothing else
 #   TypoKey            flagged: unknown x-entity key (the additionalProperties guard)
 #
 # And, by `specfuse-xentity-concurrency-unprotected-needs-reason` only — these
@@ -101,6 +107,37 @@ components:
 
     # ---- `concurrency`, object form, deliberately unprotected with its
     # ---- justification. Clean against both concurrency rules.
+    ConcurrencyOtherWithText:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        concurrency:
+          mode: none
+          reason: other                 # the sole escape hatch...
+          reasonText: "Written only by the nightly reconciliation job."
+      properties:
+        id: { type: string, format: uuid }
+
+    # ---- `reasonText` with NO `reason` at all. The generator accepts this —
+    # ---- its check is `reason != null && reason != OTHER && reasonText != null`
+    # ---- (ConcurrencyPolicy bytecode: the `ifnull` on reason skips the throw),
+    # ---- so the guard must accept it too. This case exists to make that
+    # ---- looseness enforceable rather than advisory: tightening the guard to
+    # ---- demand `reason` alongside `reasonText` would reject a spec that
+    # ---- generates fine, and would otherwise pass every check in this repo.
+    # ---- Remove it only when the jar itself starts rejecting the shape.
+    ConcurrencyTextNoReason:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        concurrency:
+          mode: none
+          reasonText: "No reason member; the generator allows this today."
+      properties:
+        id: { type: string, format: uuid }
+
     ConcurrencyUnprotected:
       type: object
       x-entity:
@@ -191,6 +228,40 @@ components:
         domain: orders
         type: aggregate
         concurrency: pessimistic        # only optimistic | none
+      properties:
+        id: { type: string, format: uuid }
+
+    ConcurrencyFreeTextReason:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        concurrency:
+          mode: none
+          reason: "it is an append-only log"   # free text — closed set since 0.5.7
+      properties:
+        id: { type: string, format: uuid }
+
+    ConcurrencyOtherNoText:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        concurrency:
+          mode: none
+          reason: other                 # `other` without reasonText
+      properties:
+        id: { type: string, format: uuid }
+
+    ConcurrencyTextWithoutOther:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        concurrency:
+          mode: none
+          reason: append-only
+          reasonText: "not allowed here"  # reasonText only rides with `other`
       properties:
         id: { type: string, format: uuid }
 

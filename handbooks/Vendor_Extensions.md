@@ -263,8 +263,12 @@ write surface — as a **floor, not the answer**. In one consumer's 86-entity
 audit that floor was 17 entities, and the human-vs-human contended set was
 strictly larger.
 
-**Recommended `reason` values.** Keep them to a small vocabulary so the
-declarations are auditable in aggregate rather than 80 near-identical sentences:
+**The `reason` vocabulary — a closed set as of generator 0.5.7.** It was a
+recommendation until then and is now enforced: anything outside the set is
+`INVALID_EXTENSION_VALUE` at parse time, and the kit's `specfuse-xentity-shape`
+guard rejects it at lint. The point of closing it is that the declarations are
+auditable in aggregate — *"find every `none` whose claim is not true"* — which
+80 near-identical sentences cannot support:
 
 | Value | Claim |
 |---|---|
@@ -273,7 +277,7 @@ declarations are auditable in aggregate rather than 80 near-identical sentences:
 | `reference-data` | Administrative configuration, written rarely by one administrative caller. |
 | `rare-write` | Contention is possible but the write rate makes a race implausible. |
 | `not-assessed` | **Deferred work, not a justification** — see below. |
-| `other` | None of the above; state the reason in free text alongside. |
+| `other` | None of the above. **Requires `reasonText`** — free text saying why the set does not fit. |
 
 > **`not-assessed` is a status, not a justification.** It means the entity is
 > genuinely contended-or-not-yet-known and the analysis has not been done. It
@@ -286,6 +290,20 @@ declarations are auditable in aggregate rather than 80 near-identical sentences:
 > `not-assessed` is the one value that is not a defensible end state. Expect it
 > to be refused when the key hardens to ERROR.
 
+**`reasonText` rides with `other` and nothing else.** Both directions are errors
+in the generator and in the kit's guard: `reason: other` without `reasonText`,
+and `reasonText` alongside any other member. If a justification needs a sentence,
+it is `other`; if it fits a member, the member says it more precisely than prose
+and stays queryable.
+
+```yaml
+x-entity:
+  concurrency:
+    mode: none
+    reason: other
+    reasonText: "Written only by the nightly reconciliation job."
+```
+
 **Do not try to derive this from `mutability`.** `appendOnly` looks like it
 implies `concurrency: none, reason: append-only`, and it does not carry enough
 population to be a source: in the same 86-entity audit, `mutability` was
@@ -293,18 +311,39 @@ declared on 10 entities. An optional key with a permissive default cannot supply
 a required one.
 
 **What consumes it today:** `specfuse-xentity-shape` validates the shape — the
-closed value sets and the object form's sub-keys. `reason` is an open string in
-the ruleset on purpose: the vocabulary above is a recommendation until the
-generator freezes it (FEAT-2026-0091), and closing a set the kit does not own is
-how three earlier `x-entity` keys blocked their own adoption (see the note at
-the top of this document).
+closed value sets, the object form's sub-keys, and the `reasonText`/`other`
+coupling in both directions.
 
 `specfuse-xentity-concurrency-unprotected-needs-reason` (WARNING) fires on
 `concurrency: none` and on `{ mode: none }` with no `reason`. It fires
 unconditionally, including on entities with no unsafe write, because the write
 surface is not visible from inside the `x-entity` block — declaring the reason
-anyway is never wrong. The precise "`none` **and** an unsafe write" check is
-generator-side (FEAT-2026-0088).
+anyway is never wrong. The generator's equivalent is narrower (see
+`ENTITY_CONCURRENCY_REASON_REQUIRED` below), so a read-only entity can draw this
+warning without a matching one from `validate`.
+
+Generator-side, FEAT-2026-0088 ships in **0.5.7**:
+
+| Rule | Severity | Fires when |
+|---|---|---|
+| `ENTITY_CONCURRENCY_INVALID` | ERROR | a value outside `{ optimistic, none }`, a malformed object form, or a sub-key that reads as a misspelling of `concurrency` |
+| `ENTITY_CONCURRENCY_UNDECLARED` | WARNING | an `x-entity` schema declares no `concurrency` at all |
+| `ENTITY_CONCURRENCY_REASON_REQUIRED` | WARNING | `mode: none` on an entity that exposes an unsafe write (`PATCH`/`PUT`/`DELETE`), with no `reason` |
+| *(ETag obtainability)* | WARNING | `concurrency: optimistic` and an unsafe write, but **no safe operation returns the entity** — the client cannot read the validator it must echo |
+| `ENTITY_CONCURRENCY_WRITER_ROLE_UNREADABLE` | WARNING | the entity's unsafe-write roles are not a subset of the roles that can read it from a safe operation |
+| `ENTITY_CONCURRENCY_CENSUS` | SUGGESTION | always — reports `optimistic` / `none` / undeclared counts with a `reason` breakdown, in one `validate` run |
+
+The two role/read rules are the ones adoption trips over, because neither is
+about this key's syntax. **Pair every `concurrency: optimistic` with a
+single-resource `GET`** returning that entity, and check that whoever may `PATCH`
+it may also read it — optimistic concurrency is a round trip, so a caller that
+can write but never read can never legally hold the validator its write is gated
+against.
+
+`ENTITY_CONCURRENCY_UNDECLARED` is a WARNING on purpose: adopting the key across
+an existing project should not turn `validate` red mid-migration. The ERROR
+promotion is FEAT-2026-0092, gated on the sweep reaching zero `not-assessed`.
+Use `ENTITY_CONCURRENCY_CENSUS` to track that.
 
 > **Both `concurrency: none` and `{ mode: none }` pass lint.** The shorthand is
 > accepted because the generator accepts it, and a lint rule that rejects a form
