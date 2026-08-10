@@ -159,7 +159,8 @@ jobs:
 
           fail=0
           # A schema using every documented key must lint clean.
-          for good in FullyDocumented ShorthandDelete; do
+          for good in FullyDocumented ShorthandDelete ConcurrencyUnprotected \
+                      BareConcurrencyNone UnprotectedNoReason; do
             if grep "specfuse-xentity-shape" "$REPORT" | grep -q "$good"; then
               echo "::error::$good uses only documented x-entity keys but was flagged." >&2
               echo "The allow-list has fallen behind the handbooks again." >&2
@@ -168,12 +169,34 @@ jobs:
           done
           # Each malformed value must still be caught.
           for bad in BadCascadeValue BadChildName BadStorage UnknownSubKey \
-                     BadDeleteMode BadRetention DeleteUnknownKey TypoKey; do
+                     BadDeleteMode BadRetention DeleteUnknownKey \
+                     BadConcurrencyMode ConcurrencyUnknownKey TypoKey; do
             if ! grep "specfuse-xentity-shape" "$REPORT" | grep -q "$bad"; then
               echo "::error::specfuse-xentity-shape did not flag $bad." >&2
               fail=1
             fi
           done
+
+          # `concurrency: none` is accepted by the shape guard on purpose — the
+          # generator accepts it, and a guard that rejects what generates fine
+          # blocks the adoption rather than the bad spec (#47). The nudge toward
+          # the justified object form is a separate WARNING, and it is the only
+          # thing standing between "deliberately unprotected" and "nobody
+          # looked", so it is asserted in both directions here.
+          REASON_RULE=specfuse-xentity-concurrency-unprotected-needs-reason
+          for unjustified in BareConcurrencyNone UnprotectedNoReason; do
+            if ! grep "$REASON_RULE" "$REPORT" | grep -q "$unjustified"; then
+              echo "::error::$REASON_RULE did not flag $unjustified." >&2
+              fail=1
+            fi
+          done
+          for justified in FullyDocumented ConcurrencyUnprotected; do
+            if grep "$REASON_RULE" "$REPORT" | grep -q "$justified"; then
+              echo "::error::$REASON_RULE flagged $justified, which declares its concurrency." >&2
+              fail=1
+            fi
+          done
+
           [ $fail -eq 0 ] || exit 1
           echo "==> x-entity allow-list verified in both directions."
 

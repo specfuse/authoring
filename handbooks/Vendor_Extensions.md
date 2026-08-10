@@ -53,6 +53,7 @@ x-entity:
   encryptedProperties: string[]  # Optional: Fields requiring encryption at rest
   requiresPagination: boolean    # Optional: Whether lists require pagination (default: true for aggregates)
   mutability: string             # Optional: "mutable" | "immutable" | "appendOnly" (default: "mutable")
+  concurrency: string | object   # Required, NO default: "optimistic" | "none", or { mode, reason }
   delete: string | object        # Optional: "hard" | "soft", or { mode, retention } (default: "hard")
   valueObjects: object           # Optional: Value object storage configuration
   aiAccess: object               # Optional: AI agent access policy (see 1.1.1). Absent = no AI access.
@@ -218,6 +219,121 @@ Customer:
     updatedAt: { type: string, format: date-time }
     deletedAt: { type: string, format: date-time, nullable: true }
     deletedByUserId: { type: string, format: uuid, nullable: true }
+```
+
+**`concurrency` (required, no default).** Declares whether writes to this
+entity's rows are protected against lost updates.
+
+```yaml
+concurrency: optimistic     # protected — writes require If-Match
+
+concurrency:                # deliberately unprotected — owes a justification
+  mode: none
+  reason: reference-data
+```
+
+| Value | Meaning |
+|---|---|
+| `optimistic` | Reads return an `ETag`; unsafe writes require `If-Match` and a stale one is rejected with `412`. See `API_Handbook.md` §"Concurrency Control". |
+| `none` | No lost-update protection. A second writer silently overwrites the first. |
+| `reason` | Why `none` is safe for this entity. Required when the entity declares `none` *and* exposes an unsafe write (`PUT`/`PATCH`/`DELETE`); omitted otherwise. |
+
+**Absent is not `none`.** This key has no default, and that is the whole point
+of it. An entity that declares nothing is **undeclared** — a third state, and
+one the generator's census counts separately from a declared `none`. Reading
+absence as "defaults to unprotected" collapses "we decided this row has one
+writer" into "nobody has looked yet", which are the two facts the key exists to
+tell apart. Every entity is expected to carry a declaration.
+
+**Choosing a mode is the part authors get wrong.** The reflex is to reach for
+`optimistic` only where an AI agent writes, and `none` everywhere else. That
+systematically under-declares, because *two writers* is not an AI-vs-human
+question:
+
+- **Approval workflows.** An employee submits and cancels their own time-off
+  request while a manager approves or rejects the same row. Two roles, two
+  operations, one record, no AI anywhere.
+- **Shift swaps and roster edits.** Two managers editing one schedule.
+- **Any row reachable from more than one operation** whose callers are not
+  serialised by something outside the API.
+
+Treat the set of entities an AI agent can write — `aiAccess.operations`
+containing `create`, `update` or `delete`, intersected with the entity's unsafe
+write surface — as a **floor, not the answer**. In one consumer's 86-entity
+audit that floor was 17 entities, and the human-vs-human contended set was
+strictly larger.
+
+**Recommended `reason` values.** Keep them to a small vocabulary so the
+declarations are auditable in aggregate rather than 80 near-identical sentences:
+
+| Value | Claim |
+|---|---|
+| `append-only` | Rows are never modified after insert, so there is no update to lose. |
+| `single-writer` | Exactly one role/process writes this row. |
+| `reference-data` | Administrative configuration, written rarely by one administrative caller. |
+| `rare-write` | Contention is possible but the write rate makes a race implausible. |
+| `not-assessed` | **Deferred work, not a justification** — see below. |
+| `other` | None of the above; state the reason in free text alongside. |
+
+> **`not-assessed` is a status, not a justification.** It means the entity is
+> genuinely contended-or-not-yet-known and the analysis has not been done. It
+> exists so that an adoption sweep can be honest, and so `reason: not-assessed`
+> becomes a work queue you can query. Without it, the cheapest path for an
+> author under time pressure is to claim `rare-write` — and one false
+> `rare-write` poisons the queue for everyone, because the audit that makes the
+> vocabulary worth having is *"find every `none` whose claim is not true"*.
+>
+> `not-assessed` is the one value that is not a defensible end state. Expect it
+> to be refused when the key hardens to ERROR.
+
+**Do not try to derive this from `mutability`.** `appendOnly` looks like it
+implies `concurrency: none, reason: append-only`, and it does not carry enough
+population to be a source: in the same 86-entity audit, `mutability` was
+declared on 10 entities. An optional key with a permissive default cannot supply
+a required one.
+
+**What consumes it today:** `specfuse-xentity-shape` validates the shape — the
+closed value sets and the object form's sub-keys. `reason` is an open string in
+the ruleset on purpose: the vocabulary above is a recommendation until the
+generator freezes it (FEAT-2026-0091), and closing a set the kit does not own is
+how three earlier `x-entity` keys blocked their own adoption (see the note at
+the top of this document).
+
+`specfuse-xentity-concurrency-unprotected-needs-reason` (WARNING) fires on
+`concurrency: none` and on `{ mode: none }` with no `reason`. It fires
+unconditionally, including on entities with no unsafe write, because the write
+surface is not visible from inside the `x-entity` block — declaring the reason
+anyway is never wrong. The precise "`none` **and** an unsafe write" check is
+generator-side (FEAT-2026-0088).
+
+> **Both `concurrency: none` and `{ mode: none }` pass lint.** The shorthand is
+> accepted because the generator accepts it, and a lint rule that rejects a form
+> which generates fine blocks the adoption rather than the bad spec. Prefer the
+> object form: it is the only one with somewhere to put the reason, which is why
+> the shorthand draws the warning above.
+
+```yaml
+EmployeeTimeOffRequest:
+  type: object
+  x-entity:
+    domain: scheduling
+    type: aggregate
+    # Employee runs update/cancel; Manager runs approve/reject. Same row,
+    # two roles, no AI involved.
+    concurrency: optimistic
+  properties:
+    id: { type: string, format: uuid }
+
+TaxRate:
+  type: object
+  x-entity:
+    domain: billing
+    type: aggregate
+    concurrency:
+      mode: none
+      reason: reference-data    # one administrative writer, changed a few times a year
+  properties:
+    id: { type: string, format: uuid }
 ```
 
 **Relationship Cardinality**:
