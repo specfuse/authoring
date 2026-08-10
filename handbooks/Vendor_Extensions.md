@@ -311,18 +311,39 @@ declared on 10 entities. An optional key with a permissive default cannot supply
 a required one.
 
 **What consumes it today:** `specfuse-xentity-shape` validates the shape — the
-closed value sets and the object form's sub-keys. `reason` is an open string in
-the ruleset on purpose: the vocabulary above is a recommendation until the
-generator freezes it (FEAT-2026-0091), and closing a set the kit does not own is
-how three earlier `x-entity` keys blocked their own adoption (see the note at
-the top of this document).
+closed value sets, the object form's sub-keys, and the `reasonText`/`other`
+coupling in both directions.
 
 `specfuse-xentity-concurrency-unprotected-needs-reason` (WARNING) fires on
 `concurrency: none` and on `{ mode: none }` with no `reason`. It fires
 unconditionally, including on entities with no unsafe write, because the write
 surface is not visible from inside the `x-entity` block — declaring the reason
-anyway is never wrong. The precise "`none` **and** an unsafe write" check is
-generator-side (FEAT-2026-0088).
+anyway is never wrong. The generator's equivalent is narrower (see
+`ENTITY_CONCURRENCY_REASON_REQUIRED` below), so a read-only entity can draw this
+warning without a matching one from `validate`.
+
+Generator-side, FEAT-2026-0088 ships in **0.5.7**:
+
+| Rule | Severity | Fires when |
+|---|---|---|
+| `ENTITY_CONCURRENCY_INVALID` | ERROR | a value outside `{ optimistic, none }`, a malformed object form, or a sub-key that reads as a misspelling of `concurrency` |
+| `ENTITY_CONCURRENCY_UNDECLARED` | WARNING | an `x-entity` schema declares no `concurrency` at all |
+| `ENTITY_CONCURRENCY_REASON_REQUIRED` | WARNING | `mode: none` on an entity that exposes an unsafe write (`PATCH`/`PUT`/`DELETE`), with no `reason` |
+| *(ETag obtainability)* | WARNING | `concurrency: optimistic` and an unsafe write, but **no safe operation returns the entity** — the client cannot read the validator it must echo |
+| `ENTITY_CONCURRENCY_WRITER_ROLE_UNREADABLE` | WARNING | the entity's unsafe-write roles are not a subset of the roles that can read it from a safe operation |
+| `ENTITY_CONCURRENCY_CENSUS` | SUGGESTION | always — reports `optimistic` / `none` / undeclared counts with a `reason` breakdown, in one `validate` run |
+
+The two role/read rules are the ones adoption trips over, because neither is
+about this key's syntax. **Pair every `concurrency: optimistic` with a
+single-resource `GET`** returning that entity, and check that whoever may `PATCH`
+it may also read it — optimistic concurrency is a round trip, so a caller that
+can write but never read can never legally hold the validator its write is gated
+against.
+
+`ENTITY_CONCURRENCY_UNDECLARED` is a WARNING on purpose: adopting the key across
+an existing project should not turn `validate` red mid-migration. The ERROR
+promotion is FEAT-2026-0092, gated on the sweep reaching zero `not-assessed`.
+Use `ENTITY_CONCURRENCY_CENSUS` to track that.
 
 > **Both `concurrency: none` and `{ mode: none }` pass lint.** The shorthand is
 > accepted because the generator accepts it, and a lint rule that rejects a form
