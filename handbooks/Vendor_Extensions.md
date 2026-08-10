@@ -263,8 +263,12 @@ write surface — as a **floor, not the answer**. In one consumer's 86-entity
 audit that floor was 17 entities, and the human-vs-human contended set was
 strictly larger.
 
-**Recommended `reason` values.** Keep them to a small vocabulary so the
-declarations are auditable in aggregate rather than 80 near-identical sentences:
+**The `reason` vocabulary — a closed set as of generator 0.5.7.** It was a
+recommendation until then and is now enforced: anything outside the set is
+`INVALID_EXTENSION_VALUE` at parse time, and the kit's `specfuse-xentity-shape`
+guard rejects it at lint. The point of closing it is that the declarations are
+auditable in aggregate — *"find every `none` whose claim is not true"* — which
+80 near-identical sentences cannot support:
 
 | Value | Claim |
 |---|---|
@@ -273,7 +277,7 @@ declarations are auditable in aggregate rather than 80 near-identical sentences:
 | `reference-data` | Administrative configuration, written rarely by one administrative caller. |
 | `rare-write` | Contention is possible but the write rate makes a race implausible. |
 | `not-assessed` | **Deferred work, not a justification** — see below. |
-| `other` | None of the above; state the reason in free text alongside. |
+| `other` | None of the above. **Requires `reasonText`** — free text saying why the set does not fit. |
 
 > **`not-assessed` is a status, not a justification.** It means the entity is
 > genuinely contended-or-not-yet-known and the analysis has not been done. It
@@ -285,6 +289,20 @@ declarations are auditable in aggregate rather than 80 near-identical sentences:
 >
 > `not-assessed` is the one value that is not a defensible end state. Expect it
 > to be refused when the key hardens to ERROR.
+
+**`reasonText` rides with `other` and nothing else.** Both directions are errors
+in the generator and in the kit's guard: `reason: other` without `reasonText`,
+and `reasonText` alongside any other member. If a justification needs a sentence,
+it is `other`; if it fits a member, the member says it more precisely than prose
+and stays queryable.
+
+```yaml
+x-entity:
+  concurrency:
+    mode: none
+    reason: other
+    reasonText: "Written only by the nightly reconciliation job."
+```
 
 **Do not try to derive this from `mutability`.** `appendOnly` looks like it
 implies `concurrency: none, reason: append-only`, and it does not carry enough

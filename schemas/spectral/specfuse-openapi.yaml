@@ -631,10 +631,29 @@ rules:
             # key. See authoring #47 and the note at the top of
             # Vendor_Extensions.md.
             #
-            # `reason` is an open string here on purpose. The vocabulary is
-            # generator-owned and not yet frozen (FEAT-2026-0091); closing this
-            # set before the generator does is how `domain`, `concurrency` and
-            # `delete` each blocked adoption. Tighten it when the jar ships it.
+            # `reason` is a CLOSED vocabulary as of generator 0.5.7
+            # (FEAT-2026-0088/T07). It was an open string until then, with a
+            # note to tighten it when the jar shipped the set — the jar has,
+            # so this is that tightening. Free text is now INVALID_EXTENSION_VALUE
+            # at parse time in the generator, so leaving the guard open would
+            # pass lint and fail generation, which is the failure direction that
+            # costs an author a whole edit cycle to diagnose.
+            #
+            # `not-assessed` is a status, not a justification: it records that
+            # the contention question has not been answered yet, and it is what
+            # lets a sweep complete without anyone inventing a reason. It is the
+            # member the ERROR promotion (FEAT-2026-0092) refuses to pass.
+            #
+            # `other` is the sole escape hatch and the only member carrying
+            # `reasonText`. Both directions are errors in the generator:
+            # `other` without `reasonText`, and `reasonText` alongside any other
+            # member. The `if/then/else` below mirrors that exactly.
+            #
+            # Deliberately NOT mirrored: the generator also accepts `reasonText`
+            # with no `reason` at all (its check is `reason != null && reason !=
+            # OTHER`). This guard accepts that shape too rather than tightening
+            # past the jar — a guard must never reject what the generator
+            # accepts. Reported upstream; tighten here once the jar does.
             concurrency:
               oneOf:
                 - type: string
@@ -644,7 +663,22 @@ rules:
                   required: ["mode"]
                   properties:
                     mode: { type: string, enum: ["optimistic","none"] }
-                    reason: { type: string, minLength: 1 }
+                    reason:
+                      type: string
+                      enum: ["append-only","single-writer","reference-data","rare-write","not-assessed","other"]
+                    reasonText: { type: string, minLength: 1 }
+                  allOf:
+                    - if:
+                        required: ["reason"]
+                        properties:
+                          reason: { const: "other" }
+                      then:
+                        required: ["reasonText"]
+                    - if:
+                        required: ["reason","reasonText"]
+                        properties:
+                          reason: { not: { const: "other" } }
+                      then: false
             # Delete semantics for the entity's OWN row (generator
             # FEAT-2026-0080, Vendor_Extensions.md §1.1). Absent resolves to
             # `hard`, the pre-FEAT-2026-0080 generator behaviour, so no

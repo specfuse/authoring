@@ -160,7 +160,8 @@ jobs:
           fail=0
           # A schema using every documented key must lint clean.
           for good in FullyDocumented ShorthandDelete ConcurrencyUnprotected \
-                      BareConcurrencyNone UnprotectedNoReason; do
+                      BareConcurrencyNone UnprotectedNoReason \
+                      ConcurrencyOtherWithText; do
             if grep "specfuse-xentity-shape" "$REPORT" | grep -q "$good"; then
               echo "::error::$good uses only documented x-entity keys but was flagged." >&2
               echo "The allow-list has fallen behind the handbooks again." >&2
@@ -170,7 +171,9 @@ jobs:
           # Each malformed value must still be caught.
           for bad in BadCascadeValue BadChildName BadStorage UnknownSubKey \
                      BadDeleteMode BadRetention DeleteUnknownKey \
-                     BadConcurrencyMode ConcurrencyUnknownKey TypoKey; do
+                     BadConcurrencyMode ConcurrencyUnknownKey TypoKey \
+                     ConcurrencyFreeTextReason ConcurrencyOtherNoText \
+                     ConcurrencyTextWithoutOther; do
             if ! grep "specfuse-xentity-shape" "$REPORT" | grep -q "$bad"; then
               echo "::error::specfuse-xentity-shape did not flag $bad." >&2
               fail=1
