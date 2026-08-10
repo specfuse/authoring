@@ -210,6 +210,10 @@ jobs:
       # exposed to silence, because zero findings is under every baseline.
       - name: Spectral ratchet (reference implementation, both directions)
         run: |
+          # `set +e` first: this step asserts on non-zero exits deliberately, and
+          # the default `bash -e` would abort at the first one before the check
+          # that reads it. Same opener as the fixture steps above.
+          set +e
           set -uo pipefail
           WORK="${RUNNER_TEMP}/ratchet"; mkdir -p "$WORK"
           R=schemas/spectral/specfuse-openapi.yaml
