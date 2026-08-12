@@ -75,11 +75,15 @@ api/specs/v1/
 |--------|--------|------------|----------|
 | `on-` | `receive` | **Required** | Event handlers — reacting to a domain event on a topic. These are workers. |
 | `run-` | `send` | **Required** | Scheduled job dispatchers — triggered by a cron timer, publish events to a topic. These are workers. |
-| `emit-` | `send` | **Forbidden** | Event publishing declarations — declares what an `on-*` worker publishes as a side effect. These are NOT workers. |
+| `emit-` | `send` | **Forbidden** | Event publishing declarations — declares that an event exists on the bus and binds it to its channel. These are NOT workers. |
 
-**How to distinguish `run-*` from `emit-*`:** both are `action: send`, but `run-*` is an independently triggered worker (cron schedule via `x-scheduled-job` on its message) with `x-worker`, while `emit-*` is a publishing declaration owned by an `on-*` receive operation (linked via `x-emits`) and has no `x-worker`.
+**What an `emit-*` does and does not say.** It declares the event and binds it to a channel. It does **not** name the producer, and it does not imply a worker. A producer may be an `on-*` worker, a `run-*` scheduled job, **or an OpenAPI write operation**, and one event may legitimately have several — which is how a manual REST path and a scheduled path converge on one event and one downstream handler instead of growing two implementations of the same algorithm. Producers are found by reverse lookup on the `{Entity}.{Action}` label: `on-*` operations and OpenAPI write operations declare the event in their own `x-emits`, and `run-*` jobs publish through their channel reference (§6.3).
 
-**How `on-*` workers link to their `emit-*` declarations:** the `on-*` operation declares `x-emits` listing the event(s) it publishes on completion. Each `x-emits` entry uses the `{Entity}.{Action}` format matching the emitted message's `x-label`. This is the same pattern used on OpenAPI write operations, reused here for async-to-async links.
+Reading `emit-*` as a worker-side artifact is the common mistake, and it is costly in a specific direction: the three prefixes exist to answer *"what is deployed here?"*, and only `on-*` and `run-*` answer it with a class. An `emit-*` deploys nothing.
+
+**How to distinguish `run-*` from `emit-*`:** both are `action: send`, but `run-*` is an independently triggered worker (cron schedule via `x-scheduled-job` on its message) with `x-worker`, while `emit-*` is a publishing declaration with no `x-worker` and no producer of its own.
+
+**How producers link to their `emit-*` declarations:** the producing operation declares `x-emits` listing the event(s) it publishes on completion. Each `x-emits` entry uses the `{Entity}.{Action}` format matching the emitted message's `x-label`. The same extension and the same format are used on `on-*` operations and on OpenAPI write operations — one link mechanism across both. See §6.3 for the full cross-reference rules, including why `run-*` is the exception.
 
 The legacy `execute-*` and `dispatch-*` prefixes no longer exist. Commands and point-to-point dispatch are not part of the v2 architecture.
 
@@ -862,7 +866,7 @@ Behavioral contract and runtime configuration for the handler. Language-specific
 - `on-*` operations (`action: receive`) — event handlers
 - `run-*` operations (`action: send`) — cron-triggered scheduled job dispatchers
 
-**`x-worker` is FORBIDDEN on `emit-*` operations.** An `emit-*` operation is a publishing declaration, not a worker. It declares what message an `on-*` or `run-*` worker publishes. The generator wires the publish call into the owning worker — it does not create a separate class for it.
+**`x-worker` is FORBIDDEN on `emit-*` operations.** An `emit-*` operation is a publishing declaration, not a worker. It declares that a message exists on the bus and binds it to its channel; it names no producer. The generator wires the publish call into each operation that declares the event in its own `x-emits` — an `on-*` worker, a `run-*` job, or an OpenAPI write operation — and does not create a separate class for the `emit-*` itself. See §0.4.
 
 ```yaml
 x-worker:
@@ -1309,6 +1313,8 @@ The `event` value (`{Entity}.{Action}`) must match an AsyncAPI event message's `
 2. For every `x-emits.event` on an `on-*` async operation, finds the matching `emit-*` send operation via `x-label` — fails if missing
 3. For every AsyncAPI event message, identifies the OpenAPI operations that emit it (reverse lookup) — informational only. Events can also be published by scheduled jobs or other workers, so having no OpenAPI emitter is valid.
 
+> **Known gap — `emit-*` coverage is enforced for one producer kind out of three.** Check 2 runs only over `on-*` producers. An OpenAPI write operation may declare `x-emits: X.Y` with no `emit-*` declaring `X.Y`, and nothing fails: the message file and the channel `messages` entry are enough to make the event work. The consequence is that the set of `emit-*` operations — which ought to be the index of what is on the bus — silently under-reports, and whether an event has one becomes a question of which domain authored it. Until the validator covers every producer kind, treat "every declared event has an `emit-*`" as an authoring rule you enforce, not one you inherit. Tracked in `compatibility.md`, follow-up 19.
+
 **There is no `triggerOperation` field on the AsyncAPI side.** The link is computed from `x-emits`, not duplicated.
 
 **`run-*` scheduled jobs do NOT use `x-emits`** — they publish directly via their channel reference. The generator knows they are publishers from the `action: send` + `x-worker` + `x-scheduled-job` combination.
@@ -1338,7 +1344,7 @@ currency:
 | Scheduled job message | Typed job parameter record/class |
 | `on-*` operation (`action: receive`, has `x-worker`) | Event handler skeleton + subscription wiring |
 | `run-*` operation (`action: send`, has `x-worker`) | Scheduled worker skeleton + cron registration + publish wiring |
-| `emit-*` operation (`action: send`, no `x-worker`) | Publish method wired into the owning `on-*` worker (resolved via `x-emits`) |
+| `emit-*` operation (`action: send`, no `x-worker`) | No class of its own. A publish method wired into each producer that declares the event in its `x-emits` — an `on-*` worker or an OpenAPI write operation (see §7.3) |
 | Per-domain | Worker registration (DI wiring) |
 | Global | Worker service collection / startup |
 
@@ -1349,8 +1355,8 @@ currency:
 - **Worker type classification** — from verb prefix, `action`, and `x-worker` presence:
   - `on-*` (`action: receive`, has `x-worker`) → event subscriber worker
   - `run-*` (`action: send`, has `x-worker`, message has `x-scheduled-job`) → scheduled job worker
-  - `emit-*` (`action: send`, no `x-worker`) → publish method wired into the owning worker
-- **Linking `emit-*` to its owning worker** — the generator resolves `x-emits` on `on-*` operations to find which `emit-*` declarations belong to which worker. For `run-*` operations, the publish target is the channel referenced directly on the operation.
+  - `emit-*` (`action: send`, no `x-worker`) → not a worker; a publish method wired into each declared producer
+- **Linking `emit-*` to its producers** — the generator resolves `x-emits` (on `on-*` async operations and on OpenAPI write operations) to find which producers publish which declared event. The relationship is many-to-one and computed by reverse lookup on `{Entity}.{Action}`; an `emit-*` belongs to no single operation. For `run-*` operations, the publish target is the channel referenced directly on the operation.
 - **Project layout** — decided by the generator config per language
 
 ### 7.3 Cross-Spec Wiring

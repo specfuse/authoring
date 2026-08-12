@@ -969,10 +969,11 @@ Leaving an FK-shaped property unclassified is a spec defect.
 
 **Validation rules**:
 
-1. `x-references: <Target>` and a `belongsTo` naming the same target on the same entity are **mutually exclusive** — declaring both is an error. There is no precedence between them and no "degrades to a hint" fallback; if the entity is owned, use `belongsTo`, and if it merely points, use `x-references`.
-2. `x-references` and `x-fk-for` (§1.8) MUST NOT appear on the same property. They declare opposite ownership.
-3. `x-references: none` requires a non-empty `description`.
-4. The value MUST be `none` or a PascalCase entity name.
+1. `x-references: <Target>` and a `belongsTo` naming the same target are **mutually exclusive for the same FK** — an *unbound* `belongsTo <Target>` and an `x-references: <Target>` on the same entity is an error. There is no precedence between them and no "degrades to a hint" fallback; if the entity is owned, use `belongsTo`, and if it merely points, use `x-references`.
+2. **Binding exception.** A `belongsTo <Target>` is *consumed* by whichever property satisfies it — a conventionally-named `{target}Id`, or a property carrying `x-fk-for: <Target>` (§1.8). Once consumed, a **sibling** property may carry `x-references: <Target>` without conflict, because the two properties are different FKs expressing different relationships to the same entity. This mixed owning-plus-associating shape is legal and not uncommon: a `WorkItem` may `belongsTo Employee` through its owning FK while separately holding `reviewerEmployeeId` and `approvedByEmployeeId` as role associations. Rule 1 is about an unclaimed `belongsTo`, not about the target name appearing twice.
+3. `x-references` and `x-fk-for` (§1.8) MUST NOT appear on the same property. They declare opposite ownership.
+4. `x-references: none` requires a non-empty `description`.
+5. The value MUST be `none` or a PascalCase entity name.
 
 **Examples**:
 
@@ -1030,6 +1031,7 @@ x-fk-for: Order          # target entity name (PascalCase)
 
 - Composition is **preserved**: Cascade delete, aggregate membership, and every other consequence of `belongsTo` apply exactly as if the property had been named `orderId`.
 - It is a *binding*, not a declaration. `x-fk-for` does not create a relationship; it names which declared `belongsTo` a misnamed column satisfies.
+- Binding **consumes** the `belongsTo`. Once `x-fk-for: <Target>` has claimed it, a sibling property may carry `x-references: <Target>` as a role association without tripping the mutual-exclusion rule — see §1.7 validation rule 2.
 
 **Validation rules**:
 
@@ -1079,13 +1081,13 @@ x-projection: true          # collection projection: array of $ref, read-only
 
 **Semantics**:
 
-- **`x-expand-of: <twin>`** marks a **scalar** projection embed. The named twin MUST be a sibling property in the same schema, and MUST be either a `format: uuid` FK or a required `type: string` natural key. The projection is excluded from persistence (EF-Ignored) — it is computed on read, never written.
+- **`x-expand-of: <twin>`** marks a **scalar** projection embed. The named twin MUST be a sibling property in the same schema, and MUST be either a `format: uuid` FK or a `type: string` natural key. The twin may be optional — an optional FK models a genuinely optional relationship, and the projection is itself forbidden from `required` for the same reason. The projection is excluded from persistence (EF-Ignored) — it is computed on read, never written.
 - **`x-projection: true`** marks a **collection** projection: a non-owned array of `$ref`. It is read-only and MUST NOT be `required`, because a projection is a convenience the server may decline to populate.
 
 **Validation rules**:
 
 1. An embed that projects another entity's data MUST carry one of the two markers. An unmarked projection embed is indistinguishable from owned state and will be persisted as such.
-2. `x-expand-of` MUST name an existing sibling property, and that property must be a uuid FK or a required string natural key.
+2. `x-expand-of` MUST name an existing sibling property, and that property must be a uuid FK or a string natural key. The twin's `required` status is not checked.
 3. `x-projection: true` MUST be applied to an array-of-`$ref` property, and that property MUST NOT appear in `required`.
 4. Both markers are read-only: the properties they mark MUST NOT appear in `New*` or `Update*` derivatives.
 

@@ -8,8 +8,10 @@
 //
 // x-expand-of: <twin>   scalar projection. The named twin MUST be a sibling
 //                       property, and MUST be either a `format: uuid` FK or a
-//                       required `type: string` natural key. Anything else
-//                       means the projection has no identifier to expand.
+//                       `type: string` natural key. Anything else means the
+//                       projection has no identifier to expand. The twin's
+//                       `required` status is not part of the check — see the
+//                       note at the branch.
 //
 // x-projection: true    collection projection. MUST be an array of $ref, and
 //                       MUST NOT appear in the schema's `required` array — a
@@ -51,16 +53,22 @@ module.exports = function openapiProjectionCoherence(targetVal, _opts, context) 
           path,
         });
       } else {
+        // The twin must be an identifier. It need NOT be `required`: an
+        // optional FK models a genuinely optional relationship, and the
+        // projection is `readOnly` and itself forbidden from `required`
+        // (below) precisely because the server may decline to populate it.
+        // Demanding that the twin be required would contradict that, and it
+        // would do so asymmetrically — the uuid branch never checked. Both
+        // twin kinds are accepted optional or required.
         const twin = properties[twinName] || {};
         const isUuidFk = twin.format === "uuid";
-        const isRequiredNaturalKey =
-          twin.type === "string" && required.includes(twinName);
+        const isNaturalKey = twin.type === "string";
 
-        if (!isUuidFk && !isRequiredNaturalKey) {
+        if (!isUuidFk && !isNaturalKey) {
           results.push({
             message:
               `x-expand-of on '${name}' names '${twinName}', which is neither a 'format: uuid' FK ` +
-              `nor a required 'type: string' natural key. A projection needs a dependable identifier to expand.`,
+              `nor a 'type: string' natural key. A projection needs an identifier to expand.`,
             path,
           });
         }
