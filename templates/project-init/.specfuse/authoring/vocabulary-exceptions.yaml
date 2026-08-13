@@ -1,0 +1,33 @@
+# Vendor-extension vocabulary exceptions.
+#
+# Read by scripts/check-extension-vocabulary.py. Two sections, making opposite
+# claims — keep them apart, because conflating them hides real drift:
+#
+#   out_of_surface  The generator knows this key, but under a different
+#                   extension than the guard that rejects it. Not drift; the
+#                   generator namespaces a key by the extension it belongs to
+#                   rather than by where an author writes it.
+#
+#   kit_only        Nothing in codegen reads this key, and that is intended.
+#                   The kit's own tooling does. Without this section the guard
+#                   reports it as drift on every run, and a report that always
+#                   fires is a report nobody reads.
+#
+# A key belongs here only with a reason someone can check later. "It was noisy"
+# is not a reason.
+
+out_of_surface: {}
+
+kit_only:
+  x-entity:
+    - key: mutability
+      reason: >-
+        Read by the kit's own Spectral rules, not by codegen.
+        `specfuse-main-resource-has-updatedAt` tells an author to declare
+        `mutability: immutable` or `appendOnly` instead of adding the field,
+        and `specfuse-xentity-mutability-exemption` keys its exemption off the
+        same value (fixture: mutability-exemption.yaml). The generator's
+        ENTITY_SHAPE_UNKNOWN_PROPERTY warning is correct that codegen drops it
+        and misleading about the key's purpose: removing it from the ruleset
+        would cost a working lint rule and change nothing about generated
+        output. Revisit if the generator gains a write-policy concept.

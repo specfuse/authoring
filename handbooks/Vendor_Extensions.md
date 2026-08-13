@@ -1206,6 +1206,37 @@ Order:
         serializer: 'json'
 ```
 
+### 2.2 x-legacy-names
+
+**Purpose**: Lists a property's former names so that JSON already written under an old name still deserialises after a rename.
+
+**Scope**: Applied to a **property** of a value object that is persisted as JSON — the `single_json`, `serialized` and `collection_json` storage modes (§2.1). A value object stored with `flatten` maps to real columns, where a rename is a database migration rather than a read-time concern.
+
+**Optional**: Yes. Add it at the moment of the rename; it has no effect on a property that was never renamed.
+
+**Schema**:
+
+```yaml
+deliveryWindow:
+  type: string
+  x-legacy-names: [deliverySlot, delivery_window]   # newest former name first
+```
+
+**Semantics**:
+
+- The generated converter reads the **current** key first, then each legacy name **in the order listed**, then falls back to the type default. First hit wins, so a document carrying both an old and a new key resolves to the new one.
+- The legacy hop is emitted **only** for a property that declares the extension. An un-renamed property's generated read is byte-identical to what it was before the extension existed.
+- This is a read-path concern only. Writes always emit the current name, so a rewritten document drops the legacy key naturally.
+
+**Validation rules**:
+
+1. A legacy name MUST NOT match a **sibling property's current name** (`LEGACY_NAME_COLLIDES`). Two properties competing for one key makes the read order decide which wins, which is a coin flip dressed as a contract. Rename one of the two, or drop the entry.
+2. A legacy name MUST NOT be the property's **own current name**, and MUST NOT repeat within the list (`LEGACY_NAME_REDUNDANT`). Both are no-ops that read as intent.
+
+**Why the list is ordered**: successive renames accumulate. A property renamed twice carries both former names, and listing the most recent first means the common case — documents written since the last rename — resolves on the first legacy hop rather than the last.
+
+> **Keep the entry after the data is migrated?** Only if old documents can still exist. Once every stored document has been rewritten under the current name, the entry is dead weight and its removal is safe; until then, removing it silently turns those properties into type defaults on read. There is no validation for this, because nothing in the spec knows what is in the database.
+
 ---
 
 ## 3. Authorization Extensions

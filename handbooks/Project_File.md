@@ -645,6 +645,7 @@ The `side` field is present only for hybrid entities.
 | `csharp`, `c#` | C# profile + C# factory | Full DDD + EF Core + AsyncAPI + Azure Functions set. |
 | `python` | Python profile + Python factory | SQLAlchemy + Pydantic + AI worker scaffolding. |
 | `dart`, `flutter` | Dart profile + Dart factory | Riverpod + freezed stack; both aliases resolve to the same profile. |
+| `typescript` | TypeScript profile + TypeScript factory | Entities, DTOs and builders, enums, value objects, an API client, repositories (interface / impl / fake), Vue-style query and mutation composables, and their tests. Added in generator `0.5.8`. |
 | `markdown` | Markdown profile + Markdown factory | Documentation generators (scenario docs, recipe docs, entity diagrams, event catalog). |
 
 **Validation**: An unregistered value fails the load with the full list of known languages.
@@ -893,7 +894,15 @@ The full live inventory is available via `java -jar specfuse-generator.jar templ
 
 `entity`, `enum`, `valueObject`, `dartDto`, `dartRepositoryInterface`, `dartApiClient`, `dartRepositoryImpl`, `dartDtoMapper`, `dartUseCase`, `dartQueryProvider`, `dartMutationProvider`, `dartPaginatedNotifier`, `dartFormWidget`, `dartListTile`, `dartBarrelExport`, `dartProblemDetails`, `dartTypedError`, `dartDioErrorInterceptor`, `dartEntityBuilder`, `dartNewDtoBuilder`, `dartUpdateDtoBuilder`, `dartRepositoryFake`, `dartProviderOverrides`, `dartJsonFixture`, `dartFixtureLoader`, `dartCodegenSmokeTest`, `dartSerializationTest`, `dartRepositoryTest`, `dartQueryProviderTest`, `dartMutationProviderTest`, `dartValidatorTest`, `dartPaginationTest`.
 
-### 11.4 Markdown artifacts
+### 11.4 TypeScript artifacts
+
+**Snapshot date:** 2026-08-13. **Live source:** `templates --language typescript`. Added in generator `0.5.8`.
+
+`entity`, `enum`, `valueObject`, `dto`, `updateDto`, `entityBuilder`, `newDtoBuilder`, `updateDtoBuilder`, `typescriptApiClient`, `typescriptRepositoryInterface`, `typescriptRepositoryImpl`, `typescriptRepositoryFake`, `typescriptQueryComposable`, `typescriptMutationComposable`, `typescriptFixture`, `typescriptRepositoryTest`, `typescriptQueryComposableTest`, `typescriptMutationComposableTest`, `typescriptSerializationTest`, `typescriptValidatorTest`.
+
+The composable pair mirrors the Dart provider pair (`dartQueryProvider` / `dartMutationProvider`) — a query composable per read operation, a mutation composable per write, each with a generated test.
+
+### 11.5 Markdown artifacts
 
 **Snapshot date:** 2026-05-26. **Live source:** `templates --language markdown`.
 

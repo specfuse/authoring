@@ -7,6 +7,9 @@ x-entity:
     allOf: [Tenant]
   hasMany: [Order]
   searchableProperties: [firstName, lastName, email]
+  # `updateCustomer` requires If-Match and documents 412; this is the key
+  # that makes the generated service honour it.
+  concurrency: optimistic
   aiAccess:
     operations: [read]
     # readableProperties omitted → every non-encrypted top-level field
