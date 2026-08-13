@@ -24,10 +24,34 @@
 #   generator knows a key the ruleset does not  -> FAIL (blocks adoption)
 #   ruleset accepts a key the generator does not -> report, never fail
 #
-# The asymmetry is deliberate. The generator reaches some keys through indirect
-# constants that leave no string literal in the class file, so the reverse
-# direction produces false alarms; only the first direction can block a spec
-# author, so only the first direction is fatal.
+# The asymmetry is deliberate: only the first direction can block a spec author.
+# The second is still worth reporting — a key the ruleset accepts and codegen
+# ignores is metadata documenting intent nothing enforces, which can silently
+# stop being true — but it is not a build-stopper, and some of it is kit-only on
+# purpose (see `kit_only` in the exceptions file).
+#
+# Where the vocabulary comes from, per surface:
+#
+#   `extensions --format json`  the generator's own answer. Authoritative.
+#                               Generator FEAT-2026-0098, present from 0.5.8.
+#                               Covers the surfaces the parser owns as a closed
+#                               vocabulary — `x-entity` today.
+#   constant-pool scan          fallback for every other surface, and for jars
+#                               older than the subcommand. A heuristic: the
+#                               generator reaches some keys through indirect
+#                               constants that leave no string literal, so a key
+#                               it misses looks ruleset-only when it is not.
+#
+# The reverse direction is therefore only reported as real drift for surfaces
+# the jar publishes. Anywhere else it stays informational, because otherwise a
+# heuristic miss reads as a finding and the noise trains a reader to skip it.
+#
+# `schema` is why this matters: deprecated but still parsed, absent from the
+# kit's allow-list, and rejected at ERROR — 17 live schemas could not lint. The
+# forward direction would have caught it, and nothing ran the check because
+# discovery found no rulesets in the kit repo and exited 0. A guard that passes
+# vacuously is worse than no guard, so --require-jar now fails when it finds
+# nothing to examine.
 #
 # Usage:
 #   ./scripts/check-extension-vocabulary.py            # lint-time check
@@ -42,6 +66,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -69,6 +94,15 @@ RULESET_GLOBS = (
     "api/spectral*.yaml",
     "api/**/spectral*.yaml",
 )
+
+# The kit's own copies, for maintainers running this from the kit repo rather
+# than from a provisioned project. Resolved relative to the repo root, which is
+# three levels above this file (templates/project-init/scripts/). Without this
+# the globs above match nothing in the kit repo and the check exits 0 having
+# examined nothing — a vacuous pass, which is the failure mode this whole guard
+# exists to prevent. See `--require-jar` below, which now refuses to be vacuous.
+KIT_ROOT = Path(__file__).resolve().parents[3]
+KIT_RULESET_GLOBS = ("schemas/spectral/*.yaml",)
 
 # Keys the generator references that are NOT part of the guarded surface —
 # declared here, with a reason, rather than silently tolerated. A new generator
@@ -141,6 +175,45 @@ def class_constants(data: bytes):
                 return  # unknown tag: the pool is not what we think it is
             i += skip
         slot += 1
+
+
+def published_vocabulary(jar: Path) -> dict[str, set[str]] | None:
+    """Ask the jar what it recognises, via `extensions --format json`.
+
+    Authoritative where the constant-pool scan below is a heuristic: the
+    subcommand prints the parser's own key set, so a key the generator reads
+    through an indirect constant is included and a key that appears only inside
+    a diagnostic string is not. Generator FEAT-2026-0098; present from 0.5.8.
+
+    Returns None when the jar predates the subcommand, so the caller falls back
+    rather than silently reporting an empty vocabulary — an empty result would
+    read as "the generator knows nothing", which passes every comparison.
+    """
+    try:
+        proc = subprocess.run(
+            ["java", "-jar", str(jar), "extensions", "--format", "json"],
+            capture_output=True, text=True, timeout=120,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    try:
+        doc = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(doc, dict) or not doc:
+        return None
+    out: dict[str, set[str]] = {}
+    for surface, entries in doc.items():
+        if not isinstance(entries, list):
+            return None
+        keys = {e["key"] for e in entries
+                if isinstance(e, dict) and isinstance(e.get("key"), str)}
+        if not keys:
+            return None
+        out[surface] = keys
+    return out or None
 
 
 def generator_keys(jar: Path, prefixes: set[str]) -> dict[str, set[str]]:
@@ -276,15 +349,36 @@ def extension_surface(givens: list) -> str | None:
     return max(tokens, key=len) if tokens else None
 
 
+def _exception_section(doc: dict, name: str) -> dict[str, dict[str, str]]:
+    out: dict[str, dict[str, str]] = {}
+    for surface, entries in (doc.get(name) or {}).items():
+        out[surface] = {e["key"]: e.get("reason", "") for e in entries or []
+                        if isinstance(e, dict) and "key" in e}
+    return out
+
+
 def load_exceptions() -> dict[str, dict[str, str]]:
     if not EXCEPTIONS_FILE.is_file():
         return {}
     doc = yaml.safe_load(EXCEPTIONS_FILE.read_text(encoding="utf-8")) or {}
-    out: dict[str, dict[str, str]] = {}
-    for surface, entries in (doc.get("out_of_surface") or {}).items():
-        out[surface] = {e["key"]: e.get("reason", "") for e in entries or []
-                        if isinstance(e, dict) and "key" in e}
-    return out
+    return _exception_section(doc, "out_of_surface")
+
+
+def load_kit_only() -> dict[str, dict[str, str]]:
+    """Keys the rulesets accept on purpose that the generator does not read.
+
+    A separate section from `out_of_surface`, because it is the opposite claim:
+    not "the generator knows this under another name" but "nothing in codegen
+    reads this, and that is intended". `x-entity.mutability` is the case that
+    forced it — the kit's own lint reads it, so removing it would cost a
+    working rule, and the generator reporting it dropped is correct about
+    codegen and misleading about the key's purpose. Declaring it here keeps it
+    out of the drift report while leaving the reason on the record.
+    """
+    if not EXCEPTIONS_FILE.is_file():
+        return {}
+    doc = yaml.safe_load(EXCEPTIONS_FILE.read_text(encoding="utf-8")) or {}
+    return _exception_section(doc, "kit_only")
 
 
 def unreferenced_rulesets(paths: list[Path]) -> list[Path]:
@@ -309,20 +403,39 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--require-jar", action="store_true",
                     help="Treat a missing generator jar as a failure (use in CI).")
     ap.add_argument("--jar", type=Path, default=None, help="Generator jar to read.")
+    ap.add_argument("--ruleset", type=Path, action="append", default=[],
+                    metavar="PATH",
+                    help="Ruleset to check (repeatable). Overrides discovery.")
     args = ap.parse_args(argv)
 
     paths: list[Path] = []
-    for pattern in RULESET_GLOBS:
-        paths.extend(sorted(ROOT.glob(pattern)))
+    if args.ruleset:
+        paths = list(args.ruleset)
+    else:
+        for pattern in RULESET_GLOBS:
+            paths.extend(sorted(ROOT.glob(pattern)))
+        # Maintainers run this from the kit repo, where the globs above — which
+        # target a provisioned project's layout — match nothing.
+        for pattern in KIT_RULESET_GLOBS:
+            paths.extend(sorted(KIT_ROOT.glob(pattern)))
     paths = [p for p in dict.fromkeys(paths) if p.is_file()]
     if not paths:
-        print("No Spectral rulesets found — nothing to check.")
+        msg = ("No Spectral rulesets found — nothing was checked.\n"
+               "  Pass --ruleset PATH, or run from a provisioned project.\n")
+        if args.require_jar:
+            sys.stderr.write("❌ " + msg)
+            return 2
+        print(msg.rstrip())
         return 0
 
     guards = closed_guards(paths)
     if not guards:
-        print(f"No closed (`additionalProperties: false`) extension guards in "
-              f"{len(paths)} ruleset(s) — nothing to check.")
+        msg = (f"No closed (`additionalProperties: false`) extension guards in "
+               f"{len(paths)} ruleset(s) — nothing was checked.\n")
+        if args.require_jar:
+            sys.stderr.write("❌ " + msg)
+            return 2
+        print(msg.rstrip())
         return 0
 
     jar = args.jar or find_jar()
@@ -341,7 +454,23 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     exceptions = load_exceptions()
-    known = generator_keys(jar, {g["surface"] for g in guards})
+    kit_only = load_kit_only()
+    # Prefer the jar's own answer. The constant-pool scan stays as the fallback
+    # for jars older than the subcommand, and its heuristic nature is exactly
+    # why the ruleset-only direction is only fatal against a published source:
+    # a key the scan fails to see looks ruleset-only when it is not.
+    published = published_vocabulary(jar) or {}
+    surfaces = {g["surface"] for g in guards}
+    scanned = generator_keys(jar, surfaces)
+    # Authority is PER SURFACE, not per jar. `extensions` publishes the surfaces
+    # the generator's parser owns as a closed vocabulary — `x-entity` today —
+    # and says nothing about the rest. Treating an unpublished surface as an
+    # empty vocabulary would report every key the ruleset allows as unrecognised
+    # (`x-sample.provider`, `x-value-object.immutable`), which is the same
+    # "a key the check fails to see is drift it fails to report" error with the
+    # sign flipped: noise that trains a reader to ignore the real finding.
+    known = {s: published.get(s, scanned.get(s, set())) for s in surfaces}
+    authoritative_surfaces = {s for s in surfaces if s in published}
 
     # Accepted anywhere across the closed guards. A key the generator
     # namespaces under one extension is often authored inside another's block,
@@ -354,6 +483,12 @@ def main(argv: list[str] | None = None) -> int:
     failures: list[str] = []
     print("=== Vendor-extension vocabulary check ===")
     print(f"Generator: {jar.name}")
+    if published:
+        print(f"Vocabulary source: `extensions --format json` for "
+              f"{', '.join(sorted(published))}; constant-pool scan elsewhere")
+    else:
+        print("Vocabulary source: constant-pool scan (heuristic — this jar "
+              "predates `extensions`)")
     for guard in sorted(guards, key=lambda g: g["surface"]):
         surface = guard["surface"]
         declared = guard["all_keys"]
@@ -361,7 +496,9 @@ def main(argv: list[str] | None = None) -> int:
         unknown = known.get(surface, set()) - declared - allowed
         elsewhere = sorted(unknown & accepted_somewhere)
         missing = sorted(unknown - accepted_somewhere)
-        extra = sorted(guard["keys"] - known.get(surface, set()))
+        declared_kit_only = set(kit_only.get(surface, {}))
+        extra = sorted(guard["keys"] - known.get(surface, set()) - declared_kit_only)
+        accounted = sorted(guard["keys"] & declared_kit_only)
         label = f"{guard['rule']} ({surface}, {guard['ruleset'].name})"
         if elsewhere:
             print(f"   ℹ️  {label}: {', '.join(elsewhere)} accepted under another "
@@ -380,8 +517,29 @@ def main(argv: list[str] | None = None) -> int:
             )
         else:
             print(f"✅ {label}: {len(declared)} key(s), no generator key missing")
-        if extra:
-            print(f"   ℹ️  ruleset-only (informational, never fatal): {', '.join(extra)}")
+        if extra and surface not in authoritative_surfaces:
+            print(f"   ℹ️  ruleset-only (informational — this surface is not in "
+                  f"`extensions`, so the fallback scan is a heuristic and may "
+                  f"simply have missed the key): {', '.join(extra)}")
+        elif extra:
+            # The other direction of the same drift, and the one nothing used to
+            # report usefully. A key the ruleset accepts and the generator does
+            # not know is not adoption-blocking, so it is not a failure — but it
+            # is not harmless either: authors write it, `ENTITY_SHAPE_UNKNOWN_
+            # PROPERTY` reports it dropped, and the metadata documents intent no
+            # generated code enforces. Some are legitimately kit-only (a key the
+            # kit's own lint reads but codegen does not); those belong in the
+            # exceptions file, where the reason is written down.
+            print(f"   ⚠️  ruleset accepts, generator does not recognise: "
+                  f"{', '.join(extra)}")
+            print(f"      The generator drops these silently "
+                  f"(ENTITY_SHAPE_UNKNOWN_PROPERTY, WARNING, once per schema+key).")
+            print(f"      Either the generator should read them, or the kit "
+                  f"should stop advertising them, or — if the kit's own lint "
+                  f"depends on one — record it in {EXCEPTIONS_FILE.name}.")
+        if accounted:
+            print(f"   ℹ️  kit-only by declaration: {', '.join(accounted)} "
+                  f"(reasons in {EXCEPTIONS_FILE.name})")
 
     for orphan in unreferenced_rulesets(paths):
         print(f"   ℹ️  {orphan.relative_to(ROOT)} is not named by any script in "

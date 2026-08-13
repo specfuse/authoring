@@ -10,6 +10,10 @@ x-entity:
   # see API_Handbook.md §9.4 "Entity type by polymorphic shape".
   hasMany: [Customer, Order]
   searchableProperties: [name]
+  # Provisioned out of band; this example exposes no write operation on it.
+  concurrency:
+    mode: none
+    reason: reference-data
   aiAccess:
     operations: []
     reason: >

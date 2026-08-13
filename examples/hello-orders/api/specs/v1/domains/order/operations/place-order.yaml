@@ -11,7 +11,14 @@ post:
   parameters:
     - $ref: '../../../common/parameters/path.yaml#/orderId'
     - $ref: '../../../common/parameters/pagination.yaml#/validateOnly'
-    - $ref: '../../../common/parameters/pagination.yaml#/If-Match'
+    # No If-Match here, deliberately. This is an action-style POST that
+    # delegates to a consumer-owned application service, so no generated
+    # write call site exists for a precondition gate to sit on — the
+    # generator reports CONCURRENCY_PRECONDITION_UNENFORCEABLE, and opting
+    # Order into optimistic concurrency does not change that. Declaring
+    # If-Match and 412 here would advertise lost-update protection nothing
+    # provides. The 409 below is the real guard: it rejects a transition
+    # from a status that cannot be placed.
   security: [{ bearerAuth: [] }]
   responses:
     '200':
@@ -32,4 +39,3 @@ post:
         application/json:
           schema:
             $ref: '../../../common/responses/errors.yaml#/Error'
-    '412': { $ref: '../../../common/responses/errors.yaml#/PreconditionFailedError' }

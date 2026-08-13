@@ -5,6 +5,12 @@ x-entity:
   type: entity
   belongsTo:
     allOf: [Order]
+  # Aggregate-internal: an OrderLine is never addressed by its own unsafe
+  # write, only reconciled through the parent's PATCH, which is itself gated
+  # by Order.concurrency. The Order aggregate service is the single writer.
+  concurrency:
+    mode: none
+    reason: single-writer
   aiAccess:
     operations: [read, create]
     writableProperties:

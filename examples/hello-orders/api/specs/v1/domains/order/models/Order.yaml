@@ -7,6 +7,12 @@ x-entity:
     allOf: [Tenant, Customer]
   hasMany: [OrderLine]
   filterableProperties: [status, customerId]
+  # Two callers can race an order: a Customer editing their own, and a
+  # Manager working the same order in the back office. `updateOrder` already
+  # requires If-Match and documents 412 — without this key the generator
+  # emits no gate, so the client sends a validator nothing checks
+  # (CONCURRENCY_PRECONDITION_UNENFORCED).
+  concurrency: optimistic
   aiAccess:
     operations: [read, create, update]
     writableProperties:
