@@ -397,6 +397,29 @@ Neither `domains` nor `exclude` appears anywhere in `handbooks/Project_File.md` 
 
 Do not document it kit-side on inference. Writing a spec for behaviour nobody has confirmed is how a handbook starts disagreeing with the jar.
 
+### 22. `readOnly` + `required` + `default` emits no persistence default (`clabonte/generator#1047`)
+
+**Status:** generator-side, filed by a consumer at severity `critical`. The kit documents the intended rule in `API_Handbook.md` §1.9 and marks that row explicitly as intent rather than behaviour until this lands.
+
+A property that is `required` **and** `readOnly` **and** carries a `default` has exactly one consumer left for that default: the database. `readOnly` removes it from the `New{Resource}` DTO and from `aiAccess.writableProperties`, so no caller can supply it. No generated stack currently emits it — not EF `HasDefaultValue`, not SQLAlchemy `default=` / `server_default=`, not a C# property initializer. The column lands `NOT NULL` with no database default and nothing able to fill it.
+
+Both failure modes were observed on one property (`status`, `required` + `readOnly: true` + `default: pending`):
+
+- **Python** — `readOnly` correctly excludes the property from the writable whitelist, so the repository's create-field assertion rejects a caller that sets it, and omitting it violates `NOT NULL`. The create path cannot succeed at all. Loud, and therefore the cheap one.
+- **C#** — the create path maps `New{Resource}` → entity; the DTO has no such member and the entity property has no initializer, so the column receives the CLR zero value. For an enum that is the synthetic `UNKNOWN = 0`, **which is not a literal of the declared OpenAPI enum**. The insert succeeds and the data is wrong. Silent, and it had been happening for as long as the endpoint existed.
+
+**What makes this a generator bug rather than an authoring one:** a *writable* sibling with the identical `required` + `default` pair does receive its initializer. Adding `readOnly` silently loses it. The author changed nothing about the default.
+
+**Generator action:** emit the `default` as a persistence default in every stack for any `readOnly` + `required` property that declares one. The precedent already exists — the generated base-entity infrastructure plus its pre-flush hook implement exactly this shape for `Id` / `CreatedAt` / `UpdatedAt`, values a caller cannot supply that are filled by infrastructure rather than by the whitelist. #1047 asks to generalise that.
+
+**Adoption note for the kit:** whatever a persistence default emits must agree with whatever the enum converter writes on the same column. A consumer reported (unverified, statically read) that a generated enum converter overrides only the from-string direction, so the to-string path falls through to `TypeConverter` and writes the C# member name rather than the `[EnumMember]` wire value — `"Pending"` where the spec says `pending`. If true, fixing #1047 without fixing that produces a default that disagrees with every subsequent write. Worth confirming before or alongside.
+
+**Blast radius is small and findable:** sweep for `readOnly: true` on a property that is also in `required` and carries a `default`. The reporting consumer found exactly two across their whole tree, both enums. The eleven other `readOnly` + `required` properties they found had no `default` and were `createdAt` / `updatedAt`, already handled by base-entity infrastructure.
+
+**`RequiredEnumDefaultValidationRule` is confirmed present in generator `0.5.7`** — the version `generator.lock` pins — verified against the published jar (sha256 matches the pin). The consumer had only checked `0.5.8-SNAPSHOT` and asked the kit to confirm before citing it. It is safe to cite, and `Vendor_Extensions.md` §4.6 already documents its `REQUIRED_ENUM_MISSING_DEFAULT` and `ENUM_MISSING_X_DEFAULT` findings; §4.6 now also names `ENUM_PROPERTY_LEVEL_DEFAULT_IGNORED` and `ENUM_DEFAULT_MISMATCH`, which it described behaviourally but had not tied to their diagnostics.
+
+**Do not add a kit rule flagging `required` + `default`.** It reads like a contradiction and is not — the consumer measured 66 correct instances across 43 schemas in one bundle. Such a rule was drafted downstream and withdrawn; see `clabonte/generator#982`.
+
 ---
 
 ## Outstanding kit-side work

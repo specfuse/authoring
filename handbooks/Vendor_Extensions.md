@@ -1370,9 +1370,11 @@ enum: [active, inactive, suspended]
 
 **A required enum property needs one.** An entity with a required enum property and no default has no defined state at creation, which is an error (`REQUIRED_ENUM_MISSING_DEFAULT`). Either give the enum a default as above, or make the property required in the `New{Entity}` schema so the client must supply it. Suppress deliberately with `x-skip-default-validation: true` on the property.
 
-**Where it goes.** On the **enum schema**, not beside the `$ref` that points at it — OpenAPI 3.0 ignores keywords declared as siblings of `$ref`, so a default written next to the reference is silently dropped.
+**Where it goes.** On the **enum schema**, not beside the `$ref` that points at it — OpenAPI 3.0 ignores keywords declared as siblings of `$ref`, so a default written next to the reference is silently dropped. The generator reports this directly as `ENUM_PROPERTY_LEVEL_DEFAULT_IGNORED`: move the `default` to the enum schema and add a matching `x-default` there. If the two are present but disagree, that is `ENUM_DEFAULT_MISMATCH`.
 
 Outside enum schemas, prefer the standard `default` keyword on its own. Use `x-default` alone for cases the standard keyword does not cover — e.g. a value the generator should use for test data without declaring it as a schema-level default.
+
+**What `default` means next to `required`** — including the `readOnly` case, where it becomes a persistence default rather than a client-side suggestion — is `API_Handbook.md` §1.9. All four diagnostics above are the enum-specific enforcement of that rule.
 
 ---
 
@@ -2417,6 +2419,8 @@ x-worker:
 | `name` | Yes | snake_case string | Field name on the generated settings class (e.g., `enrichment_batch_size`). |
 | `type` | No | string | One of `int`, `float`, `bool`, `str`. Default: `str`. |
 | `default` | No | any | Default value. Omit to declare the field as required (must be supplied via environment). |
+
+> **This `default`/required relationship is specific to tunables.** A tunable is an environment-supplied setting, so omitting its `default` is what makes it mandatory — the two keywords are alternatives. That is **not** how OpenAPI properties work, where a `default` sits alongside `required` rather than replacing it. See `API_Handbook.md` §1.9 for the four-case rule there. The same word means opposite things on the two surfaces, and a reader who meets one first will guess the other wrong.
 
 Use `tunables` for runtime knobs that are not part of the event payload — thresholds, limits, feature toggles, external-service parameters — and that operations may want to tune per environment without a code change.
 

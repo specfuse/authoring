@@ -369,6 +369,29 @@ CustomerList:
 - `PATCH /{resources}/{resourceId}` (body: `Update{Resource}`) → `200` with body `{Resource}` + `Location`
 - `POST /{resources}:search` (body: `{Resource}SearchRequest`) → `{Resource}List`
 
+### 1.9 `required`, `default`, and `readOnly` on a property
+
+`required` and `default` look contradictory — if the caller must send a value, what is a default for? They are not. `required` says the property must be **present in the resource**; `default` says what value to use **when nobody supplied one**. Those are different questions, and `readOnly` changes who "nobody" is.
+
+| Property is | What `default` means |
+|---|---|
+| `required`, no `default` | The caller must send a value, and nothing suggests one. |
+| not `required`, has `default` | The backend applies it on omission, **and** it doubles as a client-side suggestion. |
+| `required`, has `default` | **A client-side suggestion only** — prefill a form, seed a request builder. It is not permission to omit the property. |
+| `required` + `readOnly`, has `default` | A **persistence** default. `readOnly` removes the property from the `New{Resource}` DTO and from `aiAccess.writableProperties`, so no caller can supply it and the database is the only remaining consumer. |
+
+The last two rows are one rule seen from two sides: a `default` on a `required` property always addresses whoever is able to supply the value, and `readOnly` is what determines that nobody can.
+
+**Do not add a rule forbidding `required` + `default`.** It reads like a contradiction and it is not. One consumer measured 66 such properties across 43 schemas in a single bundled spec — status enums, country codes, priority levels, numeric thresholds — all correct. A validate-time rule against the pair would fail every one of them.
+
+**For enum properties, the default does not go on the property.** Write it on the enum schema, paired with `x-default`, not beside the `$ref` that points at it — OpenAPI 3.0 ignores keywords declared as siblings of a `$ref`, and the generator ignores property-level defaults on a referenced enum (`ENUM_PROPERTY_LEVEL_DEFAULT_IGNORED`). See `Vendor_Extensions.md` §4.6, which is where this is specified.
+
+**This is enforced, so it is worth knowing before the build tells you.** A required enum property with no default anywhere raises `REQUIRED_ENUM_MISSING_DEFAULT` — an entity whose state machine has no starting state. The fix is a default on the enum schema, or making the property required in `New{Resource}` so the client must supply it; `x-skip-default-validation: true` on the property suppresses it deliberately. Present in generator `0.5.7`, the version this kit pins.
+
+> **Row four is intent, not yet behaviour.** No generated stack currently turns a `readOnly` + `required` property's `default` into a persistence default — not EF `HasDefaultValue`, not SQLAlchemy `default=`/`server_default=`, not a C# property initializer. The column lands `NOT NULL` with no database default and no writer able to fill it. A consumer hit both halves of that: the Python path raises on create because the property is correctly outside the writable whitelist, and the C# path silently inserts the CLR zero value — for an enum, a synthetic `UNKNOWN` that is not a literal of the declared enum. Note the asymmetry that makes it a generator bug rather than an authoring one: a *writable* sibling with the same `required` + `default` pair does receive its initializer. Adding `readOnly` loses it.
+>
+> Tracked in `compatibility.md`, follow-up 22. **If you already have such properties, sweep existing rows** — on the C# path the bad value inserts silently, so the damage predates the diagnosis.
+
 ---
 
 ## 2) HTTP contract
