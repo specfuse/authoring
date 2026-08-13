@@ -217,7 +217,6 @@ jobs:
             echo "::error::$SCHEMA_RULE flagged FullyDocumented, which declares no schema." >&2
             fail=1
           fi
-          done
 
           [ $fail -eq 0 ] || exit 1
           echo "==> x-entity allow-list verified in both directions."
