@@ -40,6 +40,13 @@
 #   BareConcurrencyNone  flagged: `none` shorthand has nowhere to carry a reason
 #   UnprotectedNoReason  flagged: `mode: none` with the reason omitted
 #
+# And, by `specfuse-xentity-schema-deprecated` only:
+#
+#   DeprecatedSchemaKey  flagged: `schema` is deprecated in favour of the
+#                      project file's persistence.entities.<E>.schema. The
+#                      generator still parses it, so it must NOT appear in any
+#                      specfuse-xentity-shape finding.
+#
 # The last case is the one that matters most: relaxing the schema to fix a
 # false positive must not disable the typo-catching that justifies the closed
 # allow-list in the first place.
@@ -296,6 +303,21 @@ components:
         type: aggregate
         concurrency:
           mode: none                    # object form, reason omitted
+      properties:
+        id: { type: string, format: uuid }
+
+    # ---- Deprecated but still parsed by the generator. ----
+    # `schema` must NOT be a specfuse-xentity-shape finding — the generator
+    # reads it, so rejecting it would fail lint on a spec that generates fine.
+    # It MUST be a specfuse-xentity-schema-deprecated finding, or the key
+    # becomes invisible and nobody migrates before it is removed.
+    DeprecatedSchemaKey:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        concurrency: optimistic
+        schema: billing
       properties:
         id: { type: string, format: uuid }
 

@@ -420,6 +420,31 @@ Both failure modes were observed on one property (`status`, `required` + `readOn
 
 **Do not add a kit rule flagging `required` + `default`.** It reads like a contradiction and is not — the consumer measured 66 correct instances across 43 schemas in one bundle. Such a rule was drafted downstream and withdrawn; see `clabonte/generator#982`.
 
+### 23. `specfuse-xentity-shape` rejected `x-entity.schema`, which the generator still parses — **FIXED**
+
+**Status:** kit side fixed. No generator action; `schema` is deprecated but supported, and its removal is already planned as a migration into the project file.
+
+The shape guard allowed 16 sub-keys with `additionalProperties: false` at **error**, and `schema` was not among them. The generator parses it — `EntityDefinition` carries the field with a getter and setter and lists it in `KNOWN_SUB_KEYS`, verified against the published `0.5.7` jar, the version `generator.lock` pins. A consumer reported 17 live schemas failing lint on it.
+
+The kit had already documented the key as deprecated in `Vendor_Extensions.md` §1.1 and `Project_File.md` §6.8, pointing at `persistence.entities.<Entity>.schema` as the replacement. Only the ruleset disagreed — and it disagreed in the direction that converts "deprecated" into "removed": an error-severity finding means migrate now or stop linting, which is not what the generator is saying.
+
+**The fix is two halves, and both are load-bearing.** The shape guard now accepts `schema: { type: string }`, on the standing rule that a closed guard must never reject a form the generator accepts (the `concurrency: none` precedent, follow-up 18). A new WARNING, `specfuse-xentity-schema-deprecated`, carries the migration notice with the replacement path. Accepting without warning would let a deprecated key go silent and leave projects to discover the removal the hard way; warning without accepting is the bug being fixed. Both directions are pinned in CI via `DeprecatedSchemaKey`.
+
+**This is the fourth instance of the same failure** — `domain`, `concurrency`, `delete`, now `schema` — where a generator sub-key ships and a hand-maintained allow-list has to gain a matching property before any spec can use it. Tracked generator-side as `clabonte/generator#959`.
+
+**The drift also runs the other way, and that half is still open.** Diffing the pinned jar's `KNOWN_SUB_KEYS` (13) against the kit's allow-list (now 17) leaves four keys the kit advertises that the generator's `EntityDefinition` does not parse:
+
+| Key | Evidence in the `0.5.7` jar |
+|---|---|
+| `cascadeDelete` | No occurrence anywhere in the jar |
+| `requiresPagination` | No occurrence anywhere in the jar |
+| `mutability` | Present only in `AiAccessValidationRule` and `ValueObjectValidationRule` — not as an `x-entity` sub-key |
+| `children` | No `x-entity`-scoped use found |
+
+This independently corroborates the consumer reports behind `clabonte/generator#815` (`mutability`) and `#1026` (`requiresPagination`): both are declared across their entity definitions and consumed by nothing. The kit documents all four, so authors are writing metadata that no generated code reads — intent that can silently stop being true. **Generator action:** for each, either parse it or tell the kit to retire it. Worth settling in the same window as a jar cut, since the answer changes what the handbooks should say.
+
+**The durable fix for both directions** is the vocabulary check in follow-up 17. `check-extension-vocabulary.py` currently fails only when the generator knows a key the ruleset rejects — the direction that caught nothing here, because it reads the jar's class constants rather than the guard's allow-list. Generator FEAT-2026-0098 is reported to publish the vocabulary as `specfuse-generator extensions --format json`; that subcommand is **not** in `0.5.7` (checked). When it lands, point the guard at it and diff both directions.
+
 ---
 
 ## Outstanding kit-side work

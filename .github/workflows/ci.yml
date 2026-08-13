@@ -161,7 +161,8 @@ jobs:
           # A schema using every documented key must lint clean.
           for good in FullyDocumented ShorthandDelete ConcurrencyUnprotected \
                       BareConcurrencyNone UnprotectedNoReason \
-                      ConcurrencyOtherWithText ConcurrencyTextNoReason; do
+                      ConcurrencyOtherWithText ConcurrencyTextNoReason \
+                      DeprecatedSchemaKey; do
             if grep "specfuse-xentity-shape" "$REPORT" | grep -q "$good"; then
               echo "::error::$good uses only documented x-entity keys but was flagged." >&2
               echo "The allow-list has fallen behind the handbooks again." >&2
@@ -198,6 +199,24 @@ jobs:
               echo "::error::$REASON_RULE flagged $justified, which declares its concurrency." >&2
               fail=1
             fi
+          done
+
+          # `x-entity.schema` is deprecated, not removed: the generator still
+          # parses it (EntityDefinition.KNOWN_SUB_KEYS, verified against the
+          # pinned jar). So the shape guard accepts it — asserted above — and a
+          # separate WARNING carries the migration notice. Both halves matter:
+          # without the accept, a deprecated key stops a project linting; without
+          # the warning, it goes quiet and nobody migrates before it is removed.
+          SCHEMA_RULE=specfuse-xentity-schema-deprecated
+          if ! grep "$SCHEMA_RULE" "$REPORT" | grep -q "DeprecatedSchemaKey"; then
+            echo "::error::$SCHEMA_RULE did not flag DeprecatedSchemaKey." >&2
+            echo "A deprecated key with no warning is an invisible migration." >&2
+            fail=1
+          fi
+          if grep "$SCHEMA_RULE" "$REPORT" | grep -q "FullyDocumented"; then
+            echo "::error::$SCHEMA_RULE flagged FullyDocumented, which declares no schema." >&2
+            fail=1
+          fi
           done
 
           [ $fail -eq 0 ] || exit 1
