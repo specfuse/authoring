@@ -606,6 +606,21 @@ rules:
             domain: { type: string, pattern: "^[a-z][a-z0-9-]*$" }
             type: { type: string, enum: ["entity","aggregate"] }
             requiresPagination: { type: boolean, default: true }
+            # DEPRECATED, and accepted here for exactly that reason.
+            #
+            # The generator still parses `schema` (EntityDefinition carries the
+            # field and lists it in KNOWN_SUB_KEYS, verified against the pinned
+            # 0.5.7 jar), so this guard must accept it — see the note below on
+            # `concurrency` for why a closed guard must never reject a form the
+            # generator accepts.
+            #
+            # It is on its way out: database schema names belong in the project
+            # file, as `persistence.entities.<Entity>.schema` on a `relational`
+            # descriptor (Project_File.md §6.4, §6.8). Deprecation means migrate
+            # at your own pace; an ERROR here would have meant migrate now or
+            # stop linting, which is not what the generator is telling you.
+            # The nudge is `specfuse-xentity-schema-deprecated` (WARN) below.
+            schema: { type: string }
             # Lost-update protection for the entity's rows (generator
             # FEAT-2026-0078 / FEAT-2026-0088, Vendor_Extensions.md §1.1).
             #
@@ -899,6 +914,20 @@ rules:
   #
   # Deliberate — do not "fix" this by dropping `none` from the string arm of
   # specfuse-xentity-shape. See authoring #47.
+  # `x-entity.schema` is deprecated: storage technology has been removed from
+  # the spec, and a database schema name is deployment configuration rather
+  # than a property of the domain model. The generator still reads it, so this
+  # is a WARN and not an error — the shape guard accepts the key (see the note
+  # there). Migrate to the project file and delete it from the spec.
+  specfuse-xentity-schema-deprecated:
+    description: "x-entity.schema is deprecated. A database schema name is deployment configuration, not part of the domain model — declare it in the project file as persistence.entities.<Entity>.schema on a `kind: relational` descriptor (Project_File.md §6.4), then remove this key. The generator still honours it for now."
+    message: "{{description}}"
+    severity: warn
+    given: $.components.schemas[?(@ && @["x-entity"])]["x-entity"]
+    then:
+      field: schema
+      function: undefined
+
   specfuse-xentity-concurrency-unprotected-needs-reason:
     description: "x-entity.concurrency 'none' declares the entity deliberately unprotected against lost updates. Use the object form and record why: { mode: none, reason: <why no second writer can race> }. See Vendor_Extensions.md §1.1."
     message: "{{description}}"
