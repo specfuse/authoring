@@ -744,6 +744,14 @@ Files outside the wipe target are never touched — hand-written consumer code i
 }
 ```
 
+> **Enumerate the generated paths. Never name a parent directory that also holds hand-authored files.**
+>
+> `cleanScope` is a recursive delete, and it does not distinguish generated output from anything else living under the same path. A consumer set a Markdown group's scope to a `flows/` directory whose `scenarios/` subfolder was the generated part; the next run wiped **21 hand-authored flow documents** alongside it. They came back from git, which is the only reason it was a scare rather than a loss.
+>
+> The correct scope was the generated leaves, listed one per domain — `flows/orders/scenarios`, `flows/billing/scenarios`, and so on — never the `flows/` tree that contains them. When generated and hand-authored output share a tree, enumerate the generated paths explicitly, and re-check the list whenever a domain is added.
+
+**Glob patterns are not supported** — entries are matched as literal relative paths, consistent with the type above. A wildcard entry does not expand and does not error: it matches nothing, the clean silently does nothing for that entry, and the group regenerates over stale output that still looks current (consumer-verified, 2026-08-12). This is the same failure as the one above in the opposite direction, and it is the quieter one — an over-broad scope announces itself by deleting something, while a scope that matches nothing announces nothing at all. After changing `cleanScope`, verify from the run output that the files you expected to be removed actually were.
+
 ### 8.11 `filter` *(AsyncAPI workers only, v1)*
 
 **Purpose**: Predicate tree restricting which AsyncAPI worker targets the group generates. **The filter applies to AsyncAPI workers only — every other artifact type ignores it.** A missing or empty filter includes everything (backwards compatible).

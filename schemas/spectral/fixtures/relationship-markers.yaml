@@ -65,6 +65,15 @@ components:
           description: Client-generated correlation id; identifies no entity.
         naturalKey:
           type: string
+        # Optional string natural key. An optional twin is legal: `required` is
+        # not part of the x-expand-of twin check (consumer report 2026-08-12).
+        optionalKey:
+          type: string
+        # Optional uuid FK — the twin kind that was always accepted optional.
+        authorityId:
+          type: string
+          format: uuid
+          x-references: Customer
         # Scalar projection over a uuid FK.
         customer:
           allOf: [{ $ref: '#/components/schemas/BasicCustomer' }]
@@ -73,6 +82,14 @@ components:
         keyedThing:
           allOf: [{ $ref: '#/components/schemas/BasicOrder' }]
           x-expand-of: naturalKey
+        # Scalar projection over an OPTIONAL string natural key. Must not fire.
+        optionallyKeyedThing:
+          allOf: [{ $ref: '#/components/schemas/BasicOrder' }]
+          x-expand-of: optionalKey
+        # Scalar projection over an OPTIONAL uuid FK. Must not fire.
+        authority:
+          allOf: [{ $ref: '#/components/schemas/BasicCustomer' }]
+          x-expand-of: authorityId
         # Collection projection: array of $ref, not required.
         recentOrders:
           type: array

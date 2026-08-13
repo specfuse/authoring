@@ -1570,6 +1570,18 @@ x-entity:
 
 **Validator:** `REDUNDANT_JUNCTION_HASMANY` (ERROR). The discriminator (`neither parent declares the other under belongsTo`) correctly skips parent/child tenancy hierarchies — `Tenant → Customer` with `Customer.belongsTo.allOf: [Tenant]` is unaffected even if `Tenant.hasMany: [Customer]` is present, because there is no separate junction.
 
+### Relationship symmetry, and the two cases exempt from it
+
+`RELATIONSHIP_SYMMETRY` requires a child's `belongsTo Parent` to be matched by a reciprocal `Parent hasMany child`. Two cases are exempt, and in both the exemption is the *intended* shape — **do not add reciprocals to satisfy them.**
+
+**1. Tenancy roots.** When the parent is a declared tenancy root (`tenancy` in the project file — see `Project_File.md` §4.1), no reciprocal `hasMany` is required. A `belongsTo Tenant` on thirty entities is row-level tenant **scoping**, not aggregate **containment**: you never load `tenant.WorkItems` as an aggregate graph, because access is always a query filter. Enumerating every tenant-scoped child under `Tenant.hasMany` turns the tenant root into a god-aggregate and makes the generator emit child collections nothing loads.
+
+**2. `oneOf` and `optional` parents.** The reverse check skips ambiguous parentage by design. A polymorphic `belongsTo.oneOf: [Person, Organization]` requires neither `Person.hasMany` nor `Organization.hasMany` — the generator cannot know which parent a given row has. Only required (`allOf`) non-tenant parents demand the reciprocal.
+
+> **Tooling caveat — validate the project, not a bare bundle.** The freestanding `validate <bundle.yaml>` path has no project context, so it cannot read `tenancy` and **exemption 1 is inactive there**. It reports phantom symmetry errors, one per tenant-scoped child, against a model that is correct. A consumer lost real time to this and briefly "fixed" it by adding reciprocals that then had to be reverted.
+>
+> Validate through `validate path/to/project.json` (`Project_File.md` §"File Location, Discovery, and CLI Invocation") — the path that carries the tenancy context, and the one code generation itself uses. Treat symmetry findings from a bare-bundle run as unverified until reproduced against the project file.
+
 ### Common anti-patterns (and what the rules say about them)
 
 | Anti-pattern | Symptom | Rule that fires |
@@ -1604,7 +1616,7 @@ Full extension reference: `Vendor_Extensions.md` §1.7 (`x-references`), §1.8 (
 
 An embed that surfaces another entity's data for read convenience is **not owned state** and must say so, or it will be persisted as if it were:
 
-- **`x-expand-of: <twin>`** — a scalar projection of the entity identified by a sibling property (a uuid FK, or a required string natural key). Excluded from persistence.
+- **`x-expand-of: <twin>`** — a scalar projection of the entity identified by a sibling property (a uuid FK, or a string natural key; either may be optional). Excluded from persistence.
 - **`x-projection: true`** — a non-owned array-of-`$ref` collection. Read-only, and never `required`, because a projection is a convenience the server may decline to populate.
 
 Neither marker may appear on `New*` or `Update*` derivatives — a client cannot write a projection.

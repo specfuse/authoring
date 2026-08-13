@@ -656,7 +656,7 @@ rules:
   # ===========================================================================
 
   specfuse-async-observability-should-exist:
-    description: "Worker operations (on-* receive handlers and run-* scheduled dispatchers) should declare x-observability. Excludes emit-* operations, which are publishing declarations and not workers — observability lives on the consuming on-*/run-* operation that owns the publish via x-emits or x-scheduled-job."
+    description: "Worker operations (on-* receive handlers and run-* scheduled dispatchers) should declare x-observability. Excludes emit-* operations, which declare that an event exists and bind it to a channel — they deploy nothing, so there is no runtime to observe. Observability belongs on the operations that actually run: the producers that declare the event in their own x-emits, and the on-*/run-* workers themselves."
     message: "Operation '{{path}}' is a worker (has x-worker) but is missing x-observability. Add criticality and SLA thresholds."
     severity: warn
     given: $.operations[?(@ && @['x-worker'])]

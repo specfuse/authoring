@@ -214,7 +214,9 @@ Four property-level markers make relationship intent explicit now that implicit 
 - **`x-fk-for: <Entity>`** — owning FK under a name that is not `{Entity}Id`, bound to a declared `belongsTo` (composition and Cascade preserved).
 - **`x-expand-of: <twin>`** / **`x-projection: true`** — read-only scalar and collection projections, excluded from persistence.
 
-**Convention shift:** the former "`belongsTo` wins, `x-references` degrades to a hint" precedence is **removed**. `x-references` is association-only; declaring it alongside a `belongsTo` for the same target is an error.
+**Convention shift:** the former "`belongsTo` wins, `x-references` degrades to a hint" precedence is **removed**. `x-references` is association-only; declaring it against an *unbound* `belongsTo` for the same target is an error.
+
+**Binder-awareness (correction, consumer-reported 2026-08-12).** The exclusion is per-FK, not per-target name. A `belongsTo <T>` is consumed by the property that satisfies it — a conventional `{t}Id` or an `x-fk-for: <T>` — and once consumed, a sibling property may carry `x-references: <T>` legally. `DDD_DUAL_RELATIONSHIP_DECLARATION` must therefore fire on an unclaimed `belongsTo`, not on the target name appearing twice on one entity. The generator implements this; the handbooks stated the blanket form until `Vendor_Extensions.md` §1.7 rule 2 was added.
 
 **What the kit enforces:** marker value shape, marker exclusivity on a property, the `x-references: none` justification, projection coherence within a schema (`x-expand-of` names an existing sibling identifier; `x-projection` marks a non-required array of `$ref`), and that neither projection marker appears on a `New*`/`Update*` derivative.
 
@@ -350,6 +352,50 @@ Every vendor extension the kit closes with `additionalProperties: false` is a sc
 **Do not plan to derive it from `mutability`.** `appendOnly` looks like it could supply `reason: append-only` automatically. In the same census `mutability` was declared on 10 of 86 entities — an optional key with a permissive default is too sparse to source a required one.
 
 **Severity:** additive as a vocabulary. As a *finding*, it is not: a spec with no `concurrency` anywhere is not a protected spec, it is an unmeasured one, and the entities most likely to be missed are the human-vs-human contended ones (approval workflows, shared rosters) that an AI-safety framing does not surface.
+
+### 19. `emit-*` coverage is enforced for one producer kind out of three (`clabonte/generator#1027`)
+
+**Status:** generator-side, filed by a consumer. The kit-side half is documentation only and is done (`AsyncAPI_Handbook.md` §6.3).
+
+The cross-spec validator requires a matching `emit-*` send operation for every `x-emits` on an **`on-*` receive operation**, and requires nothing for the other two producer kinds. Measured on the reporting consumer's bundle: 273 `x-emits` declarations, 212 distinct events, 177 `emit-*` operations, **37 events published with no declaration** — 35 from OpenAPI write operations, 2 from `run-*` jobs, 0 from `on-*` workers. The `on-*` half holding perfectly is what makes the other half's absence easy to miss.
+
+What keeps it quiet is that the 37 are not broken: each has a message file with a matching `x-label` and sits on the shared channel's `messages` map, so it is a fully wired event missing only its publishing declaration. Nothing fails. The consequence is a convention that splits with nothing pushing either way — in that consumer, one domain authors `emit-*` for REST-produced events and three do not, and both pass lint. "Does this event have an `emit-*`?" then answers *which domain wrote it*, not anything semantic, and the `emit-*` set stops being the index of what is on the bus.
+
+**Generator action:** extend the existing check to every producer kind. If any operation declares `x-emits: X.Y` — OpenAPI write operation, `run-*`, or `on-*` — require an `emit-*` send operation whose message carries `x-label` `X.Y`.
+
+**Ship it at WARNING, not ERROR.** At ERROR it fails a real consumer bundle 37 times on the day it lands. The same reasoning set `ENTITY_SHAPE_UNKNOWN_PROPERTY`'s initial severity (FEAT-2026-0098 / generator #1011) and worked there. Promote once consumers report clear.
+
+**This belongs in the generator, not in kit tooling.** The rule spans two documents — `x-emits` in the OpenAPI document, `emit-*` in the AsyncAPI one — and Spectral lints one document at a time, so no rule in `specfuse-openapi.yaml` or `specfuse-asyncapi.yaml` can see both halves. The generator's cross-spec validator already holds both, and keeping it there respects the kit's position that it is a spec-authoring contract and not a CI product.
+
+**The general form, which is the more valuable half:** every declared link between two spec documents needs a cross-document enforcement story. Where the generator does not provide one, each consumer invents a different workaround — the reporting consumer built a source-tree ratchet guard, and got the silence-failure bug in it on the first try. `x-emits` → `emit-*` is the instance in hand; it will not be the last.
+
+### 20. `x-expand-of` twin check is asymmetric (`clabonte/generator#1028`) — kit side **FIXED**
+
+**Status:** kit side fixed in `openapiProjectionCoherence.js`; the generator's `DDD_INVALID_EXPAND_OF` carries the same logic and the same message and still needs the matching change.
+
+Both the kit function and the generator rule accepted a `format: uuid` FK twin **with no `required` check**, while demanding that a `type: string` natural-key twin be listed in `required`. The stated rationale — "a projection needs a dependable identifier to expand" — applies identically to both, and none was given for the split.
+
+It rejects legitimate models. The reporting consumer has `ComplianceItem.authority` expanding `authorityCode`, an optional natural-key FK to an aggregate keyed by `code` rather than a uuid; the create DTO's `required` is `[kind, title]`, so an item with no authority is a supported state and making `authorityCode` required would assert a promise the create contract cannot keep.
+
+The deeper tension settles the direction: a projection is `readOnly` and — by this same function's other check — **forbidden** from `required`, precisely because the server may decline to populate it. Requiring its *twin* to be `required` sits against that. So the fix drops the `required` condition rather than adding one to the uuid branch. Fixture `GoodMarkers` now carries an optional uuid twin and an optional string twin; `BadExpandOfTwin` still fires on a non-identifier twin.
+
+**Consequence while the generator lags:** a consumer running both sees the kit accept what the generator rejects. `specfuse-projection-coherence` is otherwise adoptable — the reporting consumer held it back at ERROR for this single false positive.
+
+### 21. `groups[].domains` is undocumented in `Project_File.md`
+
+**Status:** open. Needs a generator answer before the kit can write it up.
+
+A consumer runs six generation groups carrying:
+
+```json
+"domains": { "exclude": ["crm"] }
+```
+
+Neither `domains` nor `exclude` appears anywhere in `handbooks/Project_File.md` — not in §8's field list, not in any example. Every other top-level key of that consumer's project file is documented; this is the only gap, which suggests the doc is behind the generator rather than the key being invented.
+
+**Generator action:** confirm whether `groups[].domains` (and its `exclude`, and any sibling `include`) is supported, and state its interaction with `filter` (§8.11), which today is documented as AsyncAPI-workers-only. If it is supported, the kit documents it in §8. If it is not, consumers depending on it need to hear so — silently-ignored config is the shape that fails at the worst time.
+
+Do not document it kit-side on inference. Writing a spec for behaviour nobody has confirmed is how a handbook starts disagreeing with the jar.
 
 ---
 
