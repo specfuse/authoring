@@ -507,6 +507,39 @@ A consumer (`restomanager-specs`) has retired `x-ai-safe` locally and replaced i
 
 **Severity:** the `x-ai-safe` half is a live correctness problem in the handbooks and is fixed here. The `x-effects` half is a proposal with an open question on both sides and nothing to do until the consumer's MCP work starts.
 
+### 26. `x-classification` — the kit picks up the half the generator delegated to it
+
+**Status:** kit-side work **done** (`Vendor_Extensions.md` §1.5, four Spectral rules, `schemas/spectral/fixtures/classification.yaml`, a both-directions CI step). Three generator-side items below.
+
+**The split, stated by the generator itself.** `PiiClassificationValidationRule` carries the comment: *"The classification value itself isn't validated here — that's a structural concern handled by Spectral. We only enforce presence."* So the jar owns presence (`PII_FIELD_MISSING_CLASSIFICATION`) and the response-leak guard (`SENSITIVE_FIELD_IN_RESPONSE`), and everything decidable from the property schema alone was Spectral's — a delegation the kit had never picked up. The result was that §1.5's rules 1, 5 and 6 were documented as validation and enforced by **nothing on either side**, with rule 5 naming a finding id (`CLASSIFICATION_EXPOSED_CONTRADICTION`) that exists in neither codebase.
+
+That gap has an asymmetric cost. A missing lint rule leaves a spec ungated; a *documented* missing lint rule leaves a spec ungated that someone believes is gated — and on this surface the belief is "a human reviewed this secret-shaped field and confirmed it is safe to return".
+
+**Three handbook corrections, all of them cases where following the kit produced the wrong spec:**
+
+1. **`*Token` was documented as secret-shaped; the generator excludes it deliberately.** §1.5 listed the `SENSITIVE_FIELD_IN_RESPONSE` heuristic as `*Hash, *Token, *Secret, *Salt, *Password`. `SensitiveFieldInResponseValidationRule` matches `hash` / `secret` / `salt` / `password` only, and its javadoc says "NOT plain `*token`". The handbook's own worked example then recommended `x-classification: [exposed]` for "an already-public `shareToken`" — advice to write a reviewed override of a rule that never fires. Corrected, along with the two structural pre-filters the section omitted (a non-string property and a temporal one are never candidates).
+2. **`PII_FIELD_MISSING_CLASSIFICATION` is an ERROR and the kit documented nothing about it.** §1.5 said `x-classification` was "**Optional**: Yes", which is wrong for any property matching `format: email` / `tel` or one of 19 exact property names. An author following the handbook hit a hard generation failure the handbook had told them could not happen. The trigger list is now documented in full, including *why* it is exact-match rather than substring.
+3. **Rules 5 and 6 now have an implementation** rather than a finding id nobody emits.
+
+**What the kit now enforces**, all `error`, all mirroring or completing a jar position rather than tightening past one:
+
+| rule | covers |
+|---|---|
+| `specfuse-classification-values` | §1.5 rule 1 — closed set, non-empty, no duplicates. Not scoped to entities: a typo is a typo wherever it is written |
+| `specfuse-classification-exposed-contradiction` | §1.5 rule 5 |
+| `specfuse-classification-exposed-needs-description` | §1.5 rule 6 |
+| `specfuse-classification-pii-required` | mirrors `PII_FIELD_MISSING_CLASSIFICATION` so the author sees it in the editor |
+
+The PII trigger list in `openapiClassification.js` is **copied from the jar and annotated as such**. Widening it is the forbidden direction (lint fails on a spec that generates fine, follow-up 18); narrowing it silently drops coverage the jar has. Change it only in step with the jar — and note that the same value-level drift §18 called unsolved applies here, since nothing compares this list to the jar automatically.
+
+**Generator-side, three items:**
+
+1. **`x-classification: [exposed]` satisfies `PII_FIELD_MISSING_CLASSIFICATION`.** The presence check accepts any non-empty value, so `dateOfBirth: { x-classification: [exposed] }` passes a PII gate while asserting the field is safe to return as authored. That is the one combination the rule exists to prevent, expressed in the vocabulary the rule accepts. The kit does **not** close this — a kit rule stricter than the jar is the forbidden direction — but the jar should: `exposed` alone should not satisfy the PII requirement.
+2. **`ExtensionConstants` documents the value set as `pii` / `sensitive` / `encrypted`, omitting `exposed`**, while `SensitiveFieldInResponseValidationRule` reads `exposed`. The jar's own constant is behind the jar's own rule. Harmless today; it is the sort of drift that decides an argument about the closed set later.
+3. **§1.5 rule 2 — `encrypted` requires a string-representable property — is enforced nowhere**, and is not decidable from the kit side alone for a `$ref`'d value object. Left as guidance and labelled as such in the handbook rather than presented as a gate.
+
+**Severity:** the rules are new gates on an existing vocabulary, so a spec that already classified correctly is unaffected — verified: `examples/hello-orders/` gains zero findings. A spec that has been declaring `[exposed]` without a description, or writing an unlisted value, will see new errors, and those are the specs the rules exist for.
+
 ---
 
 ## Outstanding kit-side work

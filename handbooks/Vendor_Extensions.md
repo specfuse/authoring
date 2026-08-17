@@ -783,7 +783,23 @@ OrderStatus:
 
 **Scope**: Applied to a property schema inside an entity (`x-entity`) main resource. May appear on any scalar property; not used on relationship properties.
 
-**Optional**: Yes. Default = unclassified (no PII / sensitive / encryption requirements).
+**Optional**: **Conditionally.** Unclassified is the default for an ordinary property — but on a property the validator reads as PII, `x-classification` is **required**, and omitting it is an ERROR (`PII_FIELD_MISSING_CLASSIFICATION`) that fails generation. See "Where it is required" below before treating this key as opt-in.
+
+**Where it is required**
+
+`PiiClassificationValidationRule` errors on any property of an **entity** schema that matches either trigger and carries no `x-classification`:
+
+| trigger | matches |
+|---|---|
+| string `format` | `email`, `tel` |
+| property name (case-insensitive, **exact match**) | `firstName`, `lastName`, `fullName`, `middleName`, `preferredName`, `emailPrimary`, `emailSecondary`, `phonePrimary`, `phoneSecondary`, `linkedInUrl`, `personalUrl`, `addressLine1`, `addressLine2`, `dateOfBirth`, `birthDate`, `dob`, `sin`, `ssn`, `ipAddress` |
+
+Two things about that list are deliberate and worth knowing before you argue with it:
+
+- **It is exact-match, not substring.** An `emails` array on an `Inbox` schema does not trigger it. The narrowness is the point — a substring heuristic flags collections and unrelated fields, and a rule that fires on those gets switched off.
+- **The check is presence, not correctness.** Any non-empty classification satisfies it, including `[exposed]`. Choosing the *right* member is your judgement; the validator only refuses silence. (`[exposed]` on a `dateOfBirth` therefore passes — see `compatibility.md` §26.)
+
+**Derivatives are exempt.** The rule runs on `x-entity` schemas only; `New*` / `Update*` / `Basic*` project the same fields and would double-flag every PII property.
 
 **Schema**:
 ```yaml
@@ -837,18 +853,29 @@ Customer:
       # no classification — unclassified
 ```
 
-**Validation rules** (Spectral + Specfuse):
+**Validation rules**
 
-1. Values must come from the closed set `[pii, sensitive, encrypted, exposed]`.
-2. `x-classification: [encrypted]` requires the property to also be representable as a string (encryption produces opaque ciphertext).
-3. When a snapshot file references a property whose source entity carries `pii` or `sensitive`, the snapshot file MUST declare `x-snapshot-pii-acknowledged.{propertyName}` with a justification ≥ 20 chars (see §11.2).
-4. When `aiAccess.readableProperties` is omitted, properties classified `encrypted` are excluded from the implicit allow-set (existing rule 5 in §1.1.1, now driven by classification).
-5. `x-classification: [exposed]` MUST NOT co-occur with `sensitive` or `encrypted` on the same property — those demand masking/encryption, which contradicts "safe to expose." A property carrying both fails validation (`CLASSIFICATION_EXPOSED_CONTRADICTION`).
-6. A property carrying `x-classification: [exposed]` MUST also carry a non-empty `description` justifying why the field is safe to expose despite its name.
+The two sides split cleanly, and the split is the generator's own: `PiiClassificationValidationRule` states that it enforces **presence** only and that "the classification value itself … is a structural concern handled by Spectral". Everything decidable from the property schema alone is therefore a kit rule.
+
+| # | rule | enforced by |
+|---|---|---|
+| 1 | Values must come from the closed set `[pii, sensitive, encrypted, exposed]`, as a non-empty array with no duplicates. | kit — `specfuse-classification-values` (error) |
+| 2 | `x-classification: [encrypted]` requires the property to be representable as a string (encryption produces opaque ciphertext). | **nothing yet** — see `compatibility.md` §26 |
+| 3 | A snapshot referencing a property whose source entity carries `pii` or `sensitive` MUST declare `x-snapshot-pii-acknowledged.{propertyName}` with a justification ≥ 20 chars (see §11.2). | kit — `specfuse-async-snapshot-guardrails` (AsyncAPI ruleset) |
+| 4 | When `aiAccess.readableProperties` is omitted, `encrypted` properties are excluded from the implicit allow-set (§1.1.1 rule 5). | generator |
+| 5 | `x-classification: [exposed]` MUST NOT co-occur with `sensitive` or `encrypted` — those demand masking or ciphertext, which contradicts "safe to expose". | kit — `specfuse-classification-exposed-contradiction` (error) |
+| 6 | A property carrying `x-classification: [exposed]` MUST carry a non-empty `description` justifying why exposure is safe. | kit — `specfuse-classification-exposed-needs-description` (error) |
+| 7 | A property the validator reads as PII MUST declare `x-classification` (see "Where it is required" above). | generator — `PII_FIELD_MISSING_CLASSIFICATION` (error); mirrored in the editor by kit `specfuse-classification-pii-required` |
+
+Rules 5 and 6 were documented here for some time and enforced by **nothing** on either side — rule 5 even named a finding id (`CLASSIFICATION_EXPOSED_CONTRADICTION`) that exists in neither the kit nor the jar. They are kit Spectral rules now. Rule 2 is still unenforced anywhere; treat it as guidance, not a gate.
 
 **`SENSITIVE_FIELD_IN_RESPONSE` — the `exposed` escape hatch**
 
-The generator's `SENSITIVE_FIELD_IN_RESPONSE` rule flags any **response-bound** entity property whose name is *secret-shaped* — matches the heuristic `*Hash`, `*Token`, `*Secret`, `*Salt`, `*Password` (case-insensitive suffix) — because such a field on a response DTO is a likely credential leak.
+The generator's `SENSITIVE_FIELD_IN_RESPONSE` rule flags any **response-bound** entity property whose name is *secret-shaped* — a **string**-typed property whose name ends in `hash`, `secret`, `salt` or `password` (case-insensitive) — because such a field on a response DTO is a likely credential leak.
+
+> **`*Token` is not in the heuristic**, and earlier revisions of this section wrongly said it was. The generator excludes plain `*token` deliberately: a one-time or public token is not a persisted credential, and including the suffix flagged enough legitimate fields to make the rule noise. Do not reach for `x-classification: [exposed]` to "clear" a `shareToken` — nothing was ever flagging it, and an `exposed` that overrides nothing is an assertion in the spec with no reviewer behind it.
+>
+> Two structural exclusions come before the name match: a **non-string** property can never be the secret itself, and a **temporal** one (`format: date` / `date-time`) is a timestamp whose name happens to end in a secret word (`passwordChangedAt`). Neither is a candidate.
 
 A secret-shaped, response-bound property **passes** the rule only if it carries exactly one of:
 
@@ -857,7 +884,7 @@ A secret-shaped, response-bound property **passes** the rule only if it carries 
 - `x-classification: [encrypted]` — the serialized value is opaque ciphertext; or
 - `x-classification: [exposed]` — a reviewer has confirmed the field is safe to return as-is.
 
-`x-classification: [sensitive]` alone does **not** satisfy the rule: `sensitive` means *must be masked*, not *may be exposed*. Using `exposed` is an explicit, reviewed override — reach for it only when the secret-shaped name is a false positive (e.g. a public `avatarHash` content-address, an already-public `shareToken`).
+`x-classification: [sensitive]` alone does **not** satisfy the rule: `sensitive` means *must be masked*, not *may be exposed*. Using `exposed` is an explicit, reviewed override — reach for it only when the secret-shaped name is a false positive, e.g. a public `avatarHash` content-address. Not for a `*Token`: that suffix is not in the heuristic at all, so there is nothing to override.
 
 ### 1.6 x-content
 

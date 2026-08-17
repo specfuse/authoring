@@ -1,0 +1,154 @@
+# =============================================================================
+# Regression fixture: x-classification value rules
+# =============================================================================
+# Pins the four `specfuse-classification-*` rules. Both directions per rule:
+# each fires on its violation AND stays silent on the correct case beside it.
+#
+# The clean cases matter more than usual here. Three of these rules run over
+# EVERY property of every entity schema, so an over-matching one does not
+# produce a few wrong findings — it produces one per property across the whole
+# spec, which is the state in which a team turns the rule off.
+#
+#   Customer (the positive control — every property correct, NO finding)
+#     id            unclassified scalar, not PII-shaped
+#     email         format: email + [pii]                        clean
+#     taxId         [pii, encrypted]                             clean
+#     creditScore   [sensitive]                                  clean
+#     avatarHash    [exposed] + a description                    clean
+#     emails        an array named like PII but NOT an exact
+#                   match for the jar's narrow name list         clean — must
+#                   stay clean, this is the case the narrow list exists for
+#
+#   BadValues
+#     nickname      x-classification: [secret]     -> values (not in the set)
+#     alias         x-classification: pii          -> values (scalar, not array)
+#     tag           x-classification: []           -> values (minItems)
+#
+#   BadExposed
+#     sessionHash   [exposed, encrypted]           -> exposedContradiction
+#     resetSalt     [exposed, sensitive]           -> exposedContradiction
+#     tokenHash     [exposed], no description      -> exposedDescription
+#     blankHash     [exposed], whitespace-only     -> exposedDescription
+#
+#   MissingPii
+#     firstName     no classification              -> piiRequired (name)
+#     dateOfBirth   no classification              -> piiRequired (name)
+#     contactEmail  format: email, no class        -> piiRequired (format)
+#     phonePrimary  [exposed]                      -> CLEAN for piiRequired.
+#                   Presence only, exactly as the jar checks it. See the note
+#                   in compatibility.md §26 — this is a real hole, and it is
+#                   the JAR's hole. A kit rule that closed it would fail lint
+#                   on specs that generate fine.
+#     inboxCount    integer, unremarkable name     -> clean
+#
+#   NotAnEntity (no x-entity)
+#     firstName     no classification              -> clean for the three
+#                   entity-scoped rules; DTOs project the same fields and
+#                   double-flagging every PII property is how the rule dies.
+#     nickname      x-classification: [secret]     -> values STILL fires; the
+#                   value set is the same wherever it is written.
+#
+# Not a Specfuse-conformant example — do not copy.
+# =============================================================================
+openapi: 3.0.3
+info:
+  title: Classification fixture
+  version: "1.0.0"
+
+paths: {}
+
+components:
+  schemas:
+    # ---- Positive control. No classification finding expected. --------------
+    Customer:
+      type: object
+      x-entity:
+        domain: crm
+        type: aggregate
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
+        email:
+          type: string
+          format: email
+          x-classification: [pii]
+        taxId:
+          type: string
+          x-classification: [pii, encrypted]
+        creditScore:
+          type: number
+          x-classification: [sensitive]
+        avatarHash:
+          type: string
+          description: >-
+            Content address of the public avatar image; not a credential and
+            safe on responses despite the secret-shaped name.
+          x-classification: [exposed]
+        emails:
+          type: array
+          items: { type: string }
+
+    # ---- Value-set violations. ---------------------------------------------
+    BadValues:
+      type: object
+      x-entity:
+        domain: crm
+        type: entity
+      properties:
+        nickname:
+          type: string
+          x-classification: [secret]
+        alias:
+          type: string
+          x-classification: pii
+        tag:
+          type: string
+          x-classification: []
+
+    # ---- `exposed` violations. ---------------------------------------------
+    BadExposed:
+      type: object
+      x-entity:
+        domain: crm
+        type: entity
+      properties:
+        sessionHash:
+          type: string
+          description: Session fingerprint.
+          x-classification: [exposed, encrypted]
+        resetSalt:
+          type: string
+          description: Password reset salt.
+          x-classification: [exposed, sensitive]
+        tokenHash:
+          type: string
+          x-classification: [exposed]
+        blankHash:
+          type: string
+          description: "   "
+          x-classification: [exposed]
+
+    # ---- Missing classification on PII-shaped properties. ------------------
+    MissingPii:
+      type: object
+      x-entity:
+        domain: crm
+        type: entity
+      properties:
+        firstName: { type: string }
+        dateOfBirth: { type: string, format: date }
+        contactEmail: { type: string, format: email }
+        phonePrimary:
+          type: string
+          description: Reviewed — published directory listing.
+          x-classification: [exposed]
+        inboxCount: { type: integer }
+
+    # ---- Not an entity. The entity-scoped rules must not reach it. ---------
+    NotAnEntity:
+      type: object
+      properties:
+        firstName: { type: string }
+        nickname:
+          type: string
+          x-classification: [secret]
