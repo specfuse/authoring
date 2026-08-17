@@ -197,6 +197,15 @@ Both kit rules of this shape (`specfuse-no-inline-enums`,
 `specfuse-no-inline-objects`) already carry it. If you write overlay rules that
 inspect schema shape, they need it too.
 
+**A second, less obvious case: rules that key on the `$ref`'s NAME.** Resolution
+does not just inline the target, it erases which target it was. The
+`specfuse-read-model-*` and `specfuse-projection-coherence` rules all decide
+something from the referenced schema's *name* — is this embed an entity, a
+`Basic*` projection, or a plain enum — so a resolved document leaves them
+nothing to decide from. They carry `resolved: false` for that reason rather
+than the inline-vs-`$ref` one. The generator's equivalent checks scan the raw
+YAML for the same reason.
+
 ### Auditing your own ruleset for resolution sensitivity
 
 `$ref` resolution affects **every rule that inspects schema shape**, not just

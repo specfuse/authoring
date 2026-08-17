@@ -31,6 +31,8 @@ formats: [oas3]
 functions:
   - openapiProjectionCoherence
   - openapiChildCollectionReconcile
+  - openapiServiceRegistry
+  - openapiReadModelShape
 
 rules:
 
@@ -1408,3 +1410,206 @@ rules:
       function: pattern
       functionOptions:
         match: "^(person|internet|phone|location|company|date|string|lorem|number)\\."
+
+  # ===========================================================================
+  # Service topology — info.x-services, holds, and Read{Entity}
+  # ===========================================================================
+  #
+  # Handbook: Vendor_Extensions.md §14. Project file: Project_File.md §3.1
+  # (`groups[].service`).
+  #
+  # PIN STATE — READ THIS BEFORE CHANGING A SEVERITY HERE.
+  #
+  # `info.x-services` is a generator vocabulary that kit 0.8.0's PINNED
+  # GENERATOR (0.5.8) DOES NOT KNOW. It landed on generator `main` after 0.5.8
+  # and ships in the next generator release. Verified against the pin:
+  # `extensions --format json` on 0.5.8 reports `x-entity` keys only and no
+  # `x-services`. So on 0.5.8 the key is inert — declaring it changes nothing
+  # about generation, and these rules are the ONLY feedback an author gets.
+  #
+  # That is the shape of the `0.7.0` erratum (compatibility.md §18): a kit that
+  # documents and lints a contract its own pinned jar does not implement. The
+  # difference, and the reason these ship anyway, is direction. `0.7.0` accepted
+  # a VALUE the pinned jar rejected, so following the handbook produced an ERROR
+  # at generate time. Here the pinned jar has no opinion at all: it cannot
+  # contradict these rules, and no existing spec declares `info.x-services` or a
+  # `Read*` schema, so the blast radius on every spec that exists today is zero
+  # — exactly as it is generator-side.
+  #
+  # Each rule below mirrors a generator finding id at the SAME severity. The
+  # mapping is recorded per rule so the next pin bump can diff it rather than
+  # re-derive it. Do not tighten past the jar; see compatibility.md §24.
+  #
+  # All of these are gated on a declaration. A spec with no `info.x-services`
+  # and no `Read*` schema cannot trip any of them.
+
+  specfuse-services-registry-shape:
+    description: >-
+      info.x-services must be a mapping of service name to metadata carrying `domains`.
+      A bare sequence of service names carries no domains and so expresses nothing.
+    # Generator: SERVICE_REGISTRY_UNREADABLE (WARNING on the whole-value shape),
+    # SERVICE_ENTRY_UNREADABLE (ERROR, per malformed entry), SERVICE_DOMAINS_MISSING
+    # (ERROR). Held at `error` here because a registry the author cannot see is
+    # read is worse in an editor than in a build log, and every arm the WARNING
+    # covers is a shape the schema function reports as one finding anyway.
+    severity: error
+    given: $.info["x-services"]
+    resolved: false
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          type: object
+          minProperties: 1
+          # Service names are kebab-case, matching the domain vocabulary they
+          # own — `scheduling-service`, not `SchedulingService`.
+          propertyNames:
+            pattern: "^[a-z][a-z0-9-]*$"
+          additionalProperties:
+            type: object
+            additionalProperties: false
+            # `domains` is required with no default. A service entry declaring
+            # no domains is a typo, not a decision — there is no sensible
+            # reading of "a service that owns nothing".
+            required: ["domains"]
+            properties:
+              domains:
+                type: array
+                minItems: 1
+                items:
+                  type: string
+                  pattern: "^[a-z][a-z0-9-]*$"
+              # Optional. A service that keeps no replicas omits it entirely.
+              # Entity names, so PascalCase.
+              holds:
+                type: array
+                minItems: 1
+                items:
+                  type: string
+                  pattern: "^[A-Z][A-Za-z0-9]*$"
+
+  specfuse-services-domain-single-owner:
+    description: >-
+      A domain must be claimed by exactly one service in info.x-services.
+    # Generator: SERVICE_DOMAIN_DUPLICATE_OWNER (ERROR). This is the headline
+    # check and the reason the registry lives in the spec rather than in
+    # project.json — a per-repository project file can never see two services at
+    # once, so it could never detect this.
+    message: "{{error}}"
+    severity: error
+    given: $.info["x-services"]
+    resolved: false
+    then:
+      function: openapiServiceRegistry
+      functionOptions:
+        check: duplicateOwner
+
+  specfuse-services-domain-registered:
+    description: >-
+      A domain claimed in info.x-services must be a member of info.x-domains.
+    # Generator: SERVICE_DOMAIN_UNREGISTERED (ERROR). Skipped when x-domains is
+    # absent — the two registries degrade independently, and an absent domain
+    # registry is a separate finding, not 20 unregistered-domain findings.
+    message: "{{error}}"
+    severity: error
+    given: $.info["x-services"]
+    resolved: false
+    then:
+      function: openapiServiceRegistry
+      functionOptions:
+        check: unregisteredDomain
+
+  specfuse-services-holds-pairing:
+    description: >-
+      `holds: [X]` requires that X is an entity in this spec and that a ReadX schema exists.
+    # Generator: SERVICE_HOLDS_UNKNOWN_ENTITY (ERROR), SERVICE_HOLDS_NO_READ_MODEL (ERROR).
+    # This is the half of the two-halves rule authors get wrong most often:
+    # declaring `holds` alone has nothing to generate.
+    message: "{{error}}"
+    severity: error
+    given: $.info["x-services"]
+    resolved: false
+    then:
+      function: openapiServiceRegistry
+      functionOptions:
+        check: holds
+
+  specfuse-read-model-unheld:
+    description: >-
+      A Read{Entity} schema that no service holds is authored and unused.
+    # Generator: READ_MODEL_UNHELD (WARNING). The other half of the pairing:
+    # publishing a Read{Entity} alone would make every group referencing that
+    # entity legal, including one whose author never considered keeping a copy.
+    # WARNING and not ERROR because authoring the owner's half first, before the
+    # holder declares itself, is a legitimate order to work in.
+    message: "{{error}}"
+    severity: warn
+    given: $.info["x-services"]
+    resolved: false
+    then:
+      function: openapiServiceRegistry
+      functionOptions:
+        check: unheld
+
+  specfuse-read-model-primary-key:
+    description: >-
+      A Read{Entity} must carry its source's primary key ('id' or '{Entity}Id').
+    # Generator: READ_MODEL_NO_PRIMARY_KEY (ERROR). Same key detection as the
+    # jar: a property named `id` or `{Source}Id`, case-insensitively.
+    message: "{{error}}"
+    severity: error
+    given: $.components.schemas
+    resolved: false
+    then:
+      function: openapiReadModelShape
+      functionOptions:
+        check: primaryKey
+
+  specfuse-read-model-nested-entity:
+    description: >-
+      A Read{Entity} must not embed another entity or a Basic* projection — flatten to the FK.
+    # Generator: READ_MODEL_NESTED_ENTITY (ERROR). Enum- and value-object-typed
+    # properties are fine and never trip this. `resolved: false` is load-bearing:
+    # the check keys on the $ref NAME, which resolution erases.
+    message: "{{error}}"
+    severity: error
+    given: $.components.schemas
+    resolved: false
+    then:
+      function: openapiReadModelShape
+      functionOptions:
+        check: nested
+
+  specfuse-read-model-not-a-wire-type:
+    description: >-
+      A Read{Entity} must not appear as a request body, a response, or a projection embed.
+    # Generator: READ_MODEL_NOT_A_WIRE_TYPE (ERROR). A replica is a store shape.
+    # This is the whole reason `Basic*` was not reused for it — `Basic*` carries
+    # expandable refs and lives in the Api layer, and reusing it would weld a
+    # consuming service's database table to another team's response DTO.
+    message: "{{error}}"
+    severity: error
+    given: $.components.schemas
+    resolved: false
+    then:
+      function: openapiReadModelShape
+      functionOptions:
+        check: wireType
+
+  specfuse-read-model-source-delete:
+    description: >-
+      A Read{Entity}'s source must declare x-entity.delete, and a soft-delete source's
+      replica must carry the deletion-state property.
+    # Generator: READ_MODEL_SOURCE_DELETE_UNDECLARED (ERROR),
+    # READ_MODEL_MISSING_DELETION_STATE (ERROR). One kit rule for two jar ids:
+    # they are the same authoring question asked before and after the mode is
+    # known, and splitting them would make the ratchet count a fix as a
+    # regression when declaring `soft` moves a finding from one id to the other.
+    message: "{{error}}"
+    severity: error
+    given: $.components.schemas
+    resolved: false
+    then:
+      function: openapiReadModelShape
+      functionOptions:
+        check: sourceDelete

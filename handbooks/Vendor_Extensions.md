@@ -3077,4 +3077,193 @@ x-ui:
 
 ---
 
+## 14. Service Topology Extensions
+
+> **Availability.** `info.x-services`, `holds` and `Read{Entity}` are **not implemented by the generator this kit pins** (0.5.8). They landed on the generator's `main` after that release and ship in the next one. Verified against the pin: `java -jar specfuse-generator.jar extensions --format json` on 0.5.8 reports `x-entity` keys only. **On 0.5.8 the vocabulary is inert** — declaring it changes nothing about what is generated and produces no generator finding, so the kit's Spectral rules (§14.9) are the only feedback an author gets today. Nothing here is retroactive: a spec that declares none of it is unaffected in every generator version. See `compatibility.md` §24 for the pin state and what changes when the pin moves.
+
+### 14.0 What this solves
+
+A Specfuse spec describes a whole business, and the generator's model of a backend was one project implementing all of it. Splitting that along domain lines was blocked twice over:
+
+1. **Nothing declared which service owned which domain**, so nothing could detect two services claiming the same one. That check cannot live in `project.json` — a project file is per-generation-run and legitimately exists once per service repository, so it can never see two services at once.
+2. **A service that legitimately needed to *read* a neighbour's entity hit a hard failure** (`CROSS_DOMAIN_ENTITY_REFERENCE`) with no supported alternative, so the read side got hand-written outside the generator.
+
+`info.x-services` answers the first. `holds` + `Read{Entity}` answer the second.
+
+### 14.1 The two-halves rule — read this before the syntax
+
+**`holds` and `Read{Entity}` are two halves of one declaration, and neither implies the other.** This is the part authors get wrong, and getting it wrong produces a spec that lints clean and generates the wrong thing.
+
+- The **owner** of an entity authors a **`Read{Entity}` schema**, declaring *what slice of my entity may be replicated at all*.
+- The **holder** declares **`holds: [{Entity}]`** on its own service entry, declaring *and I keep a copy of it*.
+
+Neither half alone is a complete statement:
+
+| you author | what is missing | why it is refused |
+|---|---|---|
+| `Read{Entity}` only | no holder | it would make **every** group that references `{Entity}` legal, including one whose author never considered keeping a copy |
+| `holds` only | no slice | there is nothing to generate — the holder has not been told which fields it may keep |
+
+Both sides are therefore checked, in both directions.
+
+### 14.2 `info.x-services`
+
+**Purpose**: declare which service owns which domain, and which entities each service keeps a replica of.
+
+**Scope**: OpenAPI `info` object. The third registry of the same family as `info.x-domains` and `info.x-roles`.
+
+**Optional**: Yes. A spec that omits it gets one WARNING and every ownership check disables itself. Adoption is entirely opt-in.
+
+**Schema**:
+
+```yaml
+info:
+  x-domains: [scheduling, roster, user, employee]
+  x-services:
+    scheduling-service:
+      domains: [scheduling, roster]
+      holds:   [User, Employee]        # optional
+    identity-service:
+      domains: [user, employee]
+```
+
+| Field | Required | Type | Description |
+|-------|----------|------|-------------|
+| `<service-name>` | — | object | kebab-case service name. **Mapping shape only.** |
+| `<service-name>.domains` | Yes | string[] | Domains this service owns. Each **MUST** be a member of `info.x-domains`. |
+| `<service-name>.holds` | No | string[] | Entity names this service keeps a **read-only replica** of. Omit it entirely when the service holds nothing. |
+
+**Rules**:
+
+1. **Mapping shape only.** A bare sequence of service names is refused — unlike `info.x-domains`, which accepts both forms. A sequence carries no domains and so expresses nothing, and it is reported as a present-but-unreadable registry rather than read as absent.
+2. **`domains` is required with no default.** A service entry declaring no domains is a typo, not a decision.
+3. **A domain has exactly one owner.** Two claimants is an error naming every claimant, because the fix is a choice between them. This is the check the registry exists for.
+4. **A claimed domain must be registered** in `info.x-domains`.
+5. A registered domain that **no** service claims is reported as a gap, not an error — a topology may legitimately be mid-migration.
+6. The two registries **degrade independently**: with `info.x-domains` absent, membership and unowned checks are skipped while duplicate-owner and empty-service still run.
+
+### 14.3 `holds`
+
+**Purpose**: declare that this service keeps a read-only replica of an entity **another** service owns.
+
+**Rules**:
+
+1. Every name in `holds` **MUST** be an entity in the spec (a schema carrying `x-entity`).
+2. Every name in `holds` **MUST** have a corresponding `Read{Entity}` schema authored by the owner — see §14.1.
+3. Holding an entity in a domain the service **already owns** is redundant, not wrong: it is a warning, not an error.
+4. **`holds` does not silence the cross-boundary census on its own.** What it does is make the crossing *resolvable*: a reference whose target the consuming service declared under `holds` resolves to that target's `Read{Entity}` replica instead of failing. An **undeclared** foreign edge still fails with the same code and the same remediation as before.
+
+### 14.4 `Read{Entity}`
+
+**Purpose**: declare exactly what slice of `{Entity}` a foreign service may keep as a persisted replica.
+
+**Scope**: `components.schemas`, named `Read` + the source entity's name. It is the **fourth member** of the `New*` / `Update*` / `Basic*` derived-model family.
+
+> **A `Read{Entity}` is not "a read model".** That phrase already means two other things in Specfuse, and conflating them is how the store/wire distinction gets lost:
+>
+> | term | what it is |
+> |---|---|
+> | `x-operation.category: query` | a **read-side operation** — the CQRS sense |
+> | `Basic*` | a **lightweight response projection** — a wire shape in the Api layer |
+> | **`Read{Entity}`** | a **store shape** — the replica table a foreign service persists |
+>
+> Say "replica" or "`Read{Entity}`". `Basic*` was deliberately **not** reused: it carries expandable refs and lives in the Api layer, and reusing it would weld a consuming service's database table to another team's response DTO.
+
+**Rules**:
+
+1. **It MUST carry the source's primary key** — a property named `id`, or `{Entity}Id`. A replica row with no key has nothing for an inbox handler to upsert on.
+2. **It MUST NOT embed another entity or a `Basic*`.** Flatten to the foreign key instead. Enum- and value-object-typed properties are fine and are the intended way to carry structured values.
+3. **It MUST NOT appear as a request body, a response, or a projection embed** (`x-expand-of` / `x-projection`). It is a store shape, not a wire shape. Put the entity or its `Basic*` on the wire.
+4. **The source entity MUST declare `x-entity.delete`.** Absent resolves to `hard` by fallback, and a replica's removal semantics derive from that value — silence is not a fact a replica can be built on. See §1.1.
+5. **Under `delete: soft`, the `Read{Entity}` MUST carry the deletion-state property** (`deletedAt`). Without it the replica can never represent an archived row, and every holding service serves data the owner considers gone.
+6. A `Read{Entity}` **should carry the tenant foreign key** on a multi-tenant entity. A replica the holder cannot scope by tenant is a cross-tenant read waiting to happen, and the column cannot be added later without a migration in every holding service.
+
+**Example** — `booking-service` holds `Restaurant`, which `catalog-service` owns and authors the replicable slice for:
+
+```yaml
+info:
+  x-domains: [catalog, booking]
+  x-services:
+    catalog-service:
+      domains: [catalog]
+    booking-service:
+      domains: [booking]
+      holds: [Restaurant]
+
+components:
+  schemas:
+    ReadRestaurant:
+      type: object
+      required: [id, companyId, name]
+      properties:
+        id:        { type: string, format: uuid }   # the source's primary key
+        companyId: { type: string, format: uuid }   # the tenant FK — scope the replica
+        name:      { type: string }
+        cuisine:   { $ref: './CuisineType.yaml' }   # an enum is fine
+        # `Restaurant` declares x-entity.delete: soft, so the replica must be
+        # able to represent an archived row.
+        deletedAt: { type: string, format: date-time, nullable: true }
+```
+
+### 14.5 Keeping a replica in step — the event surface the owner owes
+
+A replica is fed by the owner's events, so declaring one puts requirements on the owner's **AsyncAPI** surface. The owner must publish create-, update- and removal-class events for the held entity, and:
+
+1. **The payload must be a `{Entity}Snapshot`.** An event whose payload is not a snapshot has nothing to fill the replica's columns with.
+2. **The snapshot must carry the entity's *own* primary key.** The event envelope's `AggregateId` is the aggregate **root's** id, so for a non-root entity a handler keying on it would upsert the wrong row. This is not a rare case — on a real 24-domain bundle, roughly **two in five** replication targets were not aggregate roots.
+3. **Removal-class events are identified from the structured `x-label.action` read against the declared delete mode** (§12.2) — **not** by matching a literal `Created` / `Updated` / `Deleted` triple. `Archived`, `Deactivated` and `Anonymized` are all correct removal-class actions, and on a real bundle fewer than half of the publishing entities used the literal triple.
+4. **Under `delete: soft` there is no removal event to look for** — an archive is an update. The removal-event requirement applies only to a `delete: hard` source.
+5. **A hand-authored async worker that already consumes the same channel** is reported rather than left to compete silently with the generated one. Delete the hand-written consumer when adopting `holds`.
+
+### 14.6 Binding a generation group to a service
+
+`project.json` gains `groups[].service`, which binds a group to a service name in `info.x-services`; the service's owned domains expand into the ordinary include-filter that `groups[].domains` writes by hand. `service` and `domains` are **mutually exclusive**. See `Project_File.md` §8.13.2.
+
+### 14.7 One bundle or many — the choice this vocabulary does *not* make for you
+
+**The generator does not subset one spec per service.** It reads the spec it is given. `info.x-services` is a *declaration*, not a build step, and it leaves two viable topologies:
+
+| topology | how it works | cost |
+|---|---|---|
+| **Single bundle, many groups** | one master spec, one `project.json` per service repo (or one file with N groups), each group bound with `groups[].service` | no new tooling; every service repo resolves the whole spec |
+| **Split bundles** | a specs-side splitter derives a per-service bundle from the master spec, using `info.x-services` as its manifest; each service repo runs the generator against its own bundle | needs a splitter you own; each repo sees only its own surface |
+
+Both need `info.x-services`; neither needs a generator change, since N `project.json` files already work. Start with the single bundle — it is the cheaper of the two and it is what proves the topology is right before you build tooling around it.
+
+### 14.8 Adoption order
+
+Adoption is opt-in and the checks are gated on a declaration, so there is no forced migration. When you do adopt:
+
+1. **Declare `x-entity.delete` on every entity you intend to replicate, first.** It is a prerequisite for every replica rule, and it is independently valuable — it is what makes soft-delete semantics explicit rather than inferred (§1.1). Expect this to be the largest single piece of work; the key is commonly declared nowhere.
+2. **Declare `info.x-services` for the topology you actually intend to deploy** — not one service per domain. A mechanical one-service-per-domain registry produces a `holds` count nobody would ship; a realistic split more than halves it.
+3. **Rank replication targets by how many domains reference them**, and author the `Read{Entity}` schemas for the top handful first. Reference graphs are heavily concentrated: on a real 24-domain bundle, four target entities carried three quarters of the crossing edges between them.
+4. **Then declare `holds`** on the services that need each target, and fix what the pairing rules report.
+5. **Re-run validation and use its output as the work list.** Do not plan from a count someone measured against an older bundle — the ranking moves.
+
+### 14.9 Kit Spectral rules and their generator counterparts
+
+The kit lints this vocabulary in the editor; the generator validates it at generate time. Each kit rule mirrors a generator finding id at the same severity.
+
+| kit Spectral rule | severity | generator finding id(s) |
+|---|---|---|
+| `specfuse-services-registry-shape` | error | `SERVICE_REGISTRY_UNREADABLE`, `SERVICE_ENTRY_UNREADABLE`, `SERVICE_DOMAINS_MISSING` |
+| `specfuse-services-domain-single-owner` | error | `SERVICE_DOMAIN_DUPLICATE_OWNER` |
+| `specfuse-services-domain-registered` | error | `SERVICE_DOMAIN_UNREGISTERED` |
+| `specfuse-services-holds-pairing` | error | `SERVICE_HOLDS_UNKNOWN_ENTITY`, `SERVICE_HOLDS_NO_READ_MODEL` |
+| `specfuse-read-model-unheld` | warn | `READ_MODEL_UNHELD` |
+| `specfuse-read-model-primary-key` | error | `READ_MODEL_NO_PRIMARY_KEY` |
+| `specfuse-read-model-nested-entity` | error | `READ_MODEL_NESTED_ENTITY` |
+| `specfuse-read-model-not-a-wire-type` | error | `READ_MODEL_NOT_A_WIRE_TYPE` |
+| `specfuse-read-model-source-delete` | error | `READ_MODEL_SOURCE_DELETE_UNDECLARED`, `READ_MODEL_MISSING_DELETION_STATE` |
+
+**Generator-only, with no kit rule** — each needs the AsyncAPI surface, the OpenAPI surface, or both at once, which no single Spectral run has:
+
+`SERVICE_REGISTRY_MISSING` (warn) · `SERVICE_DOMAIN_UNOWNED` (warn) · `SERVICE_HOLDS_OWNED_ENTITY` (warn) · `SERVICE_CROSS_BOUNDARY_REFERENCE` · `SERVICE_BOUNDARY_OWNER_UNKNOWN` (warn) · `READ_MODEL_MISSING_TENANT_KEY` · `READ_MODEL_NOT_HYDRATABLE` · `READ_MODEL_SNAPSHOT_MISSING_KEY` · `READ_MODEL_NO_SNAPSHOT` (warn) · `READ_MODEL_NO_CREATE_EVENT` · `READ_MODEL_NO_UPDATE_EVENT` · `READ_MODEL_NO_REMOVAL_EVENT` · `READ_MODEL_EVENT_PAYLOAD_NOT_SNAPSHOT` · `READ_MODEL_SNAPSHOT_VERSION_DRIFT` · `READ_MODEL_NO_ORDERING_KEY` (warn) · `READ_MODEL_DUPLICATE_CONSUMER`
+
+**`SERVICE_CROSS_BOUNDARY_REFERENCE` is the one finding that can turn a green `validate` red.** It reports every reference whose target is owned by a different service and is not covered by a `Read{Entity}` + `holds` pair. It fires **only** on a spec that declares `info.x-services`, so it cannot affect a project that has not adopted the vocabulary — but once you do adopt, it is an ERROR, not a warning, and it is satisfiable only by authoring the pairs.
+
+**See also**: §1.1 (`x-entity.delete`), §1.9 (`x-expand-of` / `x-projection`), §12.2 (`x-label`), `Project_File.md` §8.13 (`groups[].domains` / `groups[].service`), `compatibility.md` §24.
+
+---
+
 This specification ensures consistent, predictable, and maintainable use of vendor extensions across all Specfuse OpenAPI, AsyncAPI, and Arazzo specifications, enabling robust code generation, test generation, and system integration.
