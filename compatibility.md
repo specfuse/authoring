@@ -446,6 +446,29 @@ This independently corroborates the consumer reports behind `clabonte/generator#
 
 **The durable fix for both directions** is the vocabulary check in follow-up 17. `check-extension-vocabulary.py` currently fails only when the generator knows a key the ruleset rejects — the direction that caught nothing here, because it reads the jar's class constants rather than the guard's allow-list. Generator FEAT-2026-0098 is reported to publish the vocabulary as `specfuse-generator extensions --format json`; that subcommand is **not** in `0.5.7` (checked). When it lands, point the guard at it and diff both directions.
 
+### 25. `x-ai-safe` is documented and read by nothing; `x-effects` is the consumer's replacement, deferred
+
+**Status:** kit-side documentation **corrected** (`Vendor_Extensions.md` §4.1 and §9.2, `AI_Access_Policy_Framework.md`). `x-effects` itself is **not adopted** and should not be — see below. Generator action outstanding on `x-ai-safe`.
+
+**`x-ai-safe` is unread.** Searched the generator source with controls in the same search: `x-public` appears in 3 files, `x-manual` in 3, `x-mcp` in 5; **`x-ai-safe` in 0**, as does any `aiSafe` identifier. No kit Spectral rule enforces it either. So an operation declaring `x-ai-safe: true` is gated by nothing while reading exactly like a safety control — the failure direction that matters, because the whole point of the key is to say an autonomous caller may proceed without a human. This is the follow-up 23 class (`cascadeDelete`, `requiresPagination`, `mutability`, `children`) with a sharper edge: those four produce metadata nobody reads, this one produces a *permission* nobody checks.
+
+**Generator action:** parse it or tell the kit to retire it. The kit has marked it unread rather than deleting the section, because retiring an extension is the generator's call — but of the five keys now in this state, this is the one worth answering first.
+
+**The live control for the same question is `x-mcp.safeForAutoInvoke`**, on an Arazzo scenario workflow (`Arazzo_Handbook.md` §4.8) — parsed into `McpConfig` and validated by `ArazzoValidator`, so it is enforced where `x-ai-safe` is not. It sits on the **workflow**, not the operation, which is the substantive difference and the reason the next item is a reconciliation rather than an addition.
+
+#### `x-effects` — a consumer proposal, deliberately deferred
+
+A consumer (`restomanager-specs`) has retired `x-ai-safe` locally and replaced it with **`x-effects`**, declaring an operation's real-world consequences: `reversibility` (`reversible` | `compensable` | `irreversible`), `compensatedBy` (an operationId, required iff `compensable`), `externalEffects` (a list, where `[]` is the explicit no-effects declaration on the `aiAccess` Tier 0 precedent), and `requiresConfirmation` (whose schema permits only `true`, so the unsafe value is unwritable). The canonical text is the consumer's own `RestoManager_Vendor_Extensions.md` §4.1 with rule specs in `RestoManager_MCP_Spec_Review.md` §7.1–§7.2; the summary here is a pointer, not a spec.
+
+**Do not adopt it yet, and the deferral is the consumer's own.** Two reasons, one theirs and one found here:
+
+1. **Theirs:** an unresolved scope decision — required on MCP-referenced write operations only, or on every write operation whose event reaches an external-effect worker. It changes one Spectral `given` and nothing else, but it changes what the extension *means*, so the kit should not take a position first. The work is also bound to MCP support work that has not started on their side.
+2. **Found while verifying:** the handoff states the kit "has no `x-ai-safe` and nothing in the same role", and concludes adoption would be "additive rather than a reconciliation". **Both are wrong.** The kit documents `x-ai-safe` in `Vendor_Extensions.md` §4.1 with two cross-references, and `x-mcp.safeForAutoInvoke` occupies the same role and is *enforced*. Adopting `x-effects` therefore means answering **where the enforcement input lives** — the handoff's own stated rule is that enforcement inputs belong on the operation and presentation inputs in the tool manifest, and `x-mcp.safeForAutoInvoke` is an enforcement input sitting on an Arazzo workflow. That contradiction has to be settled before either side writes a rule, and it is not visible from the consumer's heading-similarity comparison.
+
+**What is worth keeping from the proposal regardless of whether the extension lands**, because each is a design position the kit will need either way: `reversibility` classifies the *business* effect and not the database row (a soft-deleted row that already sent notifications is `irreversible`; for a `202` the classification is the eventual job, not the acknowledgement); `compensatedBy` asserts an inverse exists in the *system* and not that this caller may invoke it, so a consumer must re-run authorization and treat an uninvokable compensator as `irreversible` — escalation only, never the reverse; absence differs from `[]`; and `blastRadius` is deliberately absent because it derives from tenancy markers rather than being authored twice.
+
+**Severity:** the `x-ai-safe` half is a live correctness problem in the handbooks and is fixed here. The `x-effects` half is a proposal with an open question on both sides and nothing to do until the consumer's MCP work starts.
+
 ---
 
 ## Outstanding kit-side work

@@ -573,7 +573,7 @@ PaymentMethod:
 **Interaction with other extensions**:
 - **`encryptedProperties`**: AI read of encrypted fields requires explicit listing in `readableProperties`. Masking rules still apply on the wire.
 - **`filterableProperties` / `searchableProperties`**: these govern HTTP query surfaces, not AI repository methods. AI filtering/search allow-lists may be derived separately by the generator from `readableProperties`.
-- **`x-ai-safe` (operations, §4.1)**: operates at the HTTP operation level — whether an AI agent may invoke a specific endpoint without approval. `aiAccess` operates at the entity/repository level — what the AI may touch via generated data-access code. The two are complementary.
+- **`x-ai-safe` (operations, §4.1)**: intended to operate at the HTTP operation level — whether an AI agent may invoke a specific endpoint without approval — where `aiAccess` operates at the entity/repository level. **`x-ai-safe` is read by nothing, so this complementarity is aspirational**; `aiAccess` is enforced and it is not. See §4.1 and `compatibility.md` §25.
 - **Future per-agent scoping**: the single `aiAccess` block treats "AI" as monolithic. When multiple agents with different trust levels emerge, this will be extended to allow `aiAccess` keyed by agent role without breaking the single-block form. Until then, keep access blocks conservative.
 
 ### 1.2 x-value-object
@@ -1301,6 +1301,14 @@ paths:
 
 ### 4.1 x-ai-safe
 
+> **⚠ Nothing reads this extension. Do not gate anything on it.**
+>
+> `x-ai-safe` appears nowhere in the generator: zero occurrences of the key and zero of any `aiSafe` identifier across the source, against controls in the same search that find `x-public` and `x-manual` in three files each and `x-mcp` in five. No kit Spectral rule enforces it either. **An operation marked `x-ai-safe: true` is not gated by anything** — declaring it produces a document that reads like a safety control and is not one, which is worse than declaring nothing.
+>
+> The live mechanism for the same question is **`x-mcp.safeForAutoInvoke`** on an Arazzo scenario workflow (`Arazzo_Handbook.md` §4.8, parsed into the generator's `McpConfig`), which declares whether an AI agent may invoke a tool without human confirmation. It sits on the *workflow* rather than the operation, which is a real difference and a known open question — see `compatibility.md` §25.
+>
+> The key is documented here rather than deleted because retiring an extension is the generator's call, not the kit's (`compatibility.md` §23). Until that answer arrives, treat this section as a record of what the key was meant to mean.
+
 **Purpose**: Marks operations as safe for autonomous AI agent execution.
 
 **Scope**: Applied to OpenAPI operations
@@ -1310,7 +1318,7 @@ paths:
 x-ai-safe: boolean  # Default: false for write operations, true for read operations
 ```
 
-**Usage**: AI agents can execute operations marked as `x-ai-safe: true` without human approval.
+**Usage**: AI agents can execute operations marked as `x-ai-safe: true` without human approval — **as an intent expressed to human readers only**. No generated code and no lint rule enforces it.
 
 ### 4.2 x-batch-operation
 
@@ -2017,7 +2025,7 @@ x-compliance:
 
 **Use when applicable**:
 - `valueObjects` for entities containing value objects
-- `x-ai-safe` for operations safe for autonomous execution
+- ~~`x-ai-safe` for operations safe for autonomous execution~~ — **read by nothing; do not gate on it** (§4.1)
 - `x-business-rules` for complex domain constraints
 
 ### 9.3 Extension Validation
