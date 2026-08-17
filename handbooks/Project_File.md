@@ -47,7 +47,7 @@ Language-coupling column: ✱ means the field is honoured only for a specific la
 | `broker.type` | enum | optional | ✱ | `azureServiceBus` (only working value). |
 | `broker.topology` | enum | optional | ✱ | `runtime` (default) \| `bicep` (experimental — emits stub). |
 | `broker.outboxDialect` | enum | optional | ✱ | `sqlServer` (default) \| `postgres` (experimental — emits stub). |
-| `persistence` | object | optional | — | Multi-backend persistence configuration. Absent = no persistence artifacts. See §6. |
+| `persistence` | object | optional | **⚠ not implemented** | Multi-backend persistence configuration. **Read by nothing today — declaring it changes nothing and raises no diagnostic.** Design of record; see the banner on §6 and `compatibility.md` §27. Every `persistence.*` row below carries the same caveat. |
 | `persistence.connections` | object<name, conn> | yes (when `persistence` set) | — | Named connection descriptors. Every referenced connection must be declared here. |
 | `persistence.connections.<name>.provider` | enum | yes | — | `sqlServer` \| `postgres` \| `mySql` \| `cosmos` \| `azureBlob`. Must match the `kind` of any descriptor referencing this connection. |
 | `persistence.connections.<name>.managed` | boolean | optional | — | Whether the generator owns DDL for entities on this connection. Default `true`. |
@@ -398,6 +398,14 @@ The broker block is meaningful only for projects that emit the event-runtime art
 
 ## 6. Persistence
 
+> ## ⚠ Design of record — not yet a contract
+>
+> **The generator does not read the `persistence` block.** Verified against the pinned `0.5.8` and against generator `main`: **zero** `PERSISTENCE_*` codes and no parsing of the block anywhere in the Java source. The only two case-insensitive matches for "persistence" are unrelated comments. Controls run in the same search land where you would expect — `tenancy` in 29 files, `broker` in 11, `namingOverrides` in 15.
+>
+> **The failure mode is silence, which is why this banner is here and the section is not.** A `persistence` block in `project.json` today is **read by nothing**: it does not warn, it does not change the exit code, and generation proceeds exactly as if the block were absent. So a project that declares `managed: false` and believes DDL emission is off, or `kind: document` and believes it is not getting EF configurations, gets neither the behaviour nor a diagnostic. §6.6's validation codes do not fire, and the load-time warning §6.3 promises for unknown `connections.<name>` sub-keys does not exist either.
+>
+> This section stays because it is the agreed design and losing it would lose the design. **Do not author against it yet.** Track it as `compatibility.md` §27; the banner comes off when the generator parses the block, not before.
+
 The `persistence` block tells the generator how each entity in the bundled OpenAPI spec maps to a concrete storage backend. The spec itself stays storage-agnostic — `persistence` is where database engines, connection names, schema names, container names, and schema-ownership decisions live.
 
 ### 6.1 Principle
@@ -596,7 +604,7 @@ The `side` field is present only for hybrid entities.
 
 ### 6.8 Interactions with spec extensions
 
-- **`x-entity.schema`** — deprecated. Storage technology has been removed from the spec; schema names now live in `persistence` descriptors. See `Vendor_Extensions.md` §1.1.
+- **`x-entity.schema`** — deprecated *in direction*, supported *in fact*. Storage technology is designed out of the spec, with schema names moving to `persistence` descriptors — but the generator parses `x-entity.schema` and does not read `persistence` at all, so **do not migrate yet**: the move lands on a key nothing reads, with no diagnostic either side of it. Keep the key; migrate when §6 is implemented. See `Vendor_Extensions.md` §1.1 and `compatibility.md` §27.
 - **`x-content` properties** — declared at the property level on entity schemas. Marks opaque payload not intended for query, filter, projection, or pagination. Required for `kind: hybrid` entities. See `Vendor_Extensions.md` §1.6.
 - **`aiAccess`** — remains in the spec; composes with persistence per-entity. AI-scoped repository methods inherit the entity's backend kind and are generated against the same `kind`-specific template family as the production repository.
 - **`tenancy`** (§4) — orthogonal to backend kind. Tenant scoping applies across all backends via the kind's native mechanism: FK column for `relational`, partition key for `document`, key prefix for `blob`, both sides for `hybrid`.

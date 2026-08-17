@@ -431,7 +431,7 @@ Both failure modes were observed on one property (`status`, `required` + `readOn
 
 The shape guard allowed 16 sub-keys with `additionalProperties: false` at **error**, and `schema` was not among them. The generator parses it — `EntityDefinition` carries the field with a getter and setter and lists it in `KNOWN_SUB_KEYS`, verified against the published `0.5.7` jar, the version `generator.lock` pins. A consumer reported 17 live schemas failing lint on it.
 
-The kit had already documented the key as deprecated in `Vendor_Extensions.md` §1.1 and `Project_File.md` §6.8, pointing at `persistence.entities.<Entity>.schema` as the replacement. Only the ruleset disagreed — and it disagreed in the direction that converts "deprecated" into "removed": an error-severity finding means migrate now or stop linting, which is not what the generator is saying.
+The kit had already documented the key as deprecated in `Vendor_Extensions.md` §1.1 and `Project_File.md` §6.8, pointing at `persistence.entities.<Entity>.schema` as the replacement. **That replacement does not exist yet** — the generator parses no part of the `persistence` block (follow-up 27), so the migration this note recommended moves a working declaration onto a key nothing reads, and silently. `Vendor_Extensions.md` §1.1 now says to keep `x-entity.schema` where it is and treat the WARNING as a marker for a future move. The rest of this entry stands: the guard must still accept a form the generator accepts. Only the ruleset disagreed — and it disagreed in the direction that converts "deprecated" into "removed": an error-severity finding means migrate now or stop linting, which is not what the generator is saying.
 
 **The fix is two halves, and both are load-bearing.** The shape guard now accepts `schema: { type: string }`, on the standing rule that a closed guard must never reject a form the generator accepts (the `concurrency: none` precedent, follow-up 18). A new WARNING, `specfuse-xentity-schema-deprecated`, carries the migration notice with the replacement path. Accepting without warning would let a deprecated key go silent and leave projects to discover the removal the hard way; warning without accepting is the bug being fixed. Both directions are pinned in CI via `DeprecatedSchemaKey`.
 
@@ -539,6 +539,24 @@ The PII trigger list in `openapiClassification.js` is **copied from the jar and 
 3. **§1.5 rule 2 — `encrypted` requires a string-representable property — is enforced nowhere**, and is not decidable from the kit side alone for a `$ref`'d value object. Left as guidance and labelled as such in the handbook rather than presented as a gate.
 
 **Severity:** the rules are new gates on an existing vocabulary, so a spec that already classified correctly is unaffected — verified: `examples/hello-orders/` gains zero findings. A spec that has been declaring `[exposed]` without a description, or writing an unlisted value, will see new errors, and those are the specs the rules exist for.
+
+### 27. `Project_File.md` §6 Persistence and `x-content` document a subsystem the generator does not implement
+
+**Status:** kit-side **banners added**, section kept. Generator-side the whole design is unstarted; this entry is the tracker.
+
+**Measured, with controls.** Against the pinned `0.5.8` and against generator `main`: **zero** `PERSISTENCE_*` codes and no parsing of the `persistence` block anywhere in the Java source. The only two case-insensitive matches for "persistence" are unrelated comments (`StateStore`'s "state persistence", `Property`'s "JSON-column persistence"). `x-content` does not appear at any spelling — not the key, not a constant, not a derived accessor — and neither does `PERSISTENCE_HYBRID_NO_CONTENT`. Controls run in the same search: `tenancy` 29 files, `namingOverrides` 15, `broker` 11, `dbContextClassname` 9, `cleanScope` 9.
+
+**Why this is worse than an unimplemented feature usually is.** The failure mode is **silence, not error**. A `persistence` block in `project.json` is read by nothing: it does not warn, it does not change the exit code, and generation proceeds exactly as if the block were absent. So the project that declares `managed: false` believing DDL emission is off, or `kind: document` believing it is not getting EF configurations, gets neither the behaviour nor a diagnostic. §6.3 even documents a load-time warning for unknown `connections.<name>` sub-keys — a safety net that does not exist, asserted in the section that most needs one.
+
+This is the `0.7.0` erratum (follow-up 18) inverted. There the jar **rejected** a value the handbook told you to write, which at least fails loudly. Here the jar **ignores an entire surface**, which fails quietly and can be believed for a long time.
+
+**What the kit did, and what it deliberately did not do.** Both sections keep every word — a designed and agreed subsystem is worth having written down, and deleting it loses the design rather than the risk. Each gained an availability banner stating the measurement, the silence, and that it is a design of record rather than a contract: `Project_File.md` §6 and `Vendor_Extensions.md` §1.6. The kit did **not** invent a Spectral rule flagging the block's presence — a project file is not a spec surface these rulesets lint, and a rule saying "you configured something that does nothing" is the generator's diagnostic to emit, not the kit's to fake.
+
+**One correction that is independent of when §6 ships.** Follow-up 23 and `Vendor_Extensions.md` §1.1 both told authors to migrate the deprecated `x-entity.schema` **to** `persistence.entities.<Entity>.schema`. That is advice to move off a key the jar reads onto one it does not, with no diagnostic either side of the move. Reversed: keep `x-entity.schema`, treat `specfuse-xentity-schema-deprecated` as a marker for a future migration rather than a task, and migrate when the block is parsed. The deprecation direction is unchanged and still correct.
+
+**Generator action:** implement the block, or — if the design has moved on — say so, because the kit is currently carrying roughly 200 lines of handbook for it and a deprecation that points at it. Until one of those happens, a load-time **warning** naming an unread `persistence` block would convert the silent case into a visible one at a fraction of the cost of the subsystem, and is worth doing first regardless of the eventual timeline.
+
+**Severity:** documentation-only in this repo; no rule changed and no lint result moved. As a *finding* it is not documentation-only — the projects most exposed are the ones that configured `persistence` carefully and have been trusting it.
 
 ---
 
