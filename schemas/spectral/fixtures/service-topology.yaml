@@ -1,0 +1,231 @@
+# =============================================================================
+# Regression fixture: info.x-services, holds, and Read{Entity}
+# =============================================================================
+# Pins the nine service-topology rules in specfuse-openapi.yaml. Every rule is
+# asserted in BOTH directions — it fires on its violation AND stays silent on
+# the clean case sitting beside it. A rule that fires on everything and a rule
+# that works are indistinguishable if you only count findings.
+#
+# The registry deliberately carries several distinct faults at once, because a
+# real one will: the ownership checks must keep validating every well-formed
+# entry rather than giving up on the first bad one.
+#
+#   REGISTRY
+#   catalog-service    holds Ghost, which is not an entity   -> holds (unknown)
+#   booking-service    claims `catalog`, already claimed     -> duplicateOwner
+#                      holds Restaurant, ReadRestaurant exists -> CLEAN
+#   billing-service    claims `shipping`, not in x-domains   -> domainRegistered
+#                      holds Invoice, no ReadInvoice exists  -> holds (no model)
+#   warehouse-service  one registered domain, holds nothing  -> CLEAN
+#   ghost-service      `hold:` typo for `holds:`             -> registryShape
+#                      also re-claims `warehouse`            -> duplicateOwner
+#
+#   READ MODELS
+#   ReadRestaurant     id + deletedAt (soft source) + enum ref, held  -> CLEAN
+#   ReadCompany        no `id` and no `CompanyId`             -> primaryKey
+#   ReadEmployee       embeds BasicCompany                    -> nestedEntity
+#   ReadUser           returned by GET /users/{userId}        -> notAWireType
+#   ReadOrder          source Order leaves x-entity.delete undeclared -> sourceDelete
+#   ReadTable          source Table is soft-delete, no deletedAt      -> sourceDelete
+#   Readme             `Read` + lowercase — an ordinary schema -> IGNORED ENTIRELY
+#
+# Everything except ReadRestaurant is unheld, so specfuse-read-model-unheld
+# fires on them and must NOT fire on ReadRestaurant.
+#
+# Not a Specfuse-conformant example — do not copy.
+# =============================================================================
+openapi: 3.0.3
+info:
+  title: Service topology fixture
+  version: "1.0.0"
+  x-domains: [catalog, booking, billing, warehouse]
+  x-services:
+    catalog-service:
+      domains: [catalog]
+      # `Ghost` is not a schema in this document at all.
+      holds: [Ghost]
+    booking-service:
+      # `catalog` is catalog-service's. Two owners is the headline failure the
+      # registry exists to detect.
+      domains: [booking, catalog]
+      holds: [Restaurant]
+    billing-service:
+      # `shipping` is not a member of info.x-domains above.
+      domains: [billing, shipping]
+      # `Invoice` IS an entity here, but no `ReadInvoice` schema exists — the
+      # holder declared its half and the owner never authored theirs.
+      holds: [Invoice]
+    warehouse-service:
+      domains: [warehouse]
+    ghost-service:
+      domains: [warehouse]
+      # Singular. The closed guard is what turns this from a silently ignored
+      # key into a finding.
+      hold: [Restaurant]
+
+paths:
+  /users/{userId}:
+    get:
+      operationId: getUser
+      tags: [Users]
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              # A replica on the wire. This is the coupling the store/wire
+              # split exists to prevent.
+              schema: { $ref: "#/components/schemas/ReadUser" }
+
+components:
+  schemas:
+    # ---- Enum. A Read{Entity} may reference one; it is not an entity. ----
+    CuisineType:
+      type: string
+      enum: [italian, japanese, mexican]
+
+    # ---- Source entities ----------------------------------------------------
+    Restaurant:
+      type: object
+      x-entity:
+        domain: catalog
+        type: aggregate
+        delete: soft
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        cuisine: { $ref: "#/components/schemas/CuisineType" }
+        deletedAt: { type: string, format: date-time, nullable: true }
+
+    Company:
+      type: object
+      x-entity:
+        domain: billing
+        type: aggregate
+        delete: hard
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+
+    Employee:
+      type: object
+      x-entity:
+        domain: warehouse
+        type: entity
+        delete: hard
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
+        companyId: { type: string, format: uuid }
+
+    User:
+      type: object
+      x-entity:
+        domain: booking
+        type: aggregate
+        delete: hard
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+
+    Invoice:
+      type: object
+      x-entity:
+        domain: billing
+        type: aggregate
+        delete: hard
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
+
+    Order:
+      type: object
+      # No `delete` key. Absent resolves to `hard` by fallback, which is not a
+      # fact a replica's removal handling can be built on.
+      x-entity:
+        domain: booking
+        type: aggregate
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
+
+    Table:
+      type: object
+      x-entity:
+        domain: catalog
+        type: entity
+        delete: soft
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
+        deletedAt: { type: string, format: date-time, nullable: true }
+
+    # A `Basic*` response projection. Embedding one in a replica is the
+    # store-to-DTO weld the nested-entity rule refuses.
+    BasicCompany:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+
+    # ---- Replicas -----------------------------------------------------------
+
+    # Correct. Primary key present, soft-delete source's deletion state
+    # carried, an enum reference (not an entity), held by booking-service, and
+    # nowhere on the wire. NO FINDING EXPECTED from any rule in this group.
+    ReadRestaurant:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        cuisine: { $ref: "#/components/schemas/CuisineType" }
+        deletedAt: { type: string, format: date-time, nullable: true }
+
+    # No `id`, no `CompanyId`. Nothing for an inbox handler to upsert on.
+    ReadCompany:
+      type: object
+      properties:
+        name: { type: string }
+
+    # Embeds a Basic* projection instead of flattening to `companyId`.
+    ReadEmployee:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        company: { $ref: "#/components/schemas/BasicCompany" }
+
+    # Referenced from the 200 response above.
+    ReadUser:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+
+    # Source `Order` leaves x-entity.delete undeclared.
+    ReadOrder:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+
+    # Source `Table` declares soft delete; this replica cannot represent an
+    # archived row.
+    ReadTable:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+
+    # `Read` followed by a lowercase letter. An ordinary schema name, not a
+    # replica declaration — no rule in this group may touch it.
+    Readme:
+      type: object
+      properties:
+        body: { type: string }

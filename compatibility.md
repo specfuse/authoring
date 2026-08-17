@@ -382,9 +382,13 @@ The deeper tension settles the direction: a projection is `readOnly` and — by 
 
 **Consequence while the generator lags:** a consumer running both sees the kit accept what the generator rejects. `specfuse-projection-coherence` is otherwise adoptable — the reporting consumer held it back at ERROR for this single false positive.
 
-### 21. `groups[].domains` is undocumented in `Project_File.md`
+### 21. `groups[].domains` is undocumented in `Project_File.md` — **RESOLVED, documented in §8.13.1**
 
-**Status:** open. Needs a generator answer before the kit can write it up.
+**Status:** answered and written up. The generator confirms the key in `docs/ARCHITECTURE.md` § Per-Group Domain Filter (FEAT-2026-0053) — `include` / `exclude`, exactly one, each name validated against `info.x-domains` when that registry is non-empty and permissive when it is absent, applied once at the group model/event-selection layer and shared by C#, Dart, Python, async and Markdown. That is the confirmation the note below was waiting for, so the kit now documents it (`Project_File.md` §8.13.1) rather than inferring it, along with the `filter` interaction: they are unrelated mechanisms — `filter` is a predicate tree over AsyncAPI workers, `domains` is a scope over entities and every derived surface.
+
+The `service` binding that shares the field's job arrived alongside it and is documented in §8.13.2; see follow-up 24 for its pin state.
+
+**The original note, kept because it is the record of what was asked:**
 
 A consumer runs six generation groups carrying:
 
@@ -444,7 +448,41 @@ The kit had already documented the key as deprecated in `Vendor_Extensions.md` �
 
 This independently corroborates the consumer reports behind `clabonte/generator#815` (`mutability`) and `#1026` (`requiresPagination`): both are declared across their entity definitions and consumed by nothing. The kit documents all four, so authors are writing metadata that no generated code reads — intent that can silently stop being true. **Generator action:** for each, either parse it or tell the kit to retire it. Worth settling in the same window as a jar cut, since the answer changes what the handbooks should say.
 
-**The durable fix for both directions** is the vocabulary check in follow-up 17. `check-extension-vocabulary.py` currently fails only when the generator knows a key the ruleset rejects — the direction that caught nothing here, because it reads the jar's class constants rather than the guard's allow-list. Generator FEAT-2026-0098 is reported to publish the vocabulary as `specfuse-generator extensions --format json`; that subcommand is **not** in `0.5.7` (checked). When it lands, point the guard at it and diff both directions.
+**The durable fix for both directions** is the vocabulary check in follow-up 17 (see also follow-up 24, which found the published vocabulary does not cover `info`-level extensions at all). `check-extension-vocabulary.py` currently fails only when the generator knows a key the ruleset rejects — the direction that caught nothing here, because it reads the jar's class constants rather than the guard's allow-list. Generator FEAT-2026-0098 is reported to publish the vocabulary as `specfuse-generator extensions --format json`; that subcommand is **not** in `0.5.7` (checked). When it lands, point the guard at it and diff both directions.
+
+### 24. `info.x-services`, `holds`, `Read{Entity}` — kit documents and lints ahead of the pin
+
+**Status:** kit-side work **done** (`Vendor_Extensions.md` §14, `Project_File.md` §8.13.2, nine Spectral rules, `schemas/spectral/fixtures/service-topology.yaml`, a both-directions CI step). Generator-side the vocabulary is **not in the pinned jar** and ships in the release after `0.5.8`.
+
+**The pin state, measured rather than assumed.** `java -jar ~/.specfuse/jars/specfuse-generator-0.5.8.jar extensions --format json` reports `x-entity` keys only — no `x-services`, and no `info`-level extension of any kind. The feature (generator `FEAT-2026-0102`, PRs `#1158` / `#1160` / `#1162`) is on generator `main` at `0.5.9-SNAPSHOT`. So on kit `0.8.0`'s pin the vocabulary is **inert**: declaring it changes nothing that is generated and produces no generator finding.
+
+**Why the kit documents and lints it anyway, when `0.7.0` is the cautionary tale for exactly this** (follow-up 18). The two cases differ in direction, and the direction is what makes one dangerous:
+
+| | `0.7.0` (`x-entity.concurrency`) | this |
+|---|---|---|
+| what the pinned jar did | **rejected** the value the handbook told you to write | has **no opinion** — the key is unread |
+| result of following the handbook | `ENTITY_CONCURRENCY_INVALID` at ERROR, generation blocked | nothing; the key is inert |
+| specs affected today | every spec adopting the key | none — no spec declares `info.x-services` or a `Read*` schema |
+
+The pinned jar cannot contradict these rules because it does not read the surface they cover. That is the whole of the safety argument, and it stops holding the moment the pin moves — which is what the pin-time checklist below is for.
+
+**Two upstream defects found while verifying this handoff.** Both were found by reading the jar's source against its own docs; report them with the next generator round-trip:
+
+1. **`SERVICE_CROSS_BOUNDARY_REFERENCE`'s severity is stale in the generator's own docs.** `docs/VENDOR-EXTENSIONS.md` states it twice as `WARNING`, and `docs/ARCHITECTURE.md` § Held entities says a declared hold "does not reduce its count". Both are wrong as of `#1158`: `ServiceBoundaryReferenceValidationRule` emits `ValidationIssue.error(...)` and returns early when `heldEntitiesOf(sourceOwner).contains(targetEntity)`, and `CHANGELOG.md` records the `WARNING → ERROR` promotion (`FEAT-2026-0102/T16`) and that "a declared hold still suppresses". **The vendor-extensions doc is the surface a consumer reads to decide whether adoption can turn `validate` red**, and it currently says it cannot. The kit documents the source's behaviour (`Vendor_Extensions.md` §14.9), not the doc's.
+2. **`extensions --format json` does not publish `info`-level extensions.** Verified against both `0.5.8` and `0.5.9-SNAPSHOT`: the output is a single `x-entity` array. This is the command follow-up 17's drift guard reads and the command a consumer is told to derive a ruleset from — so **`info.x-services`, `info.x-domains` and `info.x-roles` are invisible to both**, and `check-extension-vocabulary.py` cannot detect drift on any of them. The registries are precisely the surface where a closed guard is most adoption-blocking, because a project declares them once at the top of the bundle. **Generator action:** extend the published vocabulary to `info`-level registries, including each one's accepted shapes (`x-domains` takes a sequence *or* a mapping; `x-services` takes a mapping only).
+
+**What the kit ships, and the severity contract it holds to.** Nine rules in `specfuse-openapi.yaml`, each mirroring a generator finding id at the same severity — the mapping is in `Vendor_Extensions.md` §14.9 and repeated as a comment on each rule so the next pin bump can diff it instead of re-deriving it. Sixteen further generator finding ids have **no** kit rule and are listed as such: each needs the AsyncAPI surface, the OpenAPI surface, or both loaded at once, which no single Spectral run has. Two custom functions (`openapiServiceRegistry.js`, `openapiReadModelShape.js`) both run `resolved: false` — the nested-entity and wire-type checks key on `$ref` **names**, which resolution erases, the same reason the generator's own rule scans raw YAML.
+
+**At the next pin bump, before anything else:**
+
+1. Re-run `extensions --format json` against the new jar and diff the `info`-level output (if defect 2 has been fixed) against `Vendor_Extensions.md` §14.2.
+2. Re-check every severity in the §14.9 table against the jar's rule sources, **not** against its docs — defect 1 is the reason.
+3. Confirm `SERVICE_CROSS_BOUNDARY_REFERENCE` is still ERROR and still suppressed by a declared hold. If either changed, §14.9's closing paragraph is the sentence that has to change with it.
+4. Re-run the fixture step; a jar that starts validating this surface is the first opportunity to catch a kit rule that is stricter than the jar.
+
+**What adoption costs a consumer, in kind rather than in counts.** All of it is spec-side; nothing waits on further generator work. A `Read{Entity}` per replication target; a `holds` entry per (service, target) pair; **`x-entity.delete` declared on every source entity**, which is the prerequisite for every replica rule and is commonly declared nowhere; a snapshot-carrying event surface for each held entity; and a tenant FK on each replica. Counts measured against one bundle at one moment do not transfer — re-derive them with `validate` against the current bundle and the intended topology.
+
+**Severity:** additive in every direction. A project that declares neither `info.x-services` nor a `Read*` schema is unaffected by every rule here and by every generator finding id behind them, at any severity setting including `--strict`.
 
 ---
 
@@ -474,6 +512,23 @@ Surfaced during the schemas import (commits `78abc31`..`b146efa`) when verifying
 **Action:** author the three rules as new entries in `schemas/spectral/specfuse-{openapi,asyncapi}.yaml`. Two are AsyncAPI rules (snapshot-version-coexistence, subscription-name-mismatch); one is an OpenAPI rule (batch-operation-structure). Each will likely need a custom function under `schemas/spectral/functions/` since the logic involves cross-file resolution (snapshot $refs) or file-name vs declared-name comparison (operation file stem).
 
 **Severity:** the handbooks make these promises today; until the rules ship, the promises are unenforced. New projects bootstrapped from the kit can violate these contracts and not know it. Worth landing before Phase 7 (smoke test of an imminent second project).
+
+### A per-service bundle splitter — decide whether the kit ships one
+
+**Status:** open decision, deliberately not taken while adopting follow-up 24's vocabulary.
+
+The generator does **not** subset one spec per service. It reads the bundle it is handed. `info.x-services` therefore leaves two viable topologies, both documented in `Vendor_Extensions.md` §14.7:
+
+- **single bundle, many groups** — one master spec; each service repo binds its group with `groups[].service`. Needs no new tooling, because N project files already work.
+- **split bundles** — a specs-side splitter derives a per-service bundle from the master spec, using `info.x-services` as its manifest.
+
+Only the second needs anything built, and if the kit builds it, `info.x-services` is its input — which is the reason to decide before the registry accumulates consumers who have assumed one topology or the other.
+
+**Argument for not shipping it yet:** the kit is a spec-authoring contract, deliberately not a CI product — the same line drawn for `spectral-ratchet.py`, which ships as a reference implementation a project copies and owns. A splitter is further from authoring than a ratchet is, and it has a harder correctness bar: a bundle that drops a shared enum or a `Read{Entity}`'s value object produces code that does not compile, in a repo whose author cannot see why. The single-bundle mode has neither problem and is the cheaper way to find out whether a topology is right at all.
+
+**Argument for shipping it eventually:** every consumer that goes split writes the same closure walk, and getting it wrong is silent until compile time in someone else's repository.
+
+**Do not decide this from the kit side alone** — decide it after the first consumer adopts `info.x-services` and reports which mode it actually ran. No consumer has declared the registry yet.
 
 ### `x-action-class` non-introduction
 

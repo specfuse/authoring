@@ -67,6 +67,8 @@ Language-coupling column: ✱ means the field is honoured only for a specific la
 | `groups[].cleanGenerated` | boolean | optional | — | Wipe generated subtree before emitting. Default `false`. |
 | `groups[].cleanScope[]` | array<string> | optional | — | Explicit relative paths to wipe instead of the language default. |
 | `groups[].filter` | object | optional | — | Predicate tree — **AsyncAPI workers only (v1)**. Other artifact types ignore it. |
+| `groups[].domains` | object | optional | — | Scope the group to a subset of domains: exactly one of `include` / `exclude`. Mutually exclusive with `service`. See §8.13.1. |
+| `groups[].service` | string | optional | ✱ generator > 0.5.8 | Service in `info.x-services` whose owned domains scope this group. Mutually exclusive with `domains`. See §8.13.2. |
 | `groups[].unknownEnumPolicy` | enum | optional | ✱ Dart/Flutter only | `strict` \| `fallback` (default) \| `null`. |
 | `groups[].formatPolicy` | enum | optional | ✱ Dart/Flutter only | `strict` (default) \| `lax`. |
 | `groups[].mutationOverrides[]` | array<string> | optional | ✱ Dart/Flutter only | Operation IDs to flip between query / mutation classification. |
@@ -828,6 +830,65 @@ The resolved values are surfaced to templates under the `dartGroup.*` namespace 
 }
 ```
 
+### 8.13 Domain scope — `domains` and `service`
+
+A group generates every domain in the bundle unless it says otherwise. These two fields are the two ways of saying otherwise. They answer different questions and are **mutually exclusive**; declaring both fails the load.
+
+#### 8.13.1 `domains`
+
+**Purpose**: scope a group to a subset of the project's domains, so a split-repo product (one project file per repo, each owning a subset) generates exactly the code it owns.
+
+**Required**: Optional. Absent means all domains — byte-identical to a project that has never used the field.
+
+**Type**: object carrying **exactly one** of `include` or `exclude`, each a non-empty array of domain names.
+
+```json
+{
+  "language": "csharp",
+  "destination": "src/Scheduling",
+  "domains": { "include": ["scheduling", "roster"] }
+}
+```
+
+**Rules**:
+
+- Exactly one of `include` / `exclude`. Both non-empty fails with `INVALID_DOMAIN_FILTER`, checked language-agnostically.
+- Each named domain must be a member of `info.x-domains` when that registry is non-empty; the check is **permissive** when the registry is absent, because the field still carries a literal, checkable value.
+- Shared value objects and enums carry no domain and are retained by **dependency closure** from the in-scope entities — a filter never strips a type an in-scope entity is typed against.
+- Derived DTOs (`New*` / `Update*` / `Basic*`) follow their owning entity.
+- Async workers, events, channels, and Markdown docs scope from the same decision, so one filter covers every surface.
+- **A cross-domain aggregate edge fails loud.** An in-scope entity that `belongsTo` an out-of-scope entity raises `CROSS_DOMAIN_ENTITY_REFERENCE` rather than silently re-widening the filter. The only thing that softens it is a declared hold — see §8.13.2.
+
+**This field is not a legacy of `service`.** It scopes a group *within one bundle*, for reasons that need have nothing to do with service ownership — a Flutter group declaring `{"exclude": ["crm"]}` because the mobile app does not need that domain is a correct use that predates services entirely.
+
+#### 8.13.2 `service`
+
+**Purpose**: name the service this group generates for, and let the spec's `info.x-services` registry supply its domains instead of hand-listing them.
+
+**Required**: Optional. See `Vendor_Extensions.md` §14 for the registry itself.
+
+> **Not available on the generator this kit pins (0.5.8).** `service` and `info.x-services` landed on the generator's `main` after that release. On 0.5.8 the field is unrecognised. See `compatibility.md` §24.
+
+**Type**: string — a service name declared in `info.x-services`.
+
+```json
+{
+  "language": "csharp",
+  "destination": "src/Scheduling",
+  "service": "scheduling-service"
+}
+```
+
+**Rules**:
+
+- `service` and `domains` are **mutually exclusive**; both set, or a blank value, fails with `INVALID_SERVICE_FILTER`. There is no merge semantics for two answers to one question.
+- The service's owned domains expand into an ordinary `include` filter, which then takes exactly the path a hand-written include list takes. **No second filtering mechanism exists** — nothing downstream learns about services.
+- Membership is checked when the filter is applied, not when the project file is parsed: the registry is built from the spec, which project-file validation cannot see.
+- **Unlike an unregistered domain name, an unresolvable service is fail-closed.** `UNKNOWN_SERVICE_FILTER` when the registry is absent, empty, or does not declare the service; `EMPTY_SERVICE_DOMAINS` when the named service owns zero domains. There is nothing to expand the name to, and generating everything is worse than any explicit value.
+- **Binding to a service does not by itself soften the cross-domain edge check.** A service-bound group whose owned domains reach a foreign entity still fails with `CROSS_DOMAIN_ENTITY_REFERENCE`. What softens it is a **declared hold**: when the group's service declares `holds: [X]` and `X`'s owner publishes a `ReadX` schema, the reference resolves to that replica and the group emits a read-only `ReadX` with no write surface. See `Vendor_Extensions.md` §14.3.
+
+**Declare `service` even in a split-bundle topology, where the domain filter is redundant.** The identity is not redundant: resolving a reference to a held entity asks *"is this target held by **this group's** service"*, and a per-service bundle that preserves the whole registry for ownership context has more than one candidate to choose from.
+
 ---
 
 ## 9. Validation Rules
@@ -847,6 +908,10 @@ The project file fails to load when any of the following conditions hold. All er
 | `PROJECT_BROKER_TYPE_UNKNOWN` / `PROJECT_BROKER_TOPOLOGY_UNKNOWN` / `PROJECT_BROKER_DIALECT_UNKNOWN` | `broker.type` / `broker.topology` / `broker.outboxDialect` set to an unrecognised value. |
 | `INVALID_DART_GROUP_FIELD` | `unknownEnumPolicy` or `formatPolicy` outside its accepted set (Dart/Flutter groups only). |
 | `INVALID_FILTER` | `groups[].filter` malformed — multiple top-level operators, unknown operator, wrong value shape. |
+| `INVALID_DOMAIN_FILTER` | `groups[].domains` declares both `include` and `exclude` non-empty. |
+| `INVALID_SERVICE_FILTER` | `groups[].service` set alongside `groups[].domains`, or set to a blank value. |
+| `UNKNOWN_SERVICE_FILTER` | `groups[].service` names a service `info.x-services` does not declare — or the registry is absent or empty. Raised at filter-application time, not at parse time. |
+| `EMPTY_SERVICE_DOMAINS` | `groups[].service` names a service that owns zero domains. |
 | `UNKNOWN_LANGUAGE` | `groups[].language` not registered. |
 | (cleanScope) | A `cleanScope` entry is absolute or contains `..` segments. |
 | `PERSISTENCE_*` | Persistence-block validation failures. The full list lives in §6.6 alongside the field definitions. |

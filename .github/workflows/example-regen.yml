@@ -349,3 +349,89 @@ jobs:
 
           [[ $fail -eq 0 ]] || exit 1
           echo "==> child-collection reconcile rule verified in both directions."
+
+      # Regression net for the service-topology rules (info.x-services, holds,
+      # Read{Entity}). These lint a vocabulary the PINNED generator (0.5.8) does
+      # not implement — it landed on generator `main` after that release — so
+      # for now the kit's rules are an author's only feedback and nothing
+      # generator-side corroborates them. That makes both directions load-
+      # bearing rather than merely good practice: an over-matching rule here has
+      # no second opinion to correct it. See compatibility.md §24.
+      - name: Service topology and Read{Entity} rules (regression)
+        run: |
+          # See the note on the earlier fixture steps: `bash -e` would abort on
+          # the fixture's expected error-severity findings.
+          set +e
+          set -uo pipefail
+          REPORT="${RUNNER_TEMP}/service-topology.txt"
+
+          spectral lint \
+            --ruleset schemas/spectral/specfuse-openapi.yaml \
+            schemas/spectral/fixtures/service-topology.yaml \
+            >"$REPORT" 2>&1
+          STATUS=$?
+          cat "$REPORT"
+
+          if [[ $STATUS -ge 2 ]]; then
+            echo "::error::Spectral crashed on the service-topology fixture (exit ${STATUS})." >&2
+            exit 1
+          fi
+
+          fail=0
+          fired() { grep -q "$1" "$REPORT"; }
+
+          # ---- Each rule fires on its violation --------------------------
+          declare -a EXPECTED=(
+            "specfuse-services-registry-shape|ghost-service|a 'hold:' typo was accepted as a service-entry key"
+            "specfuse-services-domain-single-owner|catalog|a domain claimed by two services was not reported"
+            "specfuse-services-domain-registered|shipping|a domain outside info.x-domains was accepted"
+            "specfuse-services-holds-pairing|Ghost|holds naming a non-entity was accepted"
+            "specfuse-services-holds-pairing|ReadInvoice|holds with no matching Read schema was accepted"
+            "specfuse-read-model-primary-key|ReadCompany|a replica with no primary key was accepted"
+            "specfuse-read-model-nested-entity|ReadEmployee|a replica embedding a Basic* projection was accepted"
+            "specfuse-read-model-not-a-wire-type|ReadUser|a replica used as a response payload was accepted"
+            "specfuse-read-model-source-delete|ReadOrder|a source with x-entity.delete undeclared was accepted"
+            "specfuse-read-model-source-delete|ReadTable|a soft-delete source's replica with no deletedAt was accepted"
+            "specfuse-read-model-unheld|ReadCompany|a Read schema no service holds was not reported"
+          )
+          for row in "${EXPECTED[@]}"; do
+            IFS='|' read -r rule needle why <<<"$row"
+            if ! grep "$rule" "$REPORT" | grep -q "$needle"; then
+              echo "::error::${rule} did not fire for '${needle}': ${why}." >&2
+              fail=1
+            fi
+          done
+
+          # ---- and stays silent on the clean case sitting beside it -------
+          #
+          # ReadRestaurant is the whole point of the fixture: primary key
+          # present, soft-delete source's deletion state carried, an enum
+          # reference rather than an entity embed, held by booking-service, and
+          # nowhere on the wire. A rule that flags it is over-matching, and the
+          # error count alone would not say so.
+          if grep -E "specfuse-(services|read-model)" "$REPORT" | grep -q "ReadRestaurant"; then
+            echo "::error::A service-topology rule flagged ReadRestaurant, which is the" >&2
+            echo "fixture's correct replica. The rule is over-matching." >&2
+            fail=1
+          fi
+
+          # `Readme` is `Read` + a lowercase letter — an ordinary schema name,
+          # not a replica declaration. Treating it as one would make every
+          # project with a Readme/Readiness schema fail lint.
+          if grep -E "specfuse-(services|read-model)" "$REPORT" | grep -q "Readme"; then
+            echo "::error::A service-topology rule treated 'Readme' as a Read{Entity}." >&2
+            echo "The 'Read' + uppercase guard is not holding." >&2
+            fail=1
+          fi
+
+          # warehouse-service declares one registered domain and holds nothing,
+          # which is a complete and correct entry. Only the duplicate-owner rule
+          # may name it, and only because ghost-service re-claims its domain.
+          if grep -E "specfuse-services-(registry-shape|domain-registered|holds-pairing)" "$REPORT" \
+               | grep -q "warehouse-service"; then
+            echo "::error::A registry rule flagged warehouse-service, which is well-formed." >&2
+            fail=1
+          fi
+
+          [[ $fail -eq 0 ]] || exit 1
+          echo "==> service topology and Read{Entity} rules verified in both directions."
