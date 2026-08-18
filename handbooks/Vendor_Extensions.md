@@ -61,7 +61,9 @@ x-entity:
 
 **`domain` (required, leads the block).** Every entity is assigned to exactly one domain. The value is a kebab-case name that **MUST** be a key in the project's domain registry `info.x-domains` (see `API_Handbook.md §0.1` and the new-project scaffold's `openapi.yaml`). The registry is a **closed universe**: an entity may only name a registered domain, and the validator rejects an `x-entity.domain` that has no matching `info.x-domains` key (`ENTITY_DOMAIN_UNREGISTERED`, ERROR). The value also matches the entity's `domains/{domain}/` folder and lines up 1:1 with the AsyncAPI channel `x-domain` (§12.1) and Arazzo workflow `x-domain` (§13.1) — one domain vocabulary shared across all three specs. Author it first so the entity's home is unambiguous before any relationship or access metadata is read.
 
-> **Storage technology choices are not declared on `x-entity`.** Database engine, connection, schema name, and container name live in `project.json.persistence` — see `Project_File.md` §6. The `schema` property previously recognised on `x-entity` is **deprecated**; configure schema names through `persistence.entities.<EntityName>.schema` (relational descriptors only).
+> **Storage technology choices are not declared on `x-entity`.** Database engine, connection, schema name, and container name are designed to live in `project.json.persistence` — see `Project_File.md` §6, **which the generator does not yet read** (`compatibility.md` §27).
+>
+> That changes what to do about `x-entity.schema`, which this handbook calls **deprecated** in favour of `persistence.entities.<EntityName>.schema`. The replacement is not live: the jar parses `x-entity.schema` and ignores `persistence` entirely, so migrating today moves a working declaration onto a key nothing reads — and silently, since the block raises no diagnostic. **Keep `x-entity.schema` where it is.** It remains deprecated in direction and supported in fact; migrate when §6 is implemented, and take the `specfuse-xentity-schema-deprecated` WARNING as a marker of that future move rather than a task for today.
 >
 > Deprecated, not removed: the generator still parses `schema`, so a spec that carries it keeps generating. Lint reports it as a **warning** (`specfuse-xentity-schema-deprecated`), never an error — migrate on your own schedule, and expect the warning until you do. Kit `0.7.1` and earlier rejected the key outright at error severity, which forced the migration rather than inviting it; if you are on one of those, that finding is the kit's defect and not your spec's.
 
@@ -887,6 +889,10 @@ A secret-shaped, response-bound property **passes** the rule only if it carries 
 `x-classification: [sensitive]` alone does **not** satisfy the rule: `sensitive` means *must be masked*, not *may be exposed*. Using `exposed` is an explicit, reviewed override — reach for it only when the secret-shaped name is a false positive, e.g. a public `avatarHash` content-address. Not for a `*Token`: that suffix is not in the heuristic at all, so there is nothing to override.
 
 ### 1.6 x-content
+
+> **⚠ Read by nothing today.** `x-content` does not appear in the generator at any spelling — not the key, not a constant, not a derived accessor — on the pinned `0.5.8` or on `main`. Neither does `PERSISTENCE_HYBRID_NO_CONTENT`, the code both this section and `Project_File.md` §6.6 cite as the load failure for a hybrid entity with no content property. The `kind: hybrid` backend it exists to drive is part of the unimplemented persistence design (`Project_File.md` §6, `compatibility.md` §27).
+>
+> **None of the validation rules below fire, and none of the emission semantics happen.** A property marked `x-content: true` is generated as an ordinary property: it appears in `Basic*` list DTOs, it is auto-included in the `aiAccess.readableProperties` expansion, and a `required` one is not rejected. Declaring the key is harmless and forward-looking; **relying on it to keep a payload out of a list response is not**.
 
 **Purpose**: Marks an entity property as **opaque payload** — data the system carries but does not query, filter, project, or paginate over. The persistence layer decides where to store it; the API may stream it, lazy-load it, or omit it from metadata reads.
 
