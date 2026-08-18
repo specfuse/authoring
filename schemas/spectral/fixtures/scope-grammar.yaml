@@ -1,0 +1,202 @@
+# =============================================================================
+# Regression fixture: x-scopes grammar <domain>[.Entity].<operation>
+# =============================================================================
+# Pins the three `specfuse-auth-scopes-*` rules in both directions.
+#
+# The clean cases are the load-bearing half. `x-scopes` is read by nothing in
+# the generator, so these rules are the ONLY feedback this vocabulary has —
+# there is no second opinion to correct an over-matching one.
+#
+#   CLEAN — no scope finding may name any of these
+#   /clean/domainRead      order.read                  domain-level, 2 segments
+#   /clean/entityRead      order.Order.read            entity-level, 3 segments
+#   /clean/kebabDomain     work-orders.WorkOrder.write kebab domain + Pascal entity
+#   /clean/delete          order.Order.delete          delete is its own action
+#   /clean/multi           order.Order.read +
+#                          customer.Customer.read      two scopes, both fine
+#
+#   SHAPE
+#   /bad/oneSegment        order                       1 segment
+#   /bad/fourSegments      order.Order.line.read       4 segments
+#   /bad/badOperation      order.Order.list            last segment not an operation
+#   /bad/camelDomain       workOrders.read             domain not kebab-case
+#   /bad/lowerEntity       order.order.read            entity segment not PascalCase
+#   /bad/operationDomain   read.write                  domain is an operation keyword
+#
+#   REGISTRY
+#   /bad/unknownDomain     billing.read                domain not in info.x-domains
+#   /bad/unknownEntity     order.Ghost.read            entity is not an x-entity schema
+#   /bad/wrongDomain       customer.Order.read         Order declares domain 'order'
+#
+#   ALL USAGE
+#   /warn/allOnly          order.Order.all             'all' required at an endpoint
+#   /warn/allRedundant     order.Order.all +
+#                          order.Order.read            narrower sibling grants nothing
+#
+# Note `order.order.read` is a SHAPE violation and not a registry one: the
+# parser counts segments rather than reading case, so it resolves as
+# entity-level with an entity named 'order', and the casing rule is what
+# rejects it. That ordering is deliberate — see the header of
+# functions/openapiScopeGrammar.js.
+#
+# Not a Specfuse-conformant example — do not copy.
+# =============================================================================
+openapi: 3.0.3
+info:
+  title: Scope grammar fixture
+  version: "1.0.0"
+  x-domains:
+    order:
+      title: Orders
+    customer:
+      title: Customers
+    work-orders:
+      title: Work orders
+
+paths:
+  # ---- Correct. No finding expected from any scope rule. ------------------
+  /clean/domainRead:
+    get:
+      operationId: cleanDomainRead
+      tags: [Clean]
+      security: [{ bearerAuth: [] }]
+      x-roles: [Admin]
+      x-scopes: [order.read]
+      responses: { "200": { description: OK } }
+  /clean/entityRead:
+    get:
+      operationId: cleanEntityRead
+      tags: [Clean]
+      security: [{ bearerAuth: [] }]
+      x-roles: [Admin]
+      x-scopes: [order.Order.read]
+      responses: { "200": { description: OK } }
+  /clean/kebabDomain:
+    post:
+      operationId: cleanKebabDomain
+      tags: [Clean]
+      security: [{ bearerAuth: [] }]
+      x-roles: [Admin]
+      x-scopes: [work-orders.WorkOrder.write]
+      responses: { "200": { description: OK } }
+  /clean/delete:
+    delete:
+      operationId: cleanDelete
+      tags: [Clean]
+      security: [{ bearerAuth: [] }]
+      x-roles: [Admin]
+      x-scopes: [order.Order.delete]
+      responses: { "204": { description: No Content } }
+  /clean/multi:
+    get:
+      operationId: cleanMulti
+      tags: [Clean]
+      security: [{ bearerAuth: [] }]
+      x-roles: [Admin]
+      x-scopes: [order.Order.read, customer.Customer.read]
+      responses: { "200": { description: OK } }
+
+  # ---- Shape violations. --------------------------------------------------
+  /bad/oneSegment:
+    get:
+      operationId: badOneSegment
+      tags: [Bad]
+      security: [{ bearerAuth: [] }]
+      x-scopes: [order]
+      responses: { "200": { description: OK } }
+  /bad/fourSegments:
+    get:
+      operationId: badFourSegments
+      tags: [Bad]
+      security: [{ bearerAuth: [] }]
+      x-scopes: [order.Order.line.read]
+      responses: { "200": { description: OK } }
+  /bad/badOperation:
+    get:
+      operationId: badOperation
+      tags: [Bad]
+      security: [{ bearerAuth: [] }]
+      x-scopes: [order.Order.list]
+      responses: { "200": { description: OK } }
+  /bad/camelDomain:
+    get:
+      operationId: badCamelDomain
+      tags: [Bad]
+      security: [{ bearerAuth: [] }]
+      x-scopes: [workOrders.read]
+      responses: { "200": { description: OK } }
+  /bad/lowerEntity:
+    get:
+      operationId: badLowerEntity
+      tags: [Bad]
+      security: [{ bearerAuth: [] }]
+      x-scopes: [order.order.read]
+      responses: { "200": { description: OK } }
+  /bad/operationDomain:
+    get:
+      operationId: badOperationDomain
+      tags: [Bad]
+      security: [{ bearerAuth: [] }]
+      x-scopes: [read.write]
+      responses: { "200": { description: OK } }
+
+  # ---- Registry violations. ----------------------------------------------
+  /bad/unknownDomain:
+    get:
+      operationId: badUnknownDomain
+      tags: [Bad]
+      security: [{ bearerAuth: [] }]
+      x-scopes: [billing.read]
+      responses: { "200": { description: OK } }
+  /bad/unknownEntity:
+    get:
+      operationId: badUnknownEntity
+      tags: [Bad]
+      security: [{ bearerAuth: [] }]
+      x-scopes: [order.Ghost.read]
+      responses: { "200": { description: OK } }
+  /bad/wrongDomain:
+    get:
+      operationId: badWrongDomain
+      tags: [Bad]
+      security: [{ bearerAuth: [] }]
+      x-scopes: [customer.Order.read]
+      responses: { "200": { description: OK } }
+
+  # ---- `all` usage. -------------------------------------------------------
+  /warn/allOnly:
+    get:
+      operationId: warnAllOnly
+      tags: [Warn]
+      security: [{ bearerAuth: [] }]
+      x-scopes: [order.Order.all]
+      responses: { "200": { description: OK } }
+  /warn/allRedundant:
+    get:
+      operationId: warnAllRedundant
+      tags: [Warn]
+      security: [{ bearerAuth: [] }]
+      x-scopes: [order.Order.all, order.Order.read]
+      responses: { "200": { description: OK } }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Order:
+      type: object
+      x-entity: { domain: order, type: aggregate }
+      properties:
+        id: { type: string, format: uuid }
+    Customer:
+      type: object
+      x-entity: { domain: customer, type: aggregate }
+      properties:
+        id: { type: string, format: uuid }
+    WorkOrder:
+      type: object
+      x-entity: { domain: work-orders, type: aggregate }
+      properties:
+        id: { type: string, format: uuid }

@@ -4,7 +4,7 @@ post:
   summary: Place a draft order
   description: Lifecycle action — transitions a draft order to `placed`. Emits `Order.Placed`.
   x-roles: [Admin, Manager, Customer]
-  x-scopes: [orders.write]
+  x-scopes: [order.Order.write]
   x-emits:
     - event: Order.Placed
       description: Emitted on the draft → placed state transition

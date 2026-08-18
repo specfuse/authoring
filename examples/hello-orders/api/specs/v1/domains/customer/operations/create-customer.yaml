@@ -3,7 +3,7 @@ post:
   tags: [Customers]
   summary: Create a customer in a tenant
   x-roles: [Admin, Manager]
-  x-scopes: [customers.write]
+  x-scopes: [customer.Customer.write]
   x-emits:
     - event: Customer.Created
       description: Emitted when a new customer is successfully created

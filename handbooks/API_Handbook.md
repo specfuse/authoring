@@ -150,7 +150,7 @@ get:
   description: |
     Returns a customer by ID with full details.
   x-roles: [Admin, Manager]
-  x-scopes: [customers.read]
+  x-scopes: [customer.Customer.read]
   responses:
     '200':
       description: OK
@@ -1124,7 +1124,7 @@ When including 409 in an operation spec, document the specific business rules th
 - Bearer JWT (RS256). `iss` and `aud` are project-specific (e.g., `iss=https://<tenant>.auth0.com/`, `aud=https://api.{project-host}/`).
 - Access token lifetime and rotating refresh window are project-defined (typical defaults: 60-minute access token, ≤ 30-day refresh).
 - **Roles**: The project defines its closed role enum (project-specific). Declare it in the project's OpenAPI common enums file (typically `common/enums.yaml`). All secured endpoints declare allowed roles via the `x-roles` vendor extension.
-- **Scopes**: Use the `{tag}.{read|write|delete}` format where `tag` is based on the tag associated with the endpoint, in camelCase (e.g., `customers.read`, `orders.write`). All secured endpoints declare required scopes via the `x-scopes` vendor extension.
+- **Scopes**: Use `<domain>[.<Entity>].<operation>` — a kebab-case domain from `info.x-domains`, an optional PascalCase entity, and one of `read` / `write` / `delete` / `all` (e.g. `customer.Customer.read`, `order.read`). **Not keyed on the endpoint's tag**: tags are many-to-one against domains, so a tag-keyed scope cannot be resolved back to an owning domain. All secured endpoints declare required scopes via the `x-scopes` vendor extension. Full grammar and rules: `Vendor_Extensions.md` §3.2.
 - ABAC with a project-specific custom claim namespace (e.g., `https://{project-host}/claims`):
   - Enforce tenant context first; optionally also narrower scope context.
   - Permit self-service flows with appropriate checks.
@@ -2162,7 +2162,7 @@ post:
   # gate; Admin has no ChannelMember row in the seed fixture, so the test theory
   # strips Admin to avoid a 403 in the happy-path test.
   x-membership-gated: true
-  x-scopes: [messaging.write]
+  x-scopes: [messaging.Message.write]
 ```
 
 The accompanying YAML comment is **mandatory** — it documents what the handler dereferences so a reviewer can verify the opt-in is warranted.
@@ -2211,7 +2211,7 @@ post:
   # and 404s if no row exists; only the Customer-role principal in the seed fixture
   # has a Customer row, so the test theory narrows to Customer.
   x-self-scoped: Customer
-  x-scopes: [orders.write]
+  x-scopes: [order.Order.write]
 ```
 
 ### Authoring shape — multiple seeded roles
@@ -2281,7 +2281,7 @@ post:
     orderId: SeedOrderForSubmit()
   x-roles: [Admin, Manager, Customer]
   x-self-scoped: Customer
-  x-scopes: [orders.write]
+  x-scopes: [order.Order.write]
 ```
 
 - The key (`orderId`) MUST match an actual path-parameter name declared on the operation. Misspelled keys produce an undefined-variable compile error in the generated test.
@@ -2619,17 +2619,17 @@ When in doubt, use this file as the **authoritative template** for new resources
 
 Every **secured** operation **must** declare:
 - `x-roles`: array of allowed role names drawn from the project's closed role enum.
-- `x-scopes`: array of OAuth scopes (camelCase, e.g., `customers.read`, `customers.write`).
+- `x-scopes`: array of OAuth scopes matching `<domain>[.<Entity>].<operation>` (e.g. `customer.Customer.read`, `order.read`). See `Vendor_Extensions.md` §3.2.
 
 The role enum is project-defined; declare it in the project's OpenAPI common enums file (typically `common/enums.yaml`).
 
 **Default policy templates (may be narrowed per endpoint):**
 - **Read ops** (GET list/search/get):
   - `x-roles`: privileged + manager-tier roles
-  - `x-scopes`: `[resource.read]` (adjust to actual resource, e.g., `customers.read`)
+  - `x-scopes`: `[<domain>.<Entity>.read]` (e.g. `customer.Customer.read`; drop the entity segment when the operation spans the domain)
 - **Write ops** (POST/PUT/PATCH/DELETE):
   - `x-roles`: privileged + administrative roles
-  - `x-scopes`: `[resource.write]` (adjust to actual resource)
+  - `x-scopes`: `[<domain>.<Entity>.write]`, or `[<domain>.<Entity>.delete]` for a DELETE — `delete` is a distinct action, not a subset of `write`
 
 > These extensions document intent for reviewers and generators; enforcement occurs in implementation and/or gateway policy.
 

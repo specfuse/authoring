@@ -3,7 +3,7 @@ get:
   tags: [Orders]
   summary: List orders for a customer
   x-roles: [Admin, Manager, Customer]
-  x-scopes: [orders.read]
+  x-scopes: [order.Order.read]
   parameters:
     - $ref: '../../../common/parameters/path.yaml#/customerId'
     - $ref: '../../../common/parameters/pagination.yaml#/page'
