@@ -33,6 +33,7 @@ functions:
   - openapiChildCollectionReconcile
   - openapiServiceRegistry
   - openapiReadModelShape
+  - openapiClassification
 
 rules:
 
@@ -1613,3 +1614,96 @@ rules:
       function: openapiReadModelShape
       functionOptions:
         check: sourceDelete
+
+  # ===========================================================================
+  # Data classification — x-classification
+  # ===========================================================================
+  #
+  # Handbook: Vendor_Extensions.md §1.5.
+  #
+  # Unlike the service-topology group above, this vocabulary IS in the pinned
+  # generator (0.5.8) — partially. The jar enforces PRESENCE
+  # (`PII_CLASSIFICATION` / finding id `PII_FIELD_MISSING_CLASSIFICATION`, ERROR)
+  # and the response-leak guard (`SENSITIVE_FIELD_IN_RESPONSE`, ERROR), and
+  # `PiiClassificationValidationRule` states in its own comment that the VALUE is
+  # "a structural concern handled by Spectral". The kit had never implemented
+  # that half, so §1.5's documented value rules — the closed set, the `exposed`
+  # contradiction, the `exposed` justification — were enforced by nothing on
+  # either side.
+  #
+  # These rules are the missing half. They are `error` because each one either
+  # mirrors a jar ERROR or covers a §1.5 rule the jar explicitly delegated;
+  # none of them tightens past the jar on a surface the jar decides.
+
+  specfuse-classification-values:
+    description: >-
+      x-classification must be a non-empty array drawn from [pii, sensitive, encrypted, exposed].
+    # Not scoped to x-entity schemas: a stray x-classification on a DTO or a
+    # value object is still a typo worth naming, and the value set is the same
+    # wherever it is written.
+    severity: error
+    given: $.components.schemas[*].properties[*]["x-classification"]
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            enum: ["pii", "sensitive", "encrypted", "exposed"]
+
+  specfuse-classification-exposed-contradiction:
+    description: >-
+      x-classification 'exposed' must not co-occur with 'sensitive' or 'encrypted'.
+    # Vendor_Extensions.md §1.5 rule 5, which names a finding id
+    # (CLASSIFICATION_EXPOSED_CONTRADICTION) that exists in neither the kit nor
+    # the jar. This rule is that finding.
+    #
+    # It matters more than a tidiness check: `exposed` is the escape hatch that
+    # satisfies SENSITIVE_FIELD_IN_RESPONSE, so a property carrying both reads
+    # as "must be masked" to one consumer and "safe to return" to another, and
+    # the one that wins decides whether a secret reaches a response body.
+    message: "{{error}}"
+    severity: error
+    given: $.components.schemas[?(@ && @["x-entity"])]
+    then:
+      function: openapiClassification
+      functionOptions:
+        check: exposedContradiction
+
+  specfuse-classification-exposed-needs-description:
+    description: >-
+      A property classified 'exposed' must carry a description justifying why exposure is safe.
+    # Vendor_Extensions.md §1.5 rule 6. `exposed` asserts that a human reviewed
+    # a secret-shaped name and found it safe; the description is the only place
+    # that review is recorded. Without it the override is indistinguishable
+    # from someone silencing a finding.
+    message: "{{error}}"
+    severity: error
+    given: $.components.schemas[?(@ && @["x-entity"])]
+    then:
+      function: openapiClassification
+      functionOptions:
+        check: exposedDescription
+
+  specfuse-classification-pii-required:
+    description: >-
+      An entity property strongly indicative of PII must declare x-classification.
+    # Mirrors the generator's PII_CLASSIFICATION rule (finding id
+    # PII_FIELD_MISSING_CLASSIFICATION, ERROR) so the author sees it in the
+    # editor rather than at generate time. Presence only — the jar accepts any
+    # non-empty classification here, and a kit rule that demanded a particular
+    # member would fail lint on specs that generate fine.
+    #
+    # The trigger list in openapiClassification.js is COPIED from the jar and
+    # must be changed only in step with it. Widening it is the forbidden
+    # direction; narrowing it silently drops coverage the jar has.
+    message: "{{error}}"
+    severity: error
+    given: $.components.schemas[?(@ && @["x-entity"])]
+    then:
+      function: openapiClassification
+      functionOptions:
+        check: piiRequired

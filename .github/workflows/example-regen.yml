@@ -435,3 +435,97 @@ jobs:
 
           [[ $fail -eq 0 ]] || exit 1
           echo "==> service topology and Read{Entity} rules verified in both directions."
+
+      # Regression net for the x-classification value rules. Three of the four
+      # run over EVERY property of every entity schema, so an over-matching one
+      # does not produce a few wrong findings — it produces one per property
+      # across the whole spec, which is the state in which a team turns the
+      # rule off. The clean-case assertions below are the ones that catch that.
+      - name: x-classification value rules (regression)
+        run: |
+          # See the note on the earlier fixture steps: `bash -e` would abort on
+          # the fixture's expected error-severity findings.
+          set +e
+          set -uo pipefail
+          REPORT="${RUNNER_TEMP}/classification.txt"
+
+          spectral lint \
+            --ruleset schemas/spectral/specfuse-openapi.yaml \
+            schemas/spectral/fixtures/classification.yaml \
+            >"$REPORT" 2>&1
+          STATUS=$?
+          cat "$REPORT"
+
+          if [[ $STATUS -ge 2 ]]; then
+            echo "::error::Spectral crashed on the classification fixture (exit ${STATUS})." >&2
+            exit 1
+          fi
+
+          fail=0
+
+          # ---- Each rule fires on its violation --------------------------
+          declare -a EXPECTED=(
+            "specfuse-classification-values|nickname|a value outside the closed set was accepted"
+            "specfuse-classification-values|alias|a scalar x-classification was accepted"
+            "specfuse-classification-values|tag|an empty x-classification was accepted"
+            "specfuse-classification-exposed-contradiction|sessionHash|exposed + encrypted was accepted"
+            "specfuse-classification-exposed-contradiction|resetSalt|exposed + sensitive was accepted"
+            "specfuse-classification-exposed-needs-description|tokenHash|exposed with no description was accepted"
+            "specfuse-classification-exposed-needs-description|blankHash|exposed with a blank description was accepted"
+            "specfuse-classification-pii-required|firstName|a PII-named property with no classification was accepted"
+            "specfuse-classification-pii-required|dateOfBirth|a PII-named property with no classification was accepted"
+            "specfuse-classification-pii-required|contactEmail|a format:email property with no classification was accepted"
+          )
+          for row in "${EXPECTED[@]}"; do
+            IFS='|' read -r rule needle why <<<"$row"
+            if ! grep "$rule" "$REPORT" | grep -q "$needle"; then
+              echo "::error::${rule} did not fire for '${needle}': ${why}." >&2
+              fail=1
+            fi
+          done
+
+          # ---- and stays silent on the correct case beside it -------------
+          #
+          # Customer is the positive control: every property correctly
+          # classified, including a legitimate `exposed` with its justification.
+          # A rule that flags any of it is over-matching.
+          if grep "specfuse-classification" "$REPORT" | grep -q "Customer"; then
+            echo "::error::A classification rule flagged the Customer control schema," >&2
+            echo "every property of which is correctly classified. It is over-matching." >&2
+            fail=1
+          fi
+
+          # The jar's PII name list is deliberately narrow: `emails` on an
+          # Inbox-shaped schema must not be treated as PII. Widening the list
+          # kit-side would fail lint on specs that generate fine.
+          if grep "specfuse-classification-pii-required" "$REPORT" | grep -q "emails"; then
+            echo "::error::pii-required fired on 'emails', which is not an exact match for the" >&2
+            echo "jar's name list. The heuristic has been widened past the generator." >&2
+            fail=1
+          fi
+
+          # Presence only, exactly as the jar checks it. `phonePrimary` carrying
+          # any classification satisfies the rule. Tightening past the jar is
+          # the forbidden direction even when the tightening looks correct.
+          if grep "specfuse-classification-pii-required" "$REPORT" | grep -q "phonePrimary"; then
+            echo "::error::pii-required fired on 'phonePrimary', which declares a classification." >&2
+            echo "The rule has moved from presence to value and is now stricter than the jar." >&2
+            fail=1
+          fi
+
+          # Entity schemas only. DTOs project the same fields, and double-
+          # flagging every PII property is how the rule stops being read.
+          if grep "specfuse-classification-pii-required" "$REPORT" | grep -q "NotAnEntity"; then
+            echo "::error::pii-required reached NotAnEntity, which carries no x-entity." >&2
+            fail=1
+          fi
+
+          # ...but the value set applies wherever it is written, entity or not.
+          if ! grep "specfuse-classification-values" "$REPORT" | grep -q "NotAnEntity"; then
+            echo "::error::specfuse-classification-values did not fire on NotAnEntity.nickname." >&2
+            echo "The value rule has been scoped to entities and now misses DTO typos." >&2
+            fail=1
+          fi
+
+          [[ $fail -eq 0 ]] || exit 1
+          echo "==> x-classification value rules verified in both directions."
