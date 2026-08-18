@@ -4,7 +4,7 @@ post:
   summary: Add a line item to an order
   description: Adds a new OrderLine to the order. Allowed only while the order is in `draft` status.
   x-roles: [Admin, Manager, Customer]
-  x-scopes: [orders.write]
+  x-scopes: [order.OrderLine.write]
   x-emits:
     - event: OrderLine.Created
       description: Emitted when a line item is added to an order

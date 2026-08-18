@@ -558,6 +558,30 @@ This is the `0.7.0` erratum (follow-up 18) inverted. There the jar **rejected** 
 
 **Severity:** documentation-only in this repo; no rule changed and no lint result moved. As a *finding* it is not documentation-only — the projects most exposed are the ones that configured `persistence` carefully and have been trusting it.
 
+### 28. `x-scopes` grammar rewritten to `<domain>[.Entity].<operation>`
+
+**Status:** kit-side work **done** (`Vendor_Extensions.md` §3.2, `API_Handbook.md` §14 and §"Authorization", three Spectral rules replacing one, `schemas/spectral/fixtures/scope-grammar.yaml`, a both-directions CI step, `examples/hello-orders/` and `samples/endpoint-samples.yaml` migrated). One generator-side item.
+
+**`x-scopes` is read by nothing.** Zero occurrences across the generator source, against controls in the same search finding `x-roles` in 8 files and `x-public` in 3. The kit's Spectral rules are the only enforcement this vocabulary has ever had, and a project enforcing scopes at runtime is doing it in hand-written middleware. Third unread extension found in this batch, after `x-ai-safe` (follow-up 25) and `x-content` (follow-up 27) — **generator action:** parse `x-scopes`, or say it will not, so the kit knows whether it is documenting a contract or a convention.
+
+That fact is also what makes this change cheap and safe to make: there is no jar position to reconcile against and no way to be stricter than a jar that has no opinion. Nothing generated changes, and no runtime behaviour moves.
+
+**The grammar.** `<domain>[.<Entity>].<operation>`, where the domain is kebab-case and a member of `info.x-domains`, the optional entity is PascalCase and names an `x-entity` schema, and the operation is one of `read` / `write` / `delete` / `all`. Two segments grants at domain level, three at entity level.
+
+**Three decisions worth recording, because each had a defensible alternative:**
+
+1. **Segment count is normative; casing is a lint rule, not the parser's discriminator.** The mixed casing is genuinely useful — each segment announces which registry it came from — but some identity providers normalise scope case at introspection, and where that happens `order.Order.read` and `order.order.read` collapse into one string. Anything resolving on case would then resolve the collapsed form differently from the authored one. Counting segments survives it.
+2. **`delete` is disjoint from `write`, not a subset.** That is the point of separating them: edit-without-delete is the split projects most often want, and a subset relationship makes it inexpressible. `all` therefore means `read` + `write` + `delete`.
+3. **`admin.*` is removed.** The old convention documented `admin.{resource}.{action}`. A scope answers *what* and a principal prefix answers *who*; mixing them gives two half-answers to authorization with no precedence between them. "Who" is `x-roles`, which is generator-enforced and registry-validated. It also did not fit the positional parse.
+
+**What this replaces, and why the old rule was wrong twice over.** `specfuse-auth-scopes-pattern` enforced `^[a-z][a-zA-Z0-9]*(\.[a-z][a-zA-Z0-9]*)*$` at `warn` — camelCase dotted segments. It **rejected the kebab-case a domain is required to use everywhere else in the kit**, and it **rejected the PascalCase an entity name is required to use everywhere else**. It also tied nothing to a registry, so a scope could name a domain that did not exist and lint clean indefinitely.
+
+`API_Handbook.md` carried a **third** grammar in its authorization section: `{tag}.{read|write|delete}`, keyed on the endpoint's tag. Tags are many-to-one against domains — that is stated in `info.x-domains`'s own documentation, where `crm` maps to five tags — so a tag-keyed scope cannot be resolved back to an owning domain. Removed rather than updated.
+
+**No project overlay is needed**, unlike `x-roles`. Both registries the grammar references (`info.x-domains`, `components.schemas`) live in the spec, so the kit enforces the whole contract on its own.
+
+**Severity: breaking for any project that declares `x-scopes`.** Every value changes, and the migration is **not** mechanical: the old first segment was a tag and the new one is a domain, so `customers.read` does not say whether the domain is `customer` or `crm`. Rewrite against `info.x-domains`. The rules ship at `error` (shape, registry) and `warn` (`all` usage) rather than at `warn`-to-be-promoted — that path is where `ENTITY_CONCURRENCY_UNDECLARED` has been parked since `0.7.1` (follow-up 18). For an existing corpus, turn them on through `scripts/spectral-ratchet.py` so inherited violations do not block every PR during the sweep. Nothing breaks at generation time either way, because nothing reads the extension.
+
 ---
 
 ## Outstanding kit-side work

@@ -3,7 +3,7 @@ patch:
   tags: [Customers]
   summary: Update a customer
   x-roles: [Admin, Manager]
-  x-scopes: [customers.write]
+  x-scopes: [customer.Customer.write]
   x-emits:
     - event: Customer.Updated
       description: Emitted when a customer's tracked fields change

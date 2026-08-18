@@ -4,7 +4,7 @@ get:
   summary: List customers in a tenant
   description: Paginated list of customers scoped to a tenant.
   x-roles: [Admin, Manager, Customer]
-  x-scopes: [customers.read]
+  x-scopes: [customer.Customer.read]
   parameters:
     - $ref: '../../../common/parameters/path.yaml#/tenantId'
     - $ref: '../../../common/parameters/pagination.yaml#/page'

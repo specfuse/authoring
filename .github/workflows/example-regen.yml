@@ -529,3 +529,78 @@ jobs:
 
           [[ $fail -eq 0 ]] || exit 1
           echo "==> x-classification value rules verified in both directions."
+
+      # Regression net for the x-scopes grammar. `x-scopes` is read by nothing
+      # in the generator, so these rules are the ONLY feedback this vocabulary
+      # has — there is no second opinion to correct an over-matching one, which
+      # makes the clean-case assertions the load-bearing half here.
+      - name: x-scopes grammar rules (regression)
+        run: |
+          # See the note on the earlier fixture steps: `bash -e` would abort on
+          # the fixture's expected error-severity findings.
+          set +e
+          set -uo pipefail
+          REPORT="${RUNNER_TEMP}/scope-grammar.txt"
+
+          spectral lint \
+            --ruleset schemas/spectral/specfuse-openapi.yaml \
+            schemas/spectral/fixtures/scope-grammar.yaml \
+            >"$REPORT" 2>&1
+          STATUS=$?
+          cat "$REPORT"
+
+          if [[ $STATUS -ge 2 ]]; then
+            echo "::error::Spectral crashed on the scope-grammar fixture (exit ${STATUS})." >&2
+            exit 1
+          fi
+
+          fail=0
+
+          # ---- Each rule fires on its violation --------------------------
+          declare -a EXPECTED=(
+            "specfuse-auth-scopes-shape|oneSegment|a one-segment scope was accepted"
+            "specfuse-auth-scopes-shape|fourSegments|a four-segment scope was accepted"
+            "specfuse-auth-scopes-shape|badOperation|a scope not ending in an operation was accepted"
+            "specfuse-auth-scopes-shape|camelDomain|a camelCase domain segment was accepted"
+            "specfuse-auth-scopes-shape|lowerEntity|a lowercase entity segment was accepted"
+            "specfuse-auth-scopes-shape|operationDomain|a domain named for an operation was accepted"
+            "specfuse-auth-scopes-registry|unknownDomain|a domain outside info.x-domains was accepted"
+            "specfuse-auth-scopes-registry|unknownEntity|a scope naming a non-entity was accepted"
+            "specfuse-auth-scopes-registry|wrongDomain|an entity/domain mismatch was accepted"
+            "specfuse-auth-scopes-all-on-operation|allOnly|'all' required at an endpoint was not reported"
+            "specfuse-auth-scopes-all-on-operation|allRedundant|'all' beside a narrower sibling was not reported"
+          )
+          for row in "${EXPECTED[@]}"; do
+            IFS='|' read -r rule needle why <<<"$row"
+            if ! grep "$rule" "$REPORT" | grep -q "$needle"; then
+              echo "::error::${rule} did not fire for '${needle}': ${why}." >&2
+              fail=1
+            fi
+          done
+
+          # ---- and stays silent on every correct form ---------------------
+          #
+          # /clean/* covers both segment counts, a kebab-case multi-word domain,
+          # `delete` as its own action, and two scopes on one operation. A rule
+          # that flags any of them is over-matching, and with no generator-side
+          # check on x-scopes nothing else would catch that.
+          if grep "specfuse-auth-scopes" "$REPORT" | grep -q "/clean/"; then
+            echo "::error::A scope rule flagged a /clean/ operation. It is over-matching." >&2
+            fail=1
+          fi
+
+          # One mistake, one finding. A malformed domain is the shape rule's to
+          # report — the registry rule must not also call it unregistered, or
+          # fixing the casing silently removes a second finding the author was
+          # never given a way to understand.
+          for once in camelDomain operationDomain lowerEntity; do
+            n=$(grep -c "specfuse-auth-scopes.*${once}" "$REPORT")
+            if [[ "$n" -ne 1 ]]; then
+              echo "::error::'${once}' produced ${n} scope findings; expected exactly 1." >&2
+              echo "The shape and registry rules are double-reporting one mistake." >&2
+              fail=1
+            fi
+          done
+
+          [[ $fail -eq 0 ]] || exit 1
+          echo "==> x-scopes grammar rules verified in both directions."

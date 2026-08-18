@@ -4,7 +4,7 @@ get:
   summary: List line items on an order
   description: Returns all OrderLine items under the given order. Not paginated — line count per order is bounded.
   x-roles: [Admin, Manager, Customer]
-  x-scopes: [orders.read]
+  x-scopes: [order.OrderLine.read]
   parameters:
     - $ref: '../../../common/parameters/path.yaml#/orderId'
   security: [{ bearerAuth: [] }]

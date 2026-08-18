@@ -34,6 +34,7 @@ functions:
   - openapiServiceRegistry
   - openapiReadModelShape
   - openapiClassification
+  - openapiScopeGrammar
 
 rules:
 
@@ -388,14 +389,82 @@ rules:
       functionOptions:
         match: "^[A-Z][A-Za-z0-9]*$"
 
-  specfuse-auth-scopes-pattern:
-    description: "x-scopes values should be camelCase segments separated by dots (e.g., orders.read)."
-    severity: warn
-    given: $.paths[*][get,post,put,patch,delete][?(@ && @.security)]["x-scopes"][*]
+  # ---- x-scopes grammar: <domain>[.<Entity>].<operation> -------------------
+  #
+  # Handbook: Vendor_Extensions.md §3.2.
+  #
+  # REPLACES `specfuse-auth-scopes-pattern`, which enforced camelCase dotted
+  # segments (`^[a-z][a-zA-Z0-9]*(\.[a-z][a-zA-Z0-9]*)*$`) at `warn`. That
+  # pattern contradicted the rest of the kit twice over: it rejected the
+  # kebab-case a domain is required to use everywhere else, and it rejected the
+  # PascalCase an entity name is required to use everywhere else. It also
+  # tied nothing to a registry, so a scope could name a domain that did not
+  # exist and lint clean forever.
+  #
+  # `x-scopes` is read by NOTHING in the generator (0 files, against `x-roles`
+  # in 8) — see compatibility.md §28. That is why these rules can be authored
+  # freely: there is no jar position to contradict and no way to be stricter
+  # than a jar that has no opinion. It is also why they are the only enforcement
+  # this vocabulary has.
+  #
+  # Severity is `error` on shape and registry, `warn` on the `all` usage rule.
+  # Existing specs predating the grammar are expected to fail; that is what
+  # scripts/spectral-ratchet.py is for (schemas/README.md §"Turning the ruleset
+  # on against existing specs"). Shipping at `warn` to be promoted later is the
+  # path ENTITY_CONCURRENCY_UNDECLARED has been stuck on since 0.7.1.
+
+  specfuse-auth-scopes-shape:
+    description: >-
+      x-scopes values must be '<domain>.<operation>' or '<domain>.<Entity>.<operation>',
+      where operation is one of read | write | delete | all.
+    message: "{{error}}"
+    severity: error
+    given: $.paths
+    resolved: false
     then:
-      function: pattern
+      function: openapiScopeGrammar
       functionOptions:
-        match: "^[a-z][a-zA-Z0-9]*(?:\\.[a-z][a-zA-Z0-9]*)*$"
+        check: shape
+
+  specfuse-auth-scopes-registry:
+    description: >-
+      A scope's domain segment must be declared in info.x-domains, and its entity segment
+      must name an x-entity schema whose x-entity.domain matches that same domain.
+    # The second half is the one that pays: it catches the scope still naming
+    # the domain an entity used to live in. Nothing else in the toolchain
+    # notices that, and the failure is silent — the scope keeps looking correct.
+    #
+    # Skipped entirely when info.x-domains is absent or empty: membership is
+    # unanswerable, and reporting every scope would bury the missing registry.
+    message: "{{error}}"
+    severity: error
+    given: $.paths
+    resolved: false
+    then:
+      function: openapiScopeGrammar
+      functionOptions:
+        check: registry
+
+  specfuse-auth-scopes-all-on-operation:
+    description: >-
+      An operation should require a specific action, not the 'all' aggregate.
+    # `all` is a legitimate scope to GRANT a client. It is almost never a
+    # correct scope to REQUIRE at an endpoint: an operation performs one
+    # action, so `x-scopes: [order.all]` on a GET demands delete rights to
+    # read. Warn rather than error — a deliberately broad admin endpoint is a
+    # real, if rare, case, and this is a judgement the author can overrule.
+    #
+    # Declaring `all` alongside a narrower sibling is reported through the same
+    # rule with a sharper message: the narrow entries grant nothing extra, and
+    # a later attempt to narrow the operation silently fails to narrow it.
+    message: "{{error}}"
+    severity: warn
+    given: $.paths
+    resolved: false
+    then:
+      function: openapiScopeGrammar
+      functionOptions:
+        check: allUsage
 
   # ===== Event Emission (AsyncAPI Integration) =====
 

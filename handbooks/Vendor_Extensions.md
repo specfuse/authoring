@@ -1301,32 +1301,97 @@ paths:
 
 ### 3.2 x-scopes
 
-**Purpose**: Specifies OAuth scopes required for an operation.
+**Purpose**: Declares the OAuth scopes an operation requires.
 
-**Scope**: Applied to OpenAPI operations
+**Scope**: Applied to OpenAPI operations.
 
 **Schema**:
 ```yaml
-x-scopes: string[]  # Array of OAuth scope names
+x-scopes: string[]  # Array of scope names, each matching the grammar below
 ```
 
-**Scope Naming Convention**: `{resource}.{action}` in camelCase
-- Read operations: `{resource}.read` (e.g., `customers.read`)
-- Write operations: `{resource}.write` (e.g., `customers.write`)
-- Admin operations: `admin.{resource}.{action}` (e.g., `admin.templates.write`)
+> **Read by nothing in the generator today.** `x-scopes` appears in **0** generator source files, against `x-roles` in 8 and `x-public` in 3. The kit's Spectral rules are the only enforcement this vocabulary has — no generated code reads it, and a project enforcing scopes at runtime is doing so in hand-written middleware. That also means the kit owns this grammar outright: there is no jar position to reconcile against. See `compatibility.md` §28.
+
+#### The grammar
+
+```
+<domain>[.<Entity>].<operation>
+```
+
+| segment | casing | drawn from | required |
+|---|---|---|---|
+| `<domain>` | kebab-case | a key of `info.x-domains` | yes |
+| `<Entity>` | PascalCase | a schema carrying `x-entity` | no |
+| `<operation>` | lowercase | `read` \| `write` \| `delete` \| `all` | yes |
+
+```yaml
+order.read                    # domain-level  — every entity in `order`
+order.Order.read              # entity-level  — the Order aggregate only
+work-orders.WorkOrder.write   # kebab domain, PascalCase entity
+```
+
+A scope grants at **domain level** (two segments) or **entity level** (three). Use entity level when the operation acts on one entity, and domain level when it spans several — a cross-entity search, a report, a domain-wide administrative action.
+
+**Parse from the right, and count segments.** The last segment is always the operation, drawn from a closed four-member set; two segments is domain-level, three is entity-level. The casing convention is enforced and worth keeping — each segment announces which registry it came from — but it is **not** what distinguishes the two forms. Some identity providers normalise scope case at token introspection; where that happens, `order.Order.read` and `order.order.read` collapse into one string, and anything that resolved on case would then resolve the collapsed form differently from the authored one. Segment counting survives it.
+
+#### The operations
+
+| operation | means |
+|---|---|
+| `read` | retrieve |
+| `write` | create and modify |
+| `delete` | remove |
+| `all` | `read` + `write` + `delete` |
+
+**`delete` is disjoint from `write`, not a subset of it.** That is the point of separating them: destruction is not modification, and edit-without-delete is the split projects most often want. If `write` implied `delete` there would be no way to express it.
+
+**`all` is a scope worth *granting*; it is almost never a scope worth *requiring*.** An operation performs one action, so `x-scopes: [order.all]` on a `GET` demands delete rights in order to read. Declare the operation's actual action. Requiring `all` at an endpoint is a WARNING (`specfuse-auth-scopes-all-on-operation`), not an error — a deliberately broad administrative endpoint is a real if rare case — and declaring `all` alongside a narrower sibling on the same operation is reported more sharply, because the narrower entry grants nothing extra and a later attempt to narrow that operation will silently fail to narrow it.
+
+#### There is no `admin.*` prefix
+
+Earlier revisions documented `admin.{resource}.{action}`. It is **removed**. A scope answers *what*, and a prefix naming a principal answers *who* — mixing them gives two half-answers to authorization with no defined precedence between them. "Who" already has a home: `x-roles` (§3.1), which is generator-enforced and validated against `info.x-roles`.
+
+An operation that used `admin.templates.write` declares:
+
+```yaml
+x-roles:  [Admin]
+x-scopes: [template.Template.write]
+```
+
+#### Validation rules
+
+| rule | severity | enforces |
+|---|---|---|
+| `specfuse-auth-scopes-shape` | error | segment count, the closed operation set, kebab-case domain, PascalCase entity, and that a domain is not named for an operation |
+| `specfuse-auth-scopes-registry` | error | the domain segment is a member of `info.x-domains`; the entity segment names an `x-entity` schema **whose `x-entity.domain` equals the domain segment** |
+| `specfuse-auth-scopes-all-on-operation` | warn | `all` required at an endpoint, and `all` declared alongside a narrower sibling |
+
+The second half of the registry rule is the one that pays. A scope that keeps naming the domain an entity used to live in stays syntactically perfect and silently wrong; nothing else in the toolchain notices, because nothing else reads `x-scopes` at all.
+
+Unlike `x-roles`, this needs **no project overlay**: both registries the grammar references — `info.x-domains` and `components.schemas` — live in the spec, so the kit can enforce the whole contract on its own.
 
 **Example**:
 ```yaml
 paths:
   /customers:
     get:
-      x-scopes: [customers.read]
+      x-roles:  [Admin, Manager]
+      x-scopes: [customer.Customer.read]
     post:
-      x-scopes: [customers.write]
-  /admin/templates:
+      x-roles:  [Admin]
+      x-scopes: [customer.Customer.write]
+  /orders/{orderId}:
+    delete:
+      x-roles:  [Admin]
+      x-scopes: [order.Order.delete]
+  /orders:search:
     post:
-      x-scopes: [admin.templates.write]
+      # Spans several entities in the domain, so it grants at domain level.
+      x-roles:  [Admin, Manager]
+      x-scopes: [order.read]
 ```
+
+**Migrating an existing project.** Every value changes: the old convention keyed the first segment on a **tag** (`customers.read`), and tags are many-to-one against domains, so an old scope cannot be mechanically resolved to an owner — `customers.read` does not tell you whether the domain is `customer` or `crm`. Rewrite them against `info.x-domains` rather than by find-and-replace. For a large corpus, turn the rules on with `scripts/spectral-ratchet.py` (see `schemas/README.md`) so inherited violations do not block every PR while the sweep runs.
 
 ---
 
@@ -2074,7 +2139,7 @@ Extensions are validated using Spectral rules defined in the project's Spectral 
 **Storage and Security Validation**:
 - Storage patterns must be from approved vocabulary (collection_json, single_json, flatten, serialized, separate_table)
 - Role names must be from the project's closed role enum
-- Scope names must follow naming conventions ({resource}.{action} in camelCase)
+- Scope names must follow the `<domain>[.<Entity>].<operation>` grammar (§3.2)
 
 **Cardinality Validation Examples**:
 ```yaml
@@ -2137,8 +2202,8 @@ Code generation templates receive a normalized data structure derived from these
     "security": {
       "readRoles": ["Admin", "Manager"],
       "writeRoles": ["Admin"],
-      "readScopes": ["customers.read"],
-      "writeScopes": ["customers.write"]
+      "readScopes": ["customer.Customer.read"],
+      "writeScopes": ["customer.Customer.write"]
     }
   }
 }

@@ -19,7 +19,7 @@ paths:
       tags: [Customers]
       summary: List customers in a tenant
       x-roles: [Admin, Manager]
-      x-scopes: [customers.read]
+      x-scopes: [customer.Customer.read]
       parameters:
         - $ref: '#/components/parameters/tenantId'
         - $ref: '#/components/parameters/page'
@@ -42,7 +42,7 @@ paths:
       tags: [Customers]
       summary: Create a customer in a tenant
       x-roles: [Admin, Manager]
-      x-scopes: [customers.write]
+      x-scopes: [customer.Customer.write]
       x-emits:
         - event: Customer.Created
           description: Emitted when a new customer is successfully created
@@ -73,7 +73,7 @@ paths:
       tags: [Customers]
       summary: Search customers in a tenant
       x-roles: [Admin, Manager]
-      x-scopes: [customers.read]
+      x-scopes: [customer.Customer.read]
       parameters:
         - $ref: '#/components/parameters/tenantId'
       security: [{ bearerAuth: [] }]
@@ -99,7 +99,7 @@ paths:
       tags: [Customers]
       summary: Get a customer
       x-roles: [Admin, Manager]
-      x-scopes: [customers.read]
+      x-scopes: [customer.Customer.read]
       parameters:
         - $ref: '#/components/parameters/customerId'
       security: [{ bearerAuth: [] }]
@@ -120,7 +120,7 @@ paths:
       tags: [Customers]
       summary: Replace a customer
       x-roles: [Admin, Manager]
-      x-scopes: [customers.write]
+      x-scopes: [customer.Customer.write]
       x-emits:
         - event: Customer.Updated
           description: Emitted when a customer is replaced
@@ -154,7 +154,7 @@ paths:
       tags: [Customers]
       summary: Update a customer
       x-roles: [Admin, Manager]
-      x-scopes: [customers.write]
+      x-scopes: [customer.Customer.write]
       x-emits:
         - event: Customer.Updated
           description: Emitted when a customer's tracked fields change
@@ -188,7 +188,7 @@ paths:
       tags: [Customers]
       summary: Delete a customer
       x-roles: [Admin, Manager]
-      x-scopes: [customers.write]
+      x-scopes: [customer.Customer.write]
       x-emits:
         - event: Customer.Deleted
           description: Emitted when a customer is soft-deleted

@@ -3,7 +3,7 @@ get:
   tags: [Customers]
   summary: Get a customer
   x-roles: [Admin, Manager, Customer]
-  x-scopes: [customers.read]
+  x-scopes: [customer.Customer.read]
   parameters:
     - $ref: '../../../common/parameters/path.yaml#/customerId'
   security: [{ bearerAuth: [] }]

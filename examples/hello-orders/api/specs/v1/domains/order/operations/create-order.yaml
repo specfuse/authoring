@@ -4,7 +4,7 @@ post:
   summary: Create an order for a customer
   description: Creates a new Order in `draft` status. Use `placeOrder` to transition it to `placed`.
   x-roles: [Admin, Manager]
-  x-scopes: [orders.write]
+  x-scopes: [order.Order.write]
   x-emits:
     - event: Order.Created
       description: Emitted when a new order is successfully created (always in draft status)

@@ -3,7 +3,7 @@ get:
   tags: [Orders]
   summary: Get an order
   x-roles: [Admin, Manager, Customer]
-  x-scopes: [orders.read]
+  x-scopes: [order.Order.read]
   parameters:
     - $ref: '../../../common/parameters/path.yaml#/orderId'
   security: [{ bearerAuth: [] }]
