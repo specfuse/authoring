@@ -484,6 +484,55 @@ jobs:
           done
           [ $missing -eq 0 ] || exit 1
 
+          # No anonymous `type: object` placeholders in the scaffolded specs.
+          #
+          # The generator refuses them (ANONYMOUS_OBJECT_PLACEHOLDER) because an
+          # untyped inline object cannot be modelled into a DTO. That check runs
+          # in validate-generator.sh, which needs the private jar — so CI cannot
+          # reach it, and a scaffolded project shipped for some time failing its
+          # own validate-specs.sh on `Error.details` and
+          # `PreconditionFailedBody.currentResource`. This is the jar-free half
+          # of that guard: it is a pure shape check over the YAML, so it holds
+          # in a runner with no generator access.
+          #
+          # Both fields are genuine open maps and now say so with
+          # `additionalProperties`. Adding a third is fine — declare it the same
+          # way rather than leaving the object anonymous.
+          python3 - <<'ANON'
+          import pathlib, sys, yaml
+
+          def walk(node, path, hits):
+              if isinstance(node, dict):
+                  if (node.get("type") == "object" and "properties" not in node
+                          and "additionalProperties" not in node and "$ref" not in node
+                          and "allOf" not in node and "oneOf" not in node):
+                      hits.append(path)
+                  for k, v in node.items():
+                      walk(v, f"{path}.{k}", hits)
+              elif isinstance(node, list):
+                  for i, v in enumerate(node):
+                      walk(v, f"{path}[{i}]", hits)
+
+          bad = []
+          for p in sorted(pathlib.Path("/tmp/smoke/api").rglob("*.yaml")):
+              try:
+                  docs = list(yaml.safe_load_all(p.read_text()))
+              except Exception:
+                  continue
+              for d in docs:
+                  h = []
+                  walk(d, "", h)
+                  bad += [f"{p}:{x}" for x in h]
+
+          if bad:
+              print("::error::anonymous `type: object` placeholder(s) in the scaffolded specs —")
+              print("::error::the generator cannot model them (ANONYMOUS_OBJECT_PLACEHOLDER).")
+              for b in bad:
+                  print(f"  {b}")
+              sys.exit(1)
+          print("==> No anonymous type: object placeholders in the scaffolded specs.")
+          ANON
+
           # The OpenAPI-generator layer must select spec files by content, not
           # by extension: the documented layout puts asyncapi.yaml beside
           # openapi.yaml, so a *.yaml glob feeds an AsyncAPI document to

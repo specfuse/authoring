@@ -30,9 +30,15 @@ Error:
     retryAfter:
       type: integer
       description: Seconds to wait before retrying (if retryable)
+    # Same case as `currentResource` below, and declared the same way: an error
+    # payload's extra context differs per error, so no `$ref` can name it. The
+    # generator refuses an anonymous `type: object`, so state the openness.
     details:
       type: object
-      description: Additional context-specific error details
+      additionalProperties: true
+      description: >-
+        Additional context-specific error details. Free-form by nature —
+        clients must not depend on any particular key being present.
     requestId:
       type: string
       description: Request ID for correlation
@@ -101,9 +107,27 @@ PreconditionFailedBody:
       type: array
       items:
         $ref: '#/Error'
+    # The one sanctioned open map in the contract, and it is declared as one
+    # rather than left anonymous. The 412 body is shared by every endpoint, so
+    # this field is a different entity on each — there is no `$ref` that could
+    # name it. An undeclared `type: object` is the generator's
+    # ANONYMOUS_OBJECT_PLACEHOLDER error, and rightly: an untyped inline object
+    # cannot be modelled, so `additionalProperties` states the intent instead of
+    # leaving it to be inferred.
+    #
+    # It does NOT weaken the open-map ban that governs event payloads
+    # (AsyncAPI_Handbook.md §"closed universe"). That ban exists because an
+    # open map hides fields from typing, from the version cascade, and from the
+    # PII/classification rules. None of those bite here: this echoes a resource
+    # the caller already holds an ETag for — so it discloses nothing new — and
+    # it is an error body, not a payload anything downstream consumes by shape.
     currentResource:
-      description: Current state of the resource (for merge-and-retry)
+      description: >-
+        Current state of the resource, echoed so an AI agent can merge and
+        retry without a second round-trip. Shape is the endpoint's own
+        resource; optional, and a client must be able to proceed without it.
       type: object
+      additionalProperties: true
 
 PreconditionFailedError:
   description: >
