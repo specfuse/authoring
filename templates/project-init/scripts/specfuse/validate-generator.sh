@@ -1,6 +1,6 @@
 #!/bin/bash
 # SpecFuse Generator Validation (Mac/Linux)
-# Usage: ./scripts/validate-generator.sh
+# Usage: ./scripts/specfuse/validate-generator.sh
 #
 # Single entrypoint for ALL generator-side validation. The generator's
 # `validate <project.json>` runs the full OpenAPI DDD ruleset (aggregate
@@ -20,7 +20,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # The generator is resolved and checksum-verified by the kit CLI against the
 # version pinned in generator.lock; there is no jar to keep beside this script.
 # The suite is driven through the single `specfuse` command. The flat

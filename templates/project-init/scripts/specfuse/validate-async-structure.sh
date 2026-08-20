@@ -1,6 +1,6 @@
 #!/bin/bash
 # AsyncAPI Structure Validator Script (Mac/Linux)
-# Usage: ./scripts/validate-async-structure.sh
+# Usage: ./scripts/specfuse/validate-async-structure.sh
 #
 # Validates that AsyncAPI spec files follow the required
 # directory structure and naming conventions.
@@ -9,7 +9,7 @@ set -e
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 SPEC_DIR="$PROJECT_ROOT/api/specs/v1"
 ASYNC_SPEC="$SPEC_DIR/asyncapi.yaml"

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Bundle OpenAPI Specification Script (Mac/Linux)
-# Usage: ./scripts/bundle-spec.sh [input-spec] [output-spec]
-# Example: ./scripts/bundle-spec.sh api/specs/v1/openapi.yaml output/openapi-bundled.yaml
+# Usage: ./scripts/specfuse/bundle-spec.sh [input-spec] [output-spec]
+# Example: ./scripts/specfuse/bundle-spec.sh api/specs/v1/openapi.yaml output/openapi-bundled.yaml
 #
 # If no arguments provided, uses defaults:
 #   input-spec:  api/specs/v1/openapi.yaml

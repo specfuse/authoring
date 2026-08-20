@@ -1,6 +1,6 @@
 #!/bin/bash
 # Implementation-Prompts Reverse Index Builder
-# Usage: ./scripts/build-prompt-index.sh [--format json|yaml]
+# Usage: ./scripts/specfuse/build-prompt-index.sh [--format json|yaml]
 #
 # Parses YAML front-matter from every *.md file under api/docs/implementation-prompts/
 # (excluding README.md) and emits a reverse index of the form:
@@ -17,7 +17,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PROMPTS_DIR="$REPO_ROOT/api/docs/implementation-prompts"
 
 FORMAT="json"

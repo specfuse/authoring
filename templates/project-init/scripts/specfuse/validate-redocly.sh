@@ -1,12 +1,12 @@
 #!/bin/bash
 # Redocly Validation Script
-# Usage: ./scripts/validate-redocly.sh [version]
+# Usage: ./scripts/specfuse/validate-redocly.sh [version]
 
 set -e
 
 # Resolve repo root (script lives in scripts/)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Default values
 VERSION=${1:-"latest"}

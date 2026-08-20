@@ -53,7 +53,7 @@ def scaffold_contract(target: Path) -> None:
         dest = target / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(content)
-        if rel.startswith("scripts/") and rel.endswith(".sh"):
+        if rel.startswith("scripts/specfuse/") and rel.endswith(".sh"):
             dest.chmod(0o755)
 
 
@@ -171,7 +171,7 @@ def init(
     print(f"\nBootstrapping Specfuse project.\n  Kit:    {kit_root()}\n  Target: {target}\n")
 
     # Copy template tree, excluding any bootstrap script/README at the template
-    # root. `scripts/README.md` is skipped here and delivered by the overlay
+    # root. `scripts/specfuse/README.md` is skipped here and delivered by the overlay
     # instead, which does not apply the root exclusions.
     #
     # Junk filtering matters even though the wheel is clean: `pip install`

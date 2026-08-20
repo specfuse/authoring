@@ -1,13 +1,13 @@
 #!/bin/bash
 # OpenAPI Structure Validator Script (Mac/Linux)
-# Usage: ./scripts/validate-structure.sh [version]
-# Example: ./scripts/validate-structure.sh v1
+# Usage: ./scripts/specfuse/validate-structure.sh [version]
+# Example: ./scripts/specfuse/validate-structure.sh v1
 
 set -e
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Default values
 VERSION=${1:-"latest"}

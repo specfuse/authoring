@@ -24,7 +24,10 @@ Without the manifest all three look the same on disk, and the only safe
 behaviours are "clobber everything" or "touch nothing".
 
 What the overlay owns is kit content only: the handbooks, samples and schemas
-under `.specfuse/authoring/`, plus the `scripts/` tooling at the project root.
+under `.specfuse/authoring/`, plus the tooling at `scripts/specfuse/`. Note the
+subdirectory — `scripts/` itself is the project's, and hosts tooling from other
+contracts (the shared substrate's `validate-event.py`, authoring #26). Prune is
+scoped to `scripts/specfuse/`, so a kit upgrade cannot reach them.
 The project's own specs (`api/`), its `CLAUDE.md`, its project file and its
 `.gitignore` are seeded once by `init` and never touched again — they are the
 user's, and an upgrade that rewrote them would destroy the actual work.
@@ -46,9 +49,19 @@ VERSION_FILE = SCAFFOLD_SUBDIR / "VERSION"
 
 # Kit source directory -> destination, relative to the project root.
 #
-# `scripts` lands at the project root because that is where the plugin skills
-# look for it (`./scripts/serve-docs.sh`). Everything else is contract material
-# and lives under .specfuse/authoring/.
+# Kit tooling lands at `scripts/specfuse/` — under the project root because the
+# plugin skills invoke it by relative path, and in its own subdirectory because
+# the kit owns those filenames and the project owns the rest of `scripts/`.
+#
+# The subdirectory is the boundary. Before it, the kit shipped ~20 generic names
+# (`validate-specs.sh`, `bundle-spec.sh`, `serve-docs.sh`) straight into the
+# project's `scripts/`, and a consumer file colliding with one of them was
+# overwritten on upgrade — warned about on stderr, which in CI is where warnings
+# go unread. `scripts/` also hosts tooling the kit does NOT own: the shared
+# substrate contract's `validate-event.py` and `validate-frontmatter.py`
+# (authoring #26) live there and must not be swept up by a kit prune.
+#
+# Everything else is contract material and lives under .specfuse/authoring/.
 # A source may be a directory (copied recursively) or a single file.
 #
 # `templates/` is NOT overlaid wholesale: `templates/project-init/` is the
@@ -70,7 +83,7 @@ OVERLAY: tuple[tuple[str, str], ...] = (
         "templates/initiative-idea-dossier.template.md",
         ".specfuse/authoring/templates/initiative-idea-dossier.template.md",
     ),
-    ("templates/project-init/scripts", "scripts"),
+    ("templates/project-init/scripts/specfuse", "scripts/specfuse"),
 )
 
 # Destination roots whose contents are pruned when the kit stops shipping a
@@ -208,6 +221,36 @@ def stamp(target: Path) -> None:
     write_version(target)
 
 
+def _migrate_legacy_scripts(
+    target: Path, old_manifest: dict[str, str], *, dry_run: bool
+) -> list[str]:
+    """Remove kit scripts left at the pre-`0.10.0` location, `scripts/<name>`.
+
+    Kit tooling moved from `scripts/` to `scripts/specfuse/`. `PRUNE_DIRS` moved
+    with it, which is the point — an upgrade must not walk the project's own
+    `scripts/` any more. But that also means the ordinary prune can no longer
+    see the copies a previous kit wrote at the old path, and without this they
+    would sit there forever: stale duplicates of files the kit still ships, no
+    longer refreshed, no longer owned by anything.
+
+    The safety rule is the same one prune uses and is not relaxed here: delete
+    only what `old_manifest` proves a prior init/upgrade wrote. A project file
+    that happens to share a name with a kit script was never in the manifest and
+    is never touched — which is the collision this move exists to end.
+    """
+    removed: list[str] = []
+    for rel in sorted(old_manifest):
+        if not rel.startswith("scripts/") or rel.startswith("scripts/specfuse/"):
+            continue
+        legacy = target / rel
+        if not legacy.is_file():
+            continue
+        if not dry_run:
+            legacy.unlink()
+        removed.append(rel)
+    return removed
+
+
 def upgrade(target: Path, *, dry_run: bool = False) -> int:
     """Overlay the installed kit's files onto an existing project.
 
@@ -275,7 +318,7 @@ def upgrade(target: Path, *, dry_run: bool = False) -> int:
         if not dry_run:
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(content)
-            if rel.startswith("scripts/") and rel.endswith(".sh"):
+            if rel.startswith("scripts/specfuse/") and rel.endswith(".sh"):
                 dest.chmod(0o755)
         written.append(rel)
 
@@ -301,6 +344,8 @@ def upgrade(target: Path, *, dry_run: bool = False) -> int:
                 pruned.append(rel)
             else:
                 kept.append(rel)
+
+    pruned.extend(_migrate_legacy_scripts(target, old_manifest, dry_run=dry_run))
 
     if not dry_run:
         write_manifest(target, manifest)

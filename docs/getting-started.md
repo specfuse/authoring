@@ -123,7 +123,7 @@ specfuse authoring upgrade ~/projects/my-app
 
 Add `--dry-run` to see what would change before anything is written.
 
-This overlays the kit-owned files from the installed package — the handbooks, samples and Spectral schemas under `.specfuse/authoring/`, plus the `scripts/` tooling the skills call — and re-asserts the plugin config in `.claude/settings.json`. **Your specs are never touched**: `api/`, `CLAUDE.md`, your project file and `.gitignore` are seeded once at `init` and owned by you thereafter.
+This overlays the kit-owned files from the installed package — the handbooks, samples and Spectral schemas under `.specfuse/authoring/`, plus the `scripts/specfuse/` tooling the skills call — and re-asserts the plugin config in `.claude/settings.json`. **Your specs are never touched**: `api/`, `CLAUDE.md`, your project file and `.gitignore` are seeded once at `init` and owned by you thereafter.
 
 ### What upgrade will and will not do
 

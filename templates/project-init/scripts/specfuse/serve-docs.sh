@@ -5,7 +5,7 @@
 # =============================================================================
 # 
 # Serves the OpenAPI v3 specification using Redocly with live reloading
-# Usage: ./scripts/serve-docs.sh [port]
+# Usage: ./scripts/specfuse/serve-docs.sh [port]
 # Default port: 8081
 
 set -e
@@ -14,7 +14,7 @@ set -e
 DEFAULT_PORT=8081
 SPEC_FILE="api/specs/v1/openapi.yaml"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Parse command line arguments
 PORT=${1:-$DEFAULT_PORT}

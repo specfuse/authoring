@@ -34,7 +34,7 @@ The Claude Code authoring assets (skills + agents) ship as the `specfuse-authori
 /plugin install specfuse-authoring@specfuse
 ```
 
-To pull a kit update into an existing project — handbooks, samples, schemas and the `scripts/` tooling:
+To pull a kit update into an existing project — handbooks, samples, schemas and the `scripts/specfuse/` tooling:
 
 ```bash
 specfuse authoring upgrade ~/projects/existing-project

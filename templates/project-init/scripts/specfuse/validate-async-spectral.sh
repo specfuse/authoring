@@ -1,6 +1,6 @@
 #!/bin/bash
 # AsyncAPI Spectral Linting Script
-# Usage: ./scripts/validate-async-spectral.sh
+# Usage: ./scripts/specfuse/validate-async-spectral.sh
 #
 # Bundles the AsyncAPI spec first, then validates with the
 # the kit's AsyncAPI Spectral ruleset.
@@ -9,7 +9,7 @@ set -e
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Paths
 MAIN_SPEC="$PROJECT_ROOT/api/specs/v1/asyncapi.yaml"

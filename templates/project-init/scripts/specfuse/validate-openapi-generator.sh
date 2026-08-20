@@ -1,13 +1,13 @@
 #!/bin/bash
 # OpenAPI Generator Validator Script (Mac/Linux)
-# Usage: ./scripts/validate-openapi-generator.sh [version]
-# Example: ./scripts/validate-openapi-generator.sh v1
+# Usage: ./scripts/specfuse/validate-openapi-generator.sh [version]
+# Example: ./scripts/specfuse/validate-openapi-generator.sh v1
 
 set -e
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Default values
 VERSION=${1:-"latest"}

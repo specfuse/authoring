@@ -1,6 +1,6 @@
 #!/bin/bash
 # Arazzo Structure & Cross-Spec Validator
-# Usage: ./scripts/validate-arazzo.sh
+# Usage: ./scripts/specfuse/validate-arazzo.sh
 #
 # Validates that Arazzo scenario and recipe files follow the required
 # directory structure, naming conventions, and cross-spec consistency rules.
@@ -16,7 +16,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 export SPEC_DIR="$PROJECT_ROOT/api/specs/v1"
 
 echo "=== Arazzo Structure & Cross-Spec Validator ==="

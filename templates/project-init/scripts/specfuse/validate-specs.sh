@@ -1,7 +1,7 @@
 #!/bin/bash
 # Full Specification Validation Suite (Mac/Linux)
-# Usage: ./scripts/validate-specs.sh [version]
-# Example: ./scripts/validate-specs.sh v1
+# Usage: ./scripts/specfuse/validate-specs.sh [version]
+# Example: ./scripts/specfuse/validate-specs.sh v1
 #
 # Orchestrates EVERY validation layer — OpenAPI, AsyncAPI, Arazzo, and the
 # cross-spec link rules that bind them. Each layer is a self-contained
@@ -18,7 +18,7 @@
 #   - Exits non-zero if any layer fails.
 #
 # To validate a single layer during focused edits, call its sub-script directly
-# (e.g. ./scripts/validate-async-structure.sh).
+# (e.g. ./scripts/specfuse/validate-async-structure.sh).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VERSION=${1:-"latest"}

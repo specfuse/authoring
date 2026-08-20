@@ -4,7 +4,7 @@
 # =============================================================================
 #
 # Serves the AsyncAPI specification using AsyncAPI Studio with live reloading
-# Usage: ./scripts/serve-async-docs.sh [port]
+# Usage: ./scripts/specfuse/serve-async-docs.sh [port]
 # Default port: 8082
 #
 # Prerequisites:
@@ -16,7 +16,7 @@ set -e
 DEFAULT_PORT=8082
 SPEC_FILE="api/specs/v1/asyncapi.yaml"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Parse command line arguments
 PORT=${1:-$DEFAULT_PORT}

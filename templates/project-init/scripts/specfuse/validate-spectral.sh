@@ -1,7 +1,7 @@
 #!/bin/bash
 # Spectral API Linting Script (Validates Bundled Spec)
-# Usage: ./scripts/validate-spectral.sh [version]
-# Example: ./scripts/validate-spectral.sh v1
+# Usage: ./scripts/specfuse/validate-spectral.sh [version]
+# Example: ./scripts/specfuse/validate-spectral.sh v1
 #
 # Note: Bundles the spec first, then validates the bundled output.
 # This avoids issues with $ref at operation level which is not strictly
@@ -11,7 +11,7 @@ set -e
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Default values
 VERSION=${1:-"latest"}

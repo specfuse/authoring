@@ -9,10 +9,10 @@ set -euo pipefail
 # Called automatically by generate-scenario-docs.sh after Specfuse generation.
 #
 # Usage:
-#   ./scripts/generate-scenario-index.sh [--skip-crosslinks]
+#   ./scripts/specfuse/generate-scenario-index.sh [--skip-crosslinks]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 FLOWS_DIR="${ROOT_DIR}/api/docs/flows"
 SPECS_DIR="${ROOT_DIR}/api/specs/v1"
 
