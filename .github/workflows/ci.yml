@@ -462,7 +462,7 @@ jobs:
                    validate-arazzo validate-arazzo-spectral \
                    bundle-spec bundle-async-spec build-prompt-index; do
             echo "--- $s"
-            ./scripts/$s.sh
+            ./scripts/specfuse/$s.sh
           done
 
           # The Spectral validators must be linting against the kit rulesets
@@ -475,10 +475,10 @@ jobs:
           # aggregate resolves. validate-generator.sh was missing for exactly
           # that reason, so the entry-point validator died on its last step.
           missing=0
-          for dep in $(grep -rhoE '\$(SCRIPT_DIR|ROOT_DIR)?/?[A-Za-z0-9_-]+\.(sh|py)|\./scripts/[A-Za-z0-9_-]+\.(sh|py)' scripts/*.sh \
+          for dep in $(grep -rhoE '\$(SCRIPT_DIR|ROOT_DIR)?/?[A-Za-z0-9_-]+\.(sh|py)|\./scripts/specfuse/[A-Za-z0-9_-]+\.(sh|py)' scripts/specfuse/*.sh \
                        | sed 's|.*/||' | sort -u); do
-            if [ ! -f "scripts/$dep" ]; then
-              echo "::error::scripts/ references $dep, which is not shipped" >&2
+            if [ ! -f "scripts/specfuse/$dep" ]; then
+              echo "::error::scripts/specfuse/ references $dep, which is not shipped" >&2
               missing=1
             fi
           done
