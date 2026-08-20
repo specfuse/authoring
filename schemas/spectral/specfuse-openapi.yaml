@@ -141,7 +141,7 @@ rules:
   specfuse-put-patch-200-complete:
     description: "PUT/PATCH must always return 200 with Location header and resource body."
     severity: error
-    given: $.paths[*].[put,patch].responses
+    given: $.paths[*][put,patch].responses
     then:
       - field: "200"
         function: truthy
@@ -186,7 +186,7 @@ rules:
   specfuse-ifmatch-on-write:
     description: "PUT/PATCH/DELETE must accept If-Match and define 412."
     severity: error
-    given: $.paths[*].[put,patch,delete]
+    given: $.paths[*][put,patch,delete]
     then:
       - field: parameters
         function: schema
@@ -204,7 +204,7 @@ rules:
   specfuse-428-on-write:
     description: "PUT/PATCH/DELETE must define 428 Precondition Required for missing If-Match."
     severity: warn
-    given: $.paths[*].[put,patch,delete]
+    given: $.paths[*][put,patch,delete]
     then:
       field: responses.428
       function: truthy
@@ -472,7 +472,7 @@ rules:
     description: "POST/PUT/PATCH/DELETE operations must declare x-emits listing the events they publish."
     message: "Write operation '{{path}}' is missing x-emits. Declare the event(s) this operation publishes on success (see AsyncAPI Handbook §0.8)."
     severity: error
-    given: $.paths[*].[post,put,patch,delete]
+    given: $.paths[*][post,put,patch,delete]
     then:
       field: x-emits
       function: truthy
@@ -481,7 +481,7 @@ rules:
     description: "Each x-emits entry must have an event field in {Entity}.{Action} format."
     message: "x-emits entry at '{{path}}' is missing 'event'."
     severity: error
-    given: $.paths[*].[post,put,patch,delete].x-emits[*]
+    given: $.paths[*][post,put,patch,delete].x-emits[*]
     then:
       field: event
       function: truthy
@@ -490,7 +490,7 @@ rules:
     description: "x-emits event must follow {Entity}.{Action} format (PascalCase dot-separated)."
     message: "x-emits event '{{value}}' must be in '{Entity}.{Action}' format (e.g., 'Order.Created')."
     severity: error
-    given: $.paths[*].[post,put,patch,delete].x-emits[*].event
+    given: $.paths[*][post,put,patch,delete].x-emits[*].event
     then:
       function: pattern
       functionOptions:
@@ -500,7 +500,7 @@ rules:
   specfuse-validate-only-on-writes:
     description: "POST/PUT/PATCH/DELETE operations must support validateOnly query parameter for AI agent integration."
     severity: error
-    given: $.paths[*].[post,put,patch,delete]
+    given: $.paths[*][post,put,patch,delete]
     then:
       field: parameters
       function: schema
@@ -544,7 +544,7 @@ rules:
   specfuse-change-description-headers:
     description: "Write operations should support change tracking headers for audit trails."
     severity: hint
-    given: $.paths[*].[post,put,patch,delete]
+    given: $.paths[*][post,put,patch,delete]
     then:
       field: parameters
       function: schema
@@ -1260,7 +1260,7 @@ rules:
   specfuse-409-on-put-patch:
     description: "PUT/PATCH operations should define 409 for state transition and business rule conflicts."
     severity: warn
-    given: $.paths[*].[put,patch].responses
+    given: $.paths[*][put,patch].responses
     then:
       field: "409"
       function: truthy
@@ -1276,7 +1276,7 @@ rules:
   specfuse-put-patch-no-204:
     description: "PUT/PATCH must return 200, never 204."
     severity: error
-    given: $.paths[*].[put,patch].responses
+    given: $.paths[*][put,patch].responses
     then:
       field: "204"
       function: falsy

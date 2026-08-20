@@ -602,6 +602,46 @@ That fact is also what makes this change cheap and safe to make: there is no jar
 
 **Severity: breaking for any project that declares `x-scopes`.** Every value changes, and the migration is **not** mechanical: the old first segment was a tag and the new one is a domain, so `customers.read` does not say whether the domain is `customer` or `crm`. Rewrite against `info.x-domains`. The rules ship at `error` (shape, registry) and `warn` (`all` usage) rather than at `warn`-to-be-promoted — that path is where `ENTITY_CONCURRENCY_UNDECLARED` has been parked since `0.7.1` (follow-up 18). For an existing corpus, turn them on through `scripts/spectral-ratchet.py` so inherited violations do not block every PR during the sweep. Nothing breaks at generation time either way, because nothing reads the extension.
 
+### 29. First consumer measurement of `info.x-services`, and a reported JSONPath leak that does not reproduce
+
+**Status:** kit-side **done** (ten `given` expressions normalised, a ruleset self-check added, `Vendor_Extensions.md` §14.8 corrected with the measured figures). One item returned to the reporter unresolved.
+
+Source: a `restomanager-specs` handoff dated 2026-08-20, measured against a generator built from `main` because the feature is not in the pinned `0.5.8`.
+
+#### The JSONPath report — normalised, but the stated cause did not reproduce
+
+Ten `given` expressions in `specfuse-openapi.yaml` used the dot-before-bracket union `$.paths[*].[verb,…]` while the other ~20 used `$.paths[*][verb,…]`. The reporter observed rules with the dotted form firing on nodes **outside** `paths` once they declared `x-entity.delete` across their bundle — verbatim, `rm-ifmatch-on-write` at `components.schemas.ExternalMapping.x-entity.delete` — with three rules moving 0 → 94, 0 → 94 and 8 → 102, returning to baseline after they rewrote the expressions.
+
+**That leak does not reproduce against this ruleset.** Probed both spellings directly on Spectral **6.16.2** (the reporter's version) against a document carrying decoy `x-entity.delete`, `responses` and `x-emits` keys under `components.schemas`: **both forms match the identical node set**, confined to `paths`. Normalising all ten moved no count on `examples/hello-orders/` (24 problems, 0 errors, before and after) or on any of the nine fixtures.
+
+So the finding is real in their tree and the stated root cause is not sufficient to explain it. The difference is most likely their ruleset copy rather than the form itself — their file is `rm-*`-prefixed with different line numbers, so it has diverged. **Returned to the reporter** for the exact rule text and a minimal document; their fix is correct for them either way.
+
+**Normalised anyway**, on grounds that do not depend on the leak: the dotted form is inconsistent with every other rule in the file, rests on a jsonpath-plus behaviour no rule should depend on, and costs nothing to retire. Proven behaviour-preserving before landing.
+
+**Their third recommendation is the one worth keeping** and is implemented: a lint-the-linter guard, because Spectral cannot lint its own ruleset. They flagged the weakness in their own fix — theirs is a convention in `CLAUDE.md`, so a new rule can reintroduce the form and nothing catches it. Ours is a grep in CI over all three rulesets.
+
+#### The severity report — already filed
+
+The handoff's companion item is `SERVICE_CROSS_BOUNDARY_REFERENCE` documented as WARNING while the source emits ERROR. Independently found and filed as `clabonte/generator#1197` before this handoff arrived; their reproduction (**138 ERROR findings, exit=1**, five-service overlay, via the `validate <project.json>` path) is stronger evidence than the source-reading in that issue and has been noted there. Their comment that they *"planned adoption sequencing off that table and had to re-plan"* is the cost this defect carries, and is why follow-up 24's checklist says to verify severities against rule sources rather than docs.
+
+#### The measurement — the first from any consumer, and it corrects our guidance
+
+The feature closed at `met_locally` with no consumer having declared `info.x-services`. This is the first real measurement, and one claim inherited from the original handoff **did not survive it**: *"a plausible five-service split more than halves it."*
+
+| | one service per domain | five-service split | change |
+|---|---|---|---|
+| crossing references | 168 | 138 | **−18%** |
+| `holds` pairs | 99 | 36 | **−64%** |
+| `Read{Entity}` schemas | 29 | 22 | −24% |
+
+Consolidating the concentrated targets does **not** remove crossings — `Company` (35), `Employee` (32), `Restaurant` (31) and `User` (29) account for 127 of 168 edges and are referenced from nearly every domain, so every *other* service still reaches them. What collapses is the number of distinct (service, entity) pairs to author, which is the actual work. §14.8 now says to quote `holds` pairs rather than edge count, with these figures.
+
+The top-four ranking also **shifted between two measurements two days apart** (`Restaurant` led on 2026-08-15, `Company` on 2026-08-17), which is the concrete case behind §14.8's instruction to re-derive rather than inherit a ranking.
+
+Snapshot readiness, for the hydration gate: 20 of the 22 held targets under their five-service split already publish `{Entity}Snapshot`; the exceptions are `EmployeeSchedulingPreferences` and `EmployeeTimeOffBank`.
+
+**They are not adopting.** Recorded on their side as available-and-declined. So `info.x-services` still has **zero** adopters, and follow-up 24's "the benefit is not proven" stands — but its cost is now measured on a real bundle rather than a mechanical overlay.
+
 ---
 
 ## Outstanding kit-side work
