@@ -84,7 +84,7 @@ except ImportError:  # pragma: no cover - environment guidance, not logic
     )
     raise SystemExit(2)
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 
 # Where the kit delivers its rulesets, plus any project-local ones. A project
 # may carry its own ruleset with its own closed guards (a `<token>-*-shape`
@@ -97,11 +97,11 @@ RULESET_GLOBS = (
 
 # The kit's own copies, for maintainers running this from the kit repo rather
 # than from a provisioned project. Resolved relative to the repo root, which is
-# three levels above this file (templates/project-init/scripts/). Without this
+# four levels above this file (templates/project-init/scripts/specfuse/). Without this
 # the globs above match nothing in the kit repo and the check exits 0 having
 # examined nothing — a vacuous pass, which is the failure mode this whole guard
 # exists to prevent. See `--require-jar` below, which now refuses to be vacuous.
-KIT_ROOT = Path(__file__).resolve().parents[3]
+KIT_ROOT = Path(__file__).resolve().parents[4]
 KIT_RULESET_GLOBS = ("schemas/spectral/*.yaml",)
 
 # Keys the generator references that are NOT part of the guarded surface —
@@ -381,6 +381,23 @@ def load_kit_only() -> dict[str, dict[str, str]]:
     return _exception_section(doc, "kit_only")
 
 
+def _display(path: Path) -> Path | str:
+    """A readable path for output, whichever root the file actually lives under.
+
+    `ROOT` is the project root when this runs from a provisioned project, but
+    the maintainer path (`KIT_ROOT`) reaches rulesets in the kit repo that are
+    not under `ROOT` at all. `Path.relative_to` raises there, which turned an
+    informational line into a crash — for the maintainer, in the middle of a pin
+    bump, which is where this guard is most needed.
+    """
+    for base in (ROOT, KIT_ROOT):
+        try:
+            return path.relative_to(base)
+        except ValueError:
+            continue
+    return path
+
+
 def unreferenced_rulesets(paths: list[Path]) -> list[Path]:
     """Ruleset files no script in `scripts/` names.
 
@@ -542,7 +559,7 @@ def main(argv: list[str] | None = None) -> int:
                   f"(reasons in {EXCEPTIONS_FILE.name})")
 
     for orphan in unreferenced_rulesets(paths):
-        print(f"   ℹ️  {orphan.relative_to(ROOT)} is not named by any script in "
+        print(f"   ℹ️  {_display(orphan)} is not named by any script in "
               f"scripts/ — if it is a second copy of a ruleset, it will drift "
               f"unnoticed (one ruleset, one runner).")
 

@@ -9,7 +9,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SPEC_DIR="$PROJECT_ROOT/api/specs/v1"
 RULESET="$PROJECT_ROOT/.specfuse/authoring/schemas/spectral/specfuse-arazzo.yaml"
 
