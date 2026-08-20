@@ -3341,8 +3341,10 @@ Both need `info.x-services`; neither needs a generator change, since N `project.
 Adoption is opt-in and the checks are gated on a declaration, so there is no forced migration. When you do adopt:
 
 1. **Declare `x-entity.delete` on every entity you intend to replicate, first.** It is a prerequisite for every replica rule, and it is independently valuable — it is what makes soft-delete semantics explicit rather than inferred (§1.1). Expect this to be the largest single piece of work; the key is commonly declared nowhere.
-2. **Declare `info.x-services` for the topology you actually intend to deploy** — not one service per domain. A mechanical one-service-per-domain registry produces a `holds` count nobody would ship; a realistic split more than halves it.
-3. **Rank replication targets by how many domains reference them**, and author the `Read{Entity}` schemas for the top handful first. Reference graphs are heavily concentrated: on a real 24-domain bundle, four target entities carried three quarters of the crossing edges between them.
+2. **Declare `info.x-services` for the topology you actually intend to deploy** — not one service per domain. A mechanical one-service-per-domain registry produces a `holds` count nobody would ship.
+
+   **Measure the cost in `holds` pairs, not in crossing references — the two move very differently.** On a real 24-domain bundle, moving from one-service-per-domain to a five-service split cut crossings only **168 → 138** (18%) while cutting `holds` pairs **99 → 36** (64%) and `Read{Entity}` schemas 29 → 22. Consolidating the hot entities into one service does not remove the crossings, because every *other* service still reaches them — but it collapses the number of distinct (service, entity) pairs you have to author, which is the work. Quote the pairs.
+3. **Rank replication targets by how many domains reference them**, and author the `Read{Entity}` schemas for the top handful first. Reference graphs are heavily concentrated: on that same bundle four target entities carried **127 of 168** crossing edges between them, each referenced from nearly every domain. Re-derive the ranking rather than inheriting one — it has already shifted once between two measurements two days apart.
 4. **Then declare `holds`** on the services that need each target, and fix what the pairing rules report.
 5. **Re-run validation and use its output as the work list.** Do not plan from a count someone measured against an older bundle — the ranking moves.
 

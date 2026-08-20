@@ -604,3 +604,33 @@ jobs:
 
           [[ $fail -eq 0 ]] || exit 1
           echo "==> x-scopes grammar rules verified in both directions."
+
+      # Lint the linter. `$.paths[*].[verb,…]` — a dot before the bracket
+      # union — is never the intended form: every other rule in the file spells
+      # it `$.paths[*][verb,…]`, and jsonpath-plus's handling of the dotted
+      # variant is an implementation detail no rule should rest on.
+      #
+      # Reported by a consumer (restomanager-specs, 2026-08-20) who saw rules
+      # using the dotted form fire on `components.schemas.<Entity>.x-entity.delete`
+      # — nodes far outside `paths`. That leak does NOT reproduce against this
+      # ruleset on Spectral 6.16.2: probed directly, both spellings match the
+      # identical node set, and normalising all ten occurrences moved no count
+      # on the example or on any fixture. So this guard is not a fix for a
+      # confirmed leak; it removes a form that is inconsistent, is documented
+      # ambiguously upstream, and cost nothing to retire.
+      #
+      # It is a grep rather than a Spectral rule because Spectral cannot lint
+      # its own ruleset, which is exactly the gap the reporter flagged in their
+      # own fix: theirs is a convention in CLAUDE.md, so a new rule can
+      # reintroduce the form and nothing catches it.
+      - name: Ruleset self-check — no dot-before-bracket JSONPath unions
+        run: |
+          set -uo pipefail
+          hits=$(grep -rn '\$\.paths\[[^]]*\]\.\[' schemas/spectral/*.yaml || true)
+          if [[ -n "$hits" ]]; then
+            echo "::error::A rule uses the dot-before-bracket union form." >&2
+            echo "$hits" >&2
+            echo "Write \$.paths[*][verb,...] — no dot before the bracket." >&2
+            exit 1
+          fi
+          echo "==> No dot-before-bracket JSONPath unions in any ruleset."
