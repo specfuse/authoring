@@ -1,7 +1,7 @@
 #!/bin/bash
 # OpenAPI Structure Validator Script (Mac/Linux)
-# Usage: ./scripts/validate-structure.sh [version]
-# Example: ./scripts/validate-structure.sh v1
+# Usage: ./scripts/specfuse/validate-structure.sh [version]
+# Example: ./scripts/specfuse/validate-structure.sh v1
 
 set -e
 

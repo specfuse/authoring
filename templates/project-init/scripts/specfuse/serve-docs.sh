@@ -5,7 +5,7 @@
 # =============================================================================
 # 
 # Serves the OpenAPI v3 specification using Redocly with live reloading
-# Usage: ./scripts/serve-docs.sh [port]
+# Usage: ./scripts/specfuse/serve-docs.sh [port]
 # Default port: 8081
 
 set -e

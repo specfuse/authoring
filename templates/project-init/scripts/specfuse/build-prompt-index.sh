@@ -1,6 +1,6 @@
 #!/bin/bash
 # Implementation-Prompts Reverse Index Builder
-# Usage: ./scripts/build-prompt-index.sh [--format json|yaml]
+# Usage: ./scripts/specfuse/build-prompt-index.sh [--format json|yaml]
 #
 # Parses YAML front-matter from every *.md file under api/docs/implementation-prompts/
 # (excluding README.md) and emits a reverse index of the form:

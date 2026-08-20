@@ -24,7 +24,7 @@ This document provides a comprehensive specification of all vendor extensions (`
 >
 > Before adopting a key the project has not used: check the guard covering that
 > surface in `.specfuse/authoring/schemas/spectral/`, and run
-> `./scripts/check-extension-vocabulary.py`, which compares every closed guard
+> `./scripts/specfuse/check-extension-vocabulary.py`, which compares every closed guard
 > against the pinned generator's vocabulary and names any key the generator
 > knows and the rulesets reject. Kit maintainers run the same check at generator
 > pin time — see `bump-generator-pin` — so the drift is caught where it is born

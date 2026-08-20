@@ -1,13 +1,24 @@
-# `scripts/`
+# `scripts/specfuse/`
 
-Tooling the Specfuse authoring skills invoke. **These files are owned by the
-kit**: `specfuse authoring upgrade` replaces them wholesale so fixes reach every
-project. Editing one in place works until the next upgrade, which will overwrite
-it and tell you it did. Send changes upstream instead — see the kit's
-`CONTRIBUTING.md`.
+Tooling the Specfuse authoring skills invoke. **This whole directory is owned by
+the kit**: `specfuse authoring upgrade` replaces its contents wholesale so fixes
+reach every project. Editing a file in place works until the next upgrade, which
+will overwrite it and tell you it did. Send changes upstream instead — see the
+kit's `CONTRIBUTING.md`.
 
-Project-specific tooling belongs in a directory the kit does not own (`bin/`,
-`tools/`, anywhere but here).
+**The subdirectory is the boundary, and it is the only thing the kit touches.**
+`scripts/` itself is yours: your own tooling, and anything shipped by a contract
+other than this one, live beside `specfuse/` and are never read, rewritten or
+pruned by an upgrade. The shared substrate's `validate-event.py` and
+`validate-frontmatter.py` (authoring #26) are the standing example — they sit at
+`scripts/`, not here.
+
+Before kit `0.10.0` these files landed directly in `scripts/`, which meant the
+kit claimed about twenty generic filenames (`validate-specs.sh`, `bundle-spec.sh`,
+`serve-docs.sh`) in a directory most repos already use. A project file colliding
+with one of those was overwritten on upgrade — warned about on stderr, which in
+CI is where warnings go unread. The move makes the boundary structural rather
+than conventional.
 
 ## Validation
 
@@ -49,7 +60,7 @@ is the same drift problem wearing a different hat, and the copy CI does not run
 is the one that rots. The vocabulary check flags ruleset files no script names,
 for exactly that reason — one ruleset, one runner. Each resolves the spec version by looking for the newest
 `api/specs/v*` directory; pass one explicitly to override
-(`./scripts/validate-spectral.sh v1`).
+(`./scripts/specfuse/validate-spectral.sh v1`).
 
 "Nothing to check" is a pass, not an error — a project with no Arazzo scenarios
 yet exits 0.

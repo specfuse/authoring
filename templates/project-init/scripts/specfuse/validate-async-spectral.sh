@@ -1,6 +1,6 @@
 #!/bin/bash
 # AsyncAPI Spectral Linting Script
-# Usage: ./scripts/validate-async-spectral.sh
+# Usage: ./scripts/specfuse/validate-async-spectral.sh
 #
 # Bundles the AsyncAPI spec first, then validates with the
 # the kit's AsyncAPI Spectral ruleset.

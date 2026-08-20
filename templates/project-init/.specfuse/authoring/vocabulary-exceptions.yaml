@@ -1,6 +1,6 @@
 # Vendor-extension vocabulary exceptions.
 #
-# Read by scripts/check-extension-vocabulary.py. Two sections, making opposite
+# Read by scripts/specfuse/check-extension-vocabulary.py. Two sections, making opposite
 # claims — keep them apart, because conflating them hides real drift:
 #
 #   out_of_surface  The generator knows this key, but under a different

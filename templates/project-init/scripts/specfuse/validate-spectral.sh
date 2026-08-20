@@ -1,7 +1,7 @@
 #!/bin/bash
 # Spectral API Linting Script (Validates Bundled Spec)
-# Usage: ./scripts/validate-spectral.sh [version]
-# Example: ./scripts/validate-spectral.sh v1
+# Usage: ./scripts/specfuse/validate-spectral.sh [version]
+# Example: ./scripts/specfuse/validate-spectral.sh v1
 #
 # Note: Bundles the spec first, then validates the bundled output.
 # This avoids issues with $ref at operation level which is not strictly

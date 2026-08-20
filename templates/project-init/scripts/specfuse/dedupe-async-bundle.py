@@ -15,10 +15,10 @@ in-document $ref pointing at the corresponding entry under top-level
 `channels:` (which Redocly already deduplicates).
 
 Usage:
-    python3 scripts/dedupe-async-bundle.py output/asyncapi-bundled.yaml
+    python3 scripts/specfuse/dedupe-async-bundle.py output/asyncapi-bundled.yaml
 
 In-place edit. No backup is made — the bundled file is regenerable from
-source via `./scripts/bundle-async-spec.sh`.
+source via `./scripts/specfuse/bundle-async-spec.sh`.
 """
 import sys
 from pathlib import Path

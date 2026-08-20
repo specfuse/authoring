@@ -1,6 +1,6 @@
 #!/bin/bash
 # Redocly Validation Script
-# Usage: ./scripts/validate-redocly.sh [version]
+# Usage: ./scripts/specfuse/validate-redocly.sh [version]
 
 set -e
 

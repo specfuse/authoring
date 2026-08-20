@@ -1,7 +1,7 @@
 #!/bin/bash
 # OpenAPI Generator Validator Script (Mac/Linux)
-# Usage: ./scripts/validate-openapi-generator.sh [version]
-# Example: ./scripts/validate-openapi-generator.sh v1
+# Usage: ./scripts/specfuse/validate-openapi-generator.sh [version]
+# Example: ./scripts/specfuse/validate-openapi-generator.sh v1
 
 set -e
 

@@ -4,7 +4,7 @@
 # =============================================================================
 #
 # Serves the AsyncAPI specification using AsyncAPI Studio with live reloading
-# Usage: ./scripts/serve-async-docs.sh [port]
+# Usage: ./scripts/specfuse/serve-async-docs.sh [port]
 # Default port: 8082
 #
 # Prerequisites:

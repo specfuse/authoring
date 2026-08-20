@@ -1,6 +1,6 @@
 #!/bin/bash
 # Arazzo Structure & Cross-Spec Validator
-# Usage: ./scripts/validate-arazzo.sh
+# Usage: ./scripts/specfuse/validate-arazzo.sh
 #
 # Validates that Arazzo scenario and recipe files follow the required
 # directory structure, naming conventions, and cross-spec consistency rules.

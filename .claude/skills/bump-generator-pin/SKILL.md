@@ -58,7 +58,7 @@ If any are missing, ask for them. Do not guess a SHA-256.
 
    ```sh
    SPECFUSE_GENERATOR_JAR=~/.specfuse/jars/specfuse-generator-<version>.jar \
-     python3 templates/project-init/scripts/check-extension-vocabulary.py --require-jar
+     python3 templates/project-init/scripts/specfuse/check-extension-vocabulary.py --require-jar
    ```
 
    Run it from the repo root against `schemas/spectral/` (the kit's own copies —

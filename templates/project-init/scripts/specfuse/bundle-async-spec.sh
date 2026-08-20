@@ -1,7 +1,7 @@
 #!/bin/bash
 # Bundle AsyncAPI Specification Script (Mac/Linux)
-# Usage: ./scripts/bundle-async-spec.sh [input-spec] [output-spec]
-# Example: ./scripts/bundle-async-spec.sh api/specs/v1/asyncapi.yaml output/asyncapi-bundled.yaml
+# Usage: ./scripts/specfuse/bundle-async-spec.sh [input-spec] [output-spec]
+# Example: ./scripts/specfuse/bundle-async-spec.sh api/specs/v1/asyncapi.yaml output/asyncapi-bundled.yaml
 #
 # If no arguments provided, uses defaults:
 #   input-spec:  api/specs/v1/asyncapi.yaml

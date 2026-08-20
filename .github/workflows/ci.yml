@@ -328,6 +328,62 @@ jobs:
       # fixed there could survive in the template it came from — and did: every
       # new project started with 4 Spectral errors and an invalid AsyncAPI root
       # `tags` key, because nothing ever linted the scaffold.
+      - name: Script ownership boundary — scripts/ is the project's, scripts/specfuse/ is ours
+        run: |
+          set -euo pipefail
+          CLI=/tmp/ci/bin/specfuse-authoring
+          P=/tmp/smoke
+
+          # Kit tooling lives in its own subdirectory, and nothing the kit ships
+          # lands loose in scripts/.
+          test -d "$P/scripts/specfuse"
+          test -x "$P/scripts/specfuse/validate-specs.sh"
+          loose=$(find "$P/scripts" -maxdepth 1 -type f | wc -l | tr -d ' ')
+          if [[ "$loose" != "0" ]]; then
+            echo "::error::The kit shipped $loose file(s) directly into scripts/." >&2
+            find "$P/scripts" -maxdepth 1 -type f >&2
+            exit 1
+          fi
+
+          # The manifest must never claim a path outside scripts/specfuse/,
+          # because the manifest is what authorises deletion.
+          if python3 - "$P" <<'PY'; then :; else exit 1; fi
+          import json, pathlib, sys
+          m = json.loads((pathlib.Path(sys.argv[1]) / ".specfuse/authoring/.scaffold-manifest").read_text())
+          bad = [k for k in m if k.startswith("scripts/") and not k.startswith("scripts/specfuse/")]
+          if bad:
+              print(f"::error::manifest claims paths outside scripts/specfuse/: {bad}")
+              sys.exit(1)
+          PY
+
+          # THE POINT OF THE MOVE: a project file whose name collides with a kit
+          # script must survive an upgrade untouched. Under the old flat layout
+          # this file was overwritten, with only a stderr warning to say so.
+          printf 'echo mine\n' > "$P/scripts/validate-specs.sh"
+          printf 'print("substrate")\n' > "$P/scripts/validate-event.py"
+          mkdir -p "$P/scripts/ci" && printf 'echo ci\n' > "$P/scripts/ci/deploy.sh"
+
+          $CLI upgrade "$P" >/tmp/own.txt 2>/tmp/own.err || true
+          cat /tmp/own.txt
+
+          for f in scripts/validate-specs.sh scripts/validate-event.py scripts/ci/deploy.sh; do
+            if [[ ! -f "$P/$f" ]]; then
+              echo "::error::upgrade deleted $f, which the kit does not own." >&2
+              exit 1
+            fi
+          done
+          grep -q "echo mine" "$P/scripts/validate-specs.sh" || {
+            echo "::error::upgrade overwrote a project file that merely shares a name" >&2
+            echo "with a kit script. The subdirectory boundary is not holding." >&2
+            exit 1
+          }
+          if grep -q "WARNING" /tmp/own.err; then
+            echo "::error::upgrade warned about project-owned files it should not have looked at:" >&2
+            cat /tmp/own.err >&2
+            exit 1
+          fi
+          echo "==> Script ownership boundary holds in both directions."
+
       - name: Scaffolded project validates with its own scripts
         run: |
           set -euo pipefail
@@ -335,8 +391,8 @@ jobs:
             --name beta-shop --token beta --domain cart --yes >/dev/null
           cd /tmp/scripted
 
-          test -x scripts/validate-spectral.sh
-          test -f scripts/README.md
+          test -x scripts/specfuse/validate-spectral.sh
+          test -f scripts/specfuse/README.md
 
           # `pip install` byte-compiles the Python helper the kit ships under
           # templates/, so site-packages carries a __pycache__/ the wheel never
@@ -380,11 +436,11 @@ jobs:
 
           echo "--- vocabulary check: generator in sync"
           SPECFUSE_GENERATOR_JAR=/tmp/fakejars/specfuse-generator-9.0.0.jar \
-            python3 scripts/check-extension-vocabulary.py --require-jar
+            python3 scripts/specfuse/check-extension-vocabulary.py --require-jar
 
           echo "--- vocabulary check: generator ahead of the ruleset"
           if SPECFUSE_GENERATOR_JAR=/tmp/fakejars/specfuse-generator-9.0.1.jar \
-               python3 scripts/check-extension-vocabulary.py --require-jar >/tmp/drift.out 2>&1; then
+               python3 scripts/specfuse/check-extension-vocabulary.py --require-jar >/tmp/drift.out 2>&1; then
             echo "::error::vocabulary drift guard passed a key no closed guard accepts" >&2
             cat /tmp/drift.out >&2
             exit 1
@@ -392,9 +448,9 @@ jobs:
           grep -q "warpFactor" /tmp/drift.out
 
           echo "--- vocabulary check: missing jar is a loud skip, fatal only with --require-jar"
-          SPECFUSE_HOME=/tmp/no-such-home python3 scripts/check-extension-vocabulary.py
+          SPECFUSE_HOME=/tmp/no-such-home python3 scripts/specfuse/check-extension-vocabulary.py
           if SPECFUSE_HOME=/tmp/no-such-home \
-               python3 scripts/check-extension-vocabulary.py --require-jar; then
+               python3 scripts/specfuse/check-extension-vocabulary.py --require-jar; then
             echo "::error::--require-jar must fail when nothing was verified" >&2
             exit 1
           fi
@@ -411,7 +467,7 @@ jobs:
 
           # The Spectral validators must be linting against the kit rulesets
           # delivered by the overlay, not a stale project-local copy.
-          grep -q ".specfuse/authoring/schemas/spectral/" scripts/validate-spectral.sh
+          grep -q ".specfuse/authoring/schemas/spectral/" scripts/specfuse/validate-spectral.sh
 
           # Every script a shipped script calls must itself be shipped.
           # validate-specs.sh composes nine layers; running them individually
@@ -433,9 +489,9 @@ jobs:
           # openapi.yaml, so a *.yaml glob feeds an AsyncAPI document to
           # openapi-generator and the layer can never pass. Asserted here
           # rather than by running the layer, which needs the generator CLI.
-          grep -qF '"?openapi"?' scripts/validate-openapi-generator.sh \
+          grep -qF '"?openapi"?' scripts/specfuse/validate-openapi-generator.sh \
             || { echo "::error::validate-openapi-generator.sh no longer selects specs by content" >&2; exit 1; }
-          if grep -qE 'find .*-maxdepth 1 -name "\*\.yaml" -o' scripts/validate-openapi-generator.sh; then
+          if grep -qE 'find .*-maxdepth 1 -name "\*\.yaml" -o' scripts/specfuse/validate-openapi-generator.sh; then
             echo "::error::validate-openapi-generator.sh globs by extension again — it will pick up asyncapi.yaml" >&2
             exit 1
           fi

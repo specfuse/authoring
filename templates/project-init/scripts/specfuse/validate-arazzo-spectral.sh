@@ -1,6 +1,6 @@
 #!/bin/bash
 # Arazzo Spectral Linting Script
-# Usage: ./scripts/validate-arazzo-spectral.sh
+# Usage: ./scripts/specfuse/validate-arazzo-spectral.sh
 #
 # Discovers all Arazzo scenario (*.arazzo.yaml) and recipe (*.recipe.yaml) files,
 # runs Spectral lint with the kit's Arazzo ruleset on each, and reports

@@ -1,6 +1,6 @@
 #!/bin/bash
 # SpecFuse Generator Validation (Mac/Linux)
-# Usage: ./scripts/validate-generator.sh
+# Usage: ./scripts/specfuse/validate-generator.sh
 #
 # Single entrypoint for ALL generator-side validation. The generator's
 # `validate <project.json>` runs the full OpenAPI DDD ruleset (aggregate

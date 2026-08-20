@@ -54,9 +54,9 @@
 # nothing to examine.
 #
 # Usage:
-#   ./scripts/check-extension-vocabulary.py            # lint-time check
-#   ./scripts/check-extension-vocabulary.py --require-jar   # CI: no silent skip
-#   SPECFUSE_GENERATOR_JAR=/path/to.jar ./scripts/check-extension-vocabulary.py
+#   ./scripts/specfuse/check-extension-vocabulary.py            # lint-time check
+#   ./scripts/specfuse/check-extension-vocabulary.py --require-jar   # CI: no silent skip
+#   SPECFUSE_GENERATOR_JAR=/path/to.jar ./scripts/specfuse/check-extension-vocabulary.py
 #
 # Exit codes: 0 clean (or skipped), 1 drift found, 2 the check could not run.
 
