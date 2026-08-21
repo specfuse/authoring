@@ -748,31 +748,36 @@ Response: 200 OK
 
 #### Cascade Deletion
 
-When a parent aggregate is soft-deleted, child entities are also soft-deleted:
+> **⚠ `cascadeDelete` and `children` are read by nothing. Do not declare them.**
+>
+> Neither key appears in the generator at any version checked — see `compatibility.md` §23 and §30. `specfuse-xentity-shape` accepts both, so a spec declaring them lints clean, validates clean, and **cascades nothing**. That is the worst available failure mode and precisely the one `x-entity.delete` was introduced to fix: the contract says the children are archived with the parent, the runtime leaves them live, and nothing anywhere disagrees.
+>
+> Earlier revisions of this section documented a soft cascade driven by those keys. **The description was also inverted**, which is the more useful correction: it promised a cascade for the mode that does not cascade, and said nothing about the mode that does. What the generator actually does is below.
 
-```yaml
-# Example: Deleting an Order
-DELETE /orders/123
-→ Order deletedAt stamped
-→ All OrderLines deletedAt stamped
-→ All Payments deletedAt stamped
-→ All Fulfillments deletedAt stamped
-```
+**Cascade follows `delete`, and only for `hard`.** There is no separate cascade declaration:
 
-**Cascade rules declared in `x-entity`:**
+| `x-entity.delete` | what happens to the entity's own row | what happens to its children |
+|---|---|---|
+| `hard` | row deleted | **cascades** — `DeleteWithCascade` over the aggregate's descendant set, FK-ordered |
+| `soft` | `deletedAt` stamped | **does not cascade.** Children stay live |
+
+Under `delete: hard` the cascade also handles the two `x-references` cases: an **optional** inbound FK is nulled first, and a **required** inbound FK refuses the delete with `409`, naming each blocking type and its row count.
+
+Under `delete: soft` a single row is stamped. Children remain live and remain individually addressable — they disappear only when *reached through the archived parent's navigation*, so a child fetched by its own id is still returned. If an aggregate needs its children archived alongside it, that is application logic today; the spec cannot express it.
+
 ```yaml
 Order:
   x-entity:
     type: aggregate
-    delete: soft            # what happens to the Order's own row
-    cascadeDelete: soft     # what happens to its children
-    children:
-      - OrderLine
-      - Payment
-      - Fulfillment
+    delete: hard          # the Order row, AND its OrderLines / Payments / Fulfillments
 ```
 
-`delete` and `cascadeDelete` are separate keys answering separate questions, and are not required to agree. Each child named in `children` must declare its own `delete: soft` for the cascade to be coherent — `cascadeDelete` names the reach of the cascade, not the semantics of the entities it reaches.
+```yaml
+Order:
+  x-entity:
+    type: aggregate
+    delete: soft          # the Order row only — OrderLine rows stay live
+```
 
 #### Deletion Constraints
 

@@ -160,10 +160,18 @@ project-wide soft-delete convention.** If your project follows that convention,
 undeclared entities are silently hard-deleting today; see §"Deletion" in the API
 Handbook.
 
-**Not the same key as `cascadeDelete`.** `delete` scopes the entity's own row;
-`cascadeDelete` scopes what happens to its `children`. An aggregate may carry
-both, and they are not required to agree — a hard-deleted parent can still
-cascade a soft delete to children that outlive it.
+**`delete` also decides the cascade, and there is no second key for it.**
+Earlier revisions described `cascadeDelete` and `children` as scoping what
+happens to an aggregate's children, independently of `delete`. **Both keys are
+read by nothing** (`compatibility.md` §23, §30) — `specfuse-xentity-shape`
+accepts them, so declaring them lints clean and cascades nothing. Do not use
+them.
+
+What actually happens follows `delete` alone: **`hard` cascades** to the
+aggregate's descendant set (FK-ordered, nulling optional inbound `x-references`
+FKs and refusing with `409` on required ones), and **`soft` does not** — one row
+is stamped and the children stay live and individually addressable. See
+`API_Handbook.md` §"Cascade Deletion".
 
 **The `deletedAt` shape contract.** A soft-delete entity declares the property
 itself, following the `createdAt`/`updatedAt` convention, so that it lands in

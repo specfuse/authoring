@@ -481,6 +481,11 @@ The pinned jar cannot contradict these rules because it does not read the surfac
 2. Re-check every severity in the §14.9 table against the jar's rule sources, **not** against its docs — defect 1 is the reason.
 3. Confirm `SERVICE_CROSS_BOUNDARY_REFERENCE` is still ERROR and still suppressed by a declared hold. If either changed, §14.9's closing paragraph is the sentence that has to change with it.
 4. Re-run the fixture step; a jar that starts validating this surface is the first opportunity to catch a kit rule that is stricter than the jar.
+5. **Widen the `x-entity.delete` guard for `reason` / `reasonText`** (`clabonte/generator#1208`, reported by `restomanager-specs` — see follow-up 30). Deferred to the bump and not taken earlier because the **pinned `0.5.8` rejects the key outright**: `ENTITY_INVALID_CONFIG: Unknown x-entity.delete key: 'reason'`. Adding it while pinned to `0.5.8` is the `0.7.0` erratum verbatim. Verify against the *released* jar, not a SNAPSHOT, then land in the same PR as the pin:
+   - `reason` as a closed enum `no-delete-surface | reordered-rows | patch-reconciled | other`, `reasonText: { type: string, minLength: 1 }`, and the `if/then/else` that requires `reasonText` **only** for `other` — mirroring `DELETE_REASON_TEXT_REQUIRED` in both directions, the same treatment `concurrency.reasonText` already gets in this ruleset. Confirm the member names against the jar rather than the handoff.
+   - Add the five new diagnostics to `Vendor_Extensions.md` §1.1's `delete` table: `DELETE_REASON_MISSING`, `DELETE_REASON_INVALID`, `DELETE_REASON_REQUIRES_HARD`, `DELETE_REASON_TEXT_REQUIRED`, `DELETE_REASON_CONTRADICTED` — with severities read off the rule sources, per item 2 above.
+   - **Do not adopt the reporter's two house rules**: they require `reason` on every `mode: hard` and restrict the string shorthand to `soft`. Correct for a soft-delete-only project, wrong for a kit where `delete` is optional and `hard` is the fallback. They filed the severity question as `clabonte/generator#1220`, which is where it belongs.
+   - **Check `clabonte/generator#1219` has landed first.** `DELETE_REASON_CONTRADICTED` is reported to reject `patch-reconciled` on every entity following the PATCH-reconcile pattern, because it does not resolve the `Update{Child}` `items.$ref` indirection FEAT-2026-0066 mandates. Documenting a member no conforming spec can declare is worse than documenting none.
 
 **What adoption costs a consumer, in kind rather than in counts.** All of it is spec-side; nothing waits on further generator work. A `Read{Entity}` per replication target; a `holds` entry per (service, target) pair; **`x-entity.delete` declared on every source entity**, which is the prerequisite for every replica rule and is commonly declared nowhere; a snapshot-carrying event surface for each held entity; and a tenant FK on each replica. Counts measured against one bundle at one moment do not transfer — re-derive them with `validate` against the current bundle and the intended topology.
 
@@ -642,6 +647,35 @@ The top-four ranking also **shifted between two measurements two days apart** (`
 Snapshot readiness, for the hydration gate: 20 of the 22 held targets under their five-service split already publish `{Entity}Snapshot`; the exceptions are `EmployeeSchedulingPreferences` and `EmployeeTimeOffBank`.
 
 **They are not adopting.** Recorded on their side as available-and-declined. So `info.x-services` still has **zero** adopters, and follow-up 24's "the benefit is not proven" stands — but its cost is now measured on a real bundle rather than a mechanical overlay.
+
+### 30. `cascadeDelete` / `children` are phantom keys, and the cascade was documented inverted
+
+**Status:** kit-side **done** (`API_Handbook.md` §"Cascade Deletion" rewritten, `Vendor_Extensions.md` §1.1 corrected, two WARN rules, fixture and CI). Generator action outstanding: retire the keys or implement them.
+
+Reported by `restomanager-specs`, 2026-08-20. Follow-up 23 already recorded that neither key appears in the jar — **the failure was that the handbooks went on teaching them anyway.** Recording an unread key in the compatibility matrix does nothing for the author reading §"Cascade Deletion"; that is the lesson worth keeping from this one.
+
+**Two defects, and the second is worse than the first.**
+
+1. **The keys are read by nothing.** `cascadeDelete` and `children` are accepted by `specfuse-xentity-shape`, so a spec declaring them lints clean, validates clean, and cascades nothing. The contract says the children are archived with the parent; the runtime leaves them live; nothing disagrees. That is the exact failure `x-entity.delete` was introduced to fix.
+2. **The described behaviour was inverted.** The section promised a cascade under `delete: soft` — the mode that does **not** cascade — and said nothing about `delete: hard`, which does. So an author following it got the wrong mental model even setting the phantom keys aside. What the generator does:
+
+   | `delete` | own row | children |
+   |---|---|---|
+   | `hard` | deleted | **cascades** — `DeleteWithCascade` over the descendant set, FK-ordered; optional inbound `x-references` FK nulled first, required one refuses with `409` naming each blocking type and row count |
+   | `soft` | `deletedAt` stamped | **no cascade.** Children stay live and individually addressable; they vanish only when reached *through* the archived parent's navigation |
+
+**The keys stay accepted.** Two WARN rules (`specfuse-xentity-cascade-phantom`, `specfuse-xentity-children-phantom`) carry the notice, on the `x-entity.schema` precedent from follow-up 23: rejecting them would convert a silently-inert declaration into a lint error on specs that generate exactly as they do today — the forbidden direction — for a key the generator has not said it is dropping. Accepting *without* warning is how a phantom key stays invisible; warning without accepting is the bug that would replace it. CI pins all three properties: both rules fire, the shape guard still accepts, and neither rule touches an entity declaring neither key.
+
+**Generator action:** parse them or tell the kit to retire them. This is the fifth key in that state (`x-ai-safe` §25, `x-content` §27, `x-scopes` §28, plus `requiresPagination` / `mutability` from §23) and the only one whose absence silently changes data-lifecycle behaviour rather than just wasting metadata.
+
+**Not adopted from the same handoff: `delete.reason`** — see follow-up 24's pin-bump checklist. It is shipped generator-side per `clabonte/generator#1208` and the reporter asks the kit to widen its guard for it. **Measured against the pinned jar first, and the answer is no, not yet:**
+
+```
+$ java -jar specfuse-generator-0.5.8.jar validate <bundle-with-delete.reason>
+[ERROR] ENTITY_INVALID_CONFIG: Invalid x-entity configuration: Unknown x-entity.delete key: 'reason'
+```
+
+`0.5.8` **rejects** it. Widening the guard now would ship a ruleset accepting a value the pinned jar errors on — the `0.7.0` erratum verbatim (follow-up 18: *"a ruleset that accepts a value the generator errors on is equally adoption-blocking and equally silent"*). The reporter's framing that "the kit is the thing preventing adoption" is right about the guard and wrong about the cause: **the pin is the blocker**, and they are running a `0.5.9-SNAPSHOT` build, which is why it works for them. The guard change belongs in the same PR as the pin bump.
 
 ---
 

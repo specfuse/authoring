@@ -61,6 +61,34 @@ info:
 paths: {}
 components:
   schemas:
+
+    # ---- Phantom cascade keys: accepted by the shape guard, warned about. ----
+    # Both must stay ACCEPTED (no specfuse-xentity-shape error) and both must
+    # draw their own warning. A rule that errors here would fail lint on a spec
+    # that generates exactly as it does today.
+    CascadePhantom:
+      type: object
+      x-entity:
+        domain: shop
+        type: aggregate
+        delete: soft
+        cascadeDelete: soft
+        children: [Line, Payment]
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
+        deletedAt: { type: string, format: date-time, nullable: true }
+
+    # Declares neither phantom key — must draw neither warning.
+    CascadeClean:
+      type: object
+      x-entity:
+        domain: shop
+        type: aggregate
+        delete: hard
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
     # ---- Every documented key, correctly shaped. No finding expected. ----
     FullyDocumented:
       type: object
