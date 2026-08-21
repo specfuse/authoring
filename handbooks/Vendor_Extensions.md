@@ -826,12 +826,36 @@ x-classification:
 |-------|---------|--------------|
 | `pii` | Personally identifying information | Snapshot inclusion requires `x-snapshot-pii-acknowledged` justification (see §11.2). AI read access requires explicit listing in `aiAccess.readableProperties`. |
 | `sensitive` | Business-confidential data | Same snapshot/AI-access rules as `pii`. Triggers heightened audit logging on read. |
-| `encrypted` | Must be encrypted at rest | Generator emits encryption converters. The property is excluded from the default "all readable" expansion in `aiAccess.readableProperties` (see §1.1.1 rule 5). Implies `sensitive`. |
-| `exposed` | Secret-shaped name, human-reviewed, safe to expose | Escape hatch for the `SENSITIVE_FIELD_IN_RESPONSE` validator (see below). Asserts a reviewer confirmed the field is safe on a response despite a secret-shaped name. **Grants no access** on its own; carries no encryption/masking obligation. Contradictory with `sensitive`/`encrypted` — MUST NOT co-occur with either. Requires a `description` justifying why exposure is safe. |
+| `confidential` | Business-confidential, not personally identifying | Same snapshot/AI-access rules as `sensitive`. May co-occur with `exposed` when shown to an entitled viewer. |
+| `financial` | Monetary amounts, balances, settlement data | Heightened audit logging. May co-occur with `exposed` — a customer seeing their own invoice total is exactly that. |
+| `credential` | Secrets that authenticate a principal | Never safe to return. MUST NOT co-occur with `exposed`. |
+| `cardholder` | Cardholder data (PAN and equivalents) | Never safe to return. MUST NOT co-occur with `exposed`. |
+| `sad` | PCI Sensitive Authentication Data (CVV, track, PIN block) | Never safe to return, and MUST NOT be retained after authorisation. MUST NOT co-occur with `exposed`. |
+| `encrypted` | Records intent that the value be encrypted at rest | **Records intent only.** Encryption converters and the `aiAccess.readableProperties` exclusion are driven by `x-entity.encryptedProperties`, not by this value — corrected 2026-08-21, authoring #76. List the property in that array as well. Implies `sensitive`. Expected to be superseded by `x-protection.atRest`; do not migrate yet. |
+| `exposed` | Secret-shaped name, human-reviewed, safe to expose | Escape hatch for the `SENSITIVE_FIELD_IN_RESPONSE` validator (see below). Asserts a reviewer confirmed the field is safe on a response despite a secret-shaped name. **Grants no access** on its own; carries no encryption/masking obligation. Contradictory with `sensitive`, `encrypted`, `credential`, `cardholder` and `sad` — MUST NOT co-occur with any of them. May co-occur with `pii`, `confidential` or `financial`, which are legitimately visible to the person they concern. Requires a `description` justifying why exposure is safe. |
 
 **Multiple classifications** are allowed (e.g., `[pii, encrypted]` for a tax ID). The generator unions the implications.
 
-**Relationship with `x-entity.encryptedProperties`**: the `encrypted` classification on a per-field basis is the canonical declaration. The `x-entity.encryptedProperties` array remains valid for backward compatibility but is treated as a derived view — when a field carries `x-classification: [encrypted]`, the entity's `encryptedProperties` set is computed automatically by the generator. Authors should prefer per-field `x-classification` on new entities; existing entities may use either form.
+**Relationship with `x-entity.encryptedProperties`**: `x-entity.encryptedProperties` is the **only** declaration the generator reads. Nothing is derived from `x-classification`.
+
+> **⚠ Corrected 2026-08-21 (authoring #76).** This paragraph previously said the
+> `encryptedProperties` set is "computed automatically by the generator" when a field
+> carries `x-classification: [encrypted]`, and told authors to prefer the per-field form
+> on new entities. **That behaviour does not exist**, and the advice failed in the
+> permissive direction: a field classified `encrypted` but absent from the array was
+> never excluded from the implicit AI read surface, so an author who followed this
+> handbook granted AI read access to a field they believed was protected.
+>
+> Verified two ways against the pinned `0.5.8` jar. A consumer's runtime probe added
+> `x-classification: [encrypted]` to a property outside the array and re-ran: the
+> `AI_ACCESS_ENCRYPTED_EXCLUDED` finding count did not move. Statically, **no class in
+> the jar references both `encryptedProperties` and `x-classification`** —
+> `AiAccessValidationRule` reads the array, `PiiClassificationValidationRule` reads the
+> classification, and the two never meet.
+
+So today: to exclude a field from the implicit AI read surface, or to have encryption converters emitted, it **must** be listed in `x-entity.encryptedProperties`. Classifying it `encrypted` records intent for humans and for the kit's lint, and does nothing else.
+
+`x-classification: [encrypted]` is expected to be superseded by `x-protection.atRest: encrypted` — but not yet. `x-protection` appears **zero times** in the pinned generator, so migrating to it today would replace a declaration the generator reads with one it cannot see. Keep both the array and the classification until a released generator retires them together; `specfuse-classification-encrypted-superseded` carries the same notice at lint time. See `compatibility.md` §26.
 
 **Example**:
 
@@ -869,11 +893,12 @@ The two sides split cleanly, and the split is the generator's own: `PiiClassific
 
 | # | rule | enforced by |
 |---|---|---|
-| 1 | Values must come from the closed set `[pii, sensitive, encrypted, exposed]`, as a non-empty array with no duplicates. | kit — `specfuse-classification-values` (error) |
+| 1 | Values must come from the closed set `[pii, sensitive, confidential, exposed, financial, credential, cardholder, sad, encrypted]`, as a non-empty array with no duplicates. Widened from four values on 2026-08-21 (authoring #76). | kit — `specfuse-classification-values` (error) |
 | 2 | `x-classification: [encrypted]` requires the property to be representable as a string (encryption produces opaque ciphertext). | **nothing yet** — see `compatibility.md` §26 |
 | 3 | A snapshot referencing a property whose source entity carries `pii` or `sensitive` MUST declare `x-snapshot-pii-acknowledged.{propertyName}` with a justification ≥ 20 chars (see §11.2). | kit — `specfuse-async-snapshot-guardrails` (AsyncAPI ruleset) |
-| 4 | When `aiAccess.readableProperties` is omitted, `encrypted` properties are excluded from the implicit allow-set (§1.1.1 rule 5). | generator |
-| 5 | `x-classification: [exposed]` MUST NOT co-occur with `sensitive` or `encrypted` — those demand masking or ciphertext, which contradicts "safe to expose". | kit — `specfuse-classification-exposed-contradiction` (error) |
+| 4 | When `aiAccess.readableProperties` is omitted, properties listed in **`x-entity.encryptedProperties`** are excluded from the implicit allow-set (§1.1.1 rule 5). `x-classification: [encrypted]` does **not** do this — corrected 2026-08-21, authoring #76. | generator |
+| 5 | `x-classification: [exposed]` MUST NOT co-occur with `sensitive`, `encrypted`, `credential`, `cardholder` or `sad` — those demand masking or ciphertext, which contradicts "safe to expose". `pii`, `confidential` and `financial` are deliberately excluded: data legitimately shown to the person it belongs to is both. | kit — `specfuse-classification-exposed-contradiction` (error) |
+| 8 | `x-classification: [encrypted]` is expected to be superseded by `x-protection.atRest`, but MUST NOT be migrated yet — `x-protection` is absent from the pinned generator. | kit — `specfuse-classification-encrypted-superseded` (warn) |
 | 6 | A property carrying `x-classification: [exposed]` MUST carry a non-empty `description` justifying why exposure is safe. | kit — `specfuse-classification-exposed-needs-description` (error) |
 | 7 | A property the validator reads as PII MUST declare `x-classification` (see "Where it is required" above). | generator — `PII_FIELD_MISSING_CLASSIFICATION` (error); mirrored in the editor by kit `specfuse-classification-pii-required` |
 
@@ -2724,7 +2749,7 @@ The following extensions existed in v1 (or were considered during v2 design) and
 | `x-message-category: sagaStep` | Removed | Sagas deferred |
 | `x-subscription.filter` (raw SQL author-written) | Forbidden | Filters are derived from the operation's `messages:` list; use `x-subscription.requiredHeaders` for header-equality and `x-subscription.filterOverride` only as a justified escape hatch. |
 | `x-action-class` | Not introduced | Action class is inferred from the message-name suffix (`*Created` → created, `*Updated` → updated, `*Deleted` → deleted, anything else → state transition). |
-| `x-pii` / `x-sensitive` (boolean per-field flags) | Not introduced as separate extensions | Use `x-classification` with values from the closed set `[pii, sensitive, encrypted, exposed]` on the entity property schema. See §1.5. |
+| `x-pii` / `x-sensitive` (boolean per-field flags) | Not introduced as separate extensions | Use `x-classification` with values from the closed set `[pii, sensitive, confidential, exposed, financial, credential, cardholder, sad, encrypted]` on the entity property schema. See §1.5. |
 | Three-segment `Label` (`{Entity}.{Action}.{tenantId}`) | Removed (v1 routing) | Labels are exactly two segments: `{Entity}.{Action}`. Tenant routing moves to envelope `tenantId` ApplicationProperty; tenant-scoped subscribers AND-merge `user.tenantId = '<guid>'` via `requiredHeaders`. |
 
 ### 12.6 OpenAPI ↔ AsyncAPI Cross-Spec Link

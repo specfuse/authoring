@@ -152,3 +152,80 @@ components:
         nickname:
           type: string
           x-classification: [secret]
+
+    # ---- The five tokens added on 2026-08-21 (authoring #76). -------------
+    # The four-value enum was an ERROR against every one of these while the
+    # pinned generator had no opinion on them at all. Each must now be
+    # ACCEPTED — this schema is a positive control and must stay silent.
+    WidenedVocabulary:
+      type: object
+      x-entity:
+        domain: crm
+        type: entity
+      properties:
+        id: { type: string, format: uuid }
+        internalMemo:
+          type: string
+          x-classification: [confidential]
+        invoiceTotal:
+          type: number
+          x-classification: [financial]
+        apiToken:
+          type: string
+          x-classification: [credential]
+        cardNumber:
+          type: string
+          x-classification: [cardholder]
+        cardVerificationValue:
+          type: string
+          x-classification: [sad]
+
+    # ---- `exposed` pairings under the widened set. ------------------------
+    # The contradiction set grew with the vocabulary. Without that, widening
+    # would have OPENED a hole: `[cardholder, exposed]` would lint clean.
+    # `pii` was always allowed beside `exposed` (your own email, shown to you);
+    # `confidential` and `financial` follow that precedent deliberately.
+    ExposedPairings:
+      type: object
+      x-entity:
+        domain: crm
+        type: entity
+      properties:
+        id: { type: string, format: uuid }
+        # MUST fire — never safe to return.
+        exposedCard:
+          type: string
+          description: Reviewed — displayed on the receipt.
+          x-classification: [cardholder, exposed]
+        exposedSecret:
+          type: string
+          description: Reviewed — public key material.
+          x-classification: [credential, exposed]
+        exposedCvv:
+          type: string
+          description: Reviewed — shown during entry.
+          x-classification: [sad, exposed]
+        # MUST NOT fire — legitimately visible to the person it concerns.
+        ownInvoiceTotal:
+          type: number
+          description: Reviewed — the customer's own invoice total, shown to that customer.
+          x-classification: [financial, exposed]
+        ownMemo:
+          type: string
+          description: Reviewed — the account note the account holder wrote.
+          x-classification: [confidential, exposed]
+
+    # ---- `encrypted` is noticed, not rejected. ----------------------------
+    # It stays valid until a RELEASED generator removes it. The warn-level
+    # notice must fire, and must not be an error, and must not tell anyone to
+    # migrate to x-protection — absent from the pinned jar.
+    EncryptedStillValid:
+      type: object
+      x-entity:
+        domain: crm
+        type: entity
+      properties:
+        id: { type: string, format: uuid }
+        sinEncrypted:
+          type: string
+          x-classification: [encrypted]

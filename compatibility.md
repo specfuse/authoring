@@ -564,7 +564,42 @@ What lands when it does:
 
 **Do not build against it yet.** The vocabulary is not frozen, and authoring a ruleset against an unfrozen design is the `0.7.0` mistake (follow-up 18) with the roles reversed — the kit would be the one that moved first. The kit has asked on `#999` to be pinged when the set freezes so the ruleset, the shape guard and §1.5 land in one window rather than after the first spec trips over them.
 
-**When it does freeze, the work is one PR** and its shape is already known: widen the value enum, retarget the contradiction rule, drop `encryptedProperties` from the shape guard (with a deprecation WARNING first, per the `x-entity.schema` precedent in follow-up 23), and rewrite §1.5 around the two axes. The fixture (`schemas/spectral/fixtures/classification.yaml`) and its both-directions CI step carry over unchanged in structure.
+#### ⚠ 2026-08-21 — the ping arrived, and the answer is "half". This table was wrong about both removals
+
+`restomanager-specs` reported against a `0.5.9-SNAPSHOT` build (authoring #76). The additions landed; **neither removal did**, which inverts which row above is dangerous.
+
+| predicted above | actual |
+|---|---|
+| set gains 5 and **loses `encrypted`** | gains all 5, **keeps `encrypted`** — nine values |
+| `x-entity.encryptedProperties` retired outright | still read, no error, no warning |
+| contradiction set retargets to an `atRest` axis | `PROTECTION_EXPOSED_MUTEX` exists as a rule code; not observed firing |
+| §1.5 ceases to be true | true, but for a different reason — see below |
+
+**So the `encryptedProperties` row is dormant, not dangerous.** The live failure was the row above it: the kit's four-value enum was an `error` against five tokens the vocabulary now carries — the `domain` / `concurrency` / `delete` shape, live, in a shipped release.
+
+**What was adopted on 2026-08-21, and why it is safe against the pin.** The enum is widened to nine and §1.5's false claims are corrected. Deliberately **not** adopted: any rule requiring or referencing `x-protection` as usable, and the §1.5 two-axis rewrite.
+
+The widening is safe for a reason worth stating precisely, because it is not the reason the report gave. The report argued the kit "rejects five valid values". Against the **pinned** `0.5.8` those tokens are neither valid nor invalid — the jar has no opinion:
+
+```
+$ java -jar specfuse-generator-0.5.8.jar validate <spec with x-classification: [cardholder]>
+- Status: PASSED
+- Errors: 0
+```
+
+`PiiClassificationValidationRule` knows only `pii` / `sensitive` / `encrypted`, and `x-protection` and `atRest` appear **zero times** in the whole artifact. So the widening cannot contradict a jar position — the same footing as the `x-scopes` grammar in §28, not an adoption against an unreleased jar. Contrast `x-entity.delete.reason`, which §30 still cannot adopt because `0.5.8` **hard-errors** on it:
+
+```
+ENTITY_INVALID_CONFIG: Invalid x-entity configuration: Unknown x-entity.delete key: 'reason'
+```
+
+**§1.5's derived-view claim was false, and failed permissively.** The handbook said an entity's `encryptedProperties` set is "computed automatically" from `x-classification: [encrypted]`. Confirmed false two independent ways: the reporter's runtime probe (adding the classification to a property outside the array did not move the `AI_ACCESS_ENCRYPTED_EXCLUDED` count), and a static scan of the pinned jar showing **no class references both keys** — `AiAccessValidationRule` reads the array, `PiiClassificationValidationRule` reads the classification, and they never meet. An author following the old wording granted AI read access to a field they believed was excluded. Corrected in `Vendor_Extensions.md` §1.5, `AI_Access_Policy_Framework.md` §3.2 and §7.
+
+**`PROTECTION_ATREST_REQUIRED` ships as ERROR with no grace period** — proposed for demotion and declined by the generator owner on 2026-08-21, on the grounds that a hard gate from day one is cheaper than retrofitting protection decisions later. Cost is real: 40 errors across 14 entity files on the reporter's bundle from a jar bump alone. The kit documents it as an ERROR and describes no transitional WARNING period, because there will not be one.
+
+**What still waits for one window**, and the sequencing request stands: FE-G02 (`encrypted` removed), FE-G04 (`encryptedProperties` retired) and FE-G18 (`SENSITIVE_FIELD_IN_RESPONSE` accepting `atRest: encrypted`) are not in this jar. FE-G18 must ship with FE-G02 or `portalPassword`-shaped properties break. Until a **released** generator carries all three: widen the enum (done), correct the docs (done), hold the two-axis rewrite and the `encryptedProperties` deprecation. `specfuse-classification-encrypted-superseded` (warn) carries the notice in the meantime and explicitly tells authors **not** to migrate early, because `x-protection` is invisible to the pinned generator.
+
+**When it does freeze, the remaining work is one PR:** retarget the contradiction rule onto the `atRest` axis, drop `encryptedProperties` from the shape guard (deprecation WARNING first, per the `x-entity.schema` precedent in follow-up 23), and rewrite §1.5 around the two axes. The fixture (`schemas/spectral/fixtures/classification.yaml`) and its both-directions CI step carry over unchanged in structure.
 
 ### 27. `Project_File.md` §6 Persistence and `x-content` document a subsystem the generator does not implement
 
