@@ -32,6 +32,7 @@ post:
     '401': { $ref: '../../../common/responses/errors.yaml#/UnauthorizedError' }
     '403': { $ref: '../../../common/responses/errors.yaml#/ForbiddenError' }
     '404': { $ref: '../../../common/responses/errors.yaml#/NotFoundError' }
+    '415': { $ref: '../../../common/responses/errors.yaml#/UnsupportedMediaTypeError' }
     '409':
       description: Conflict — order is not in a state that accepts new lines
       content:

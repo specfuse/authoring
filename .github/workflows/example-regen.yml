@@ -129,6 +129,103 @@ jobs:
             schemas/spectral/specfuse-arazzo.yaml \
             "examples/hello-orders/api/specs/v1/scenarios/**/*.yaml"
 
+      # The three lint steps above prove the corpus is CLEAN. They cannot prove
+      # the ruleset is AWAKE — a rule whose `given` selects nothing contributes
+      # exactly as much silence as a rule that passes, which is how eleven rules
+      # (nine at `severity: error`) stayed inert for the whole life of the kit.
+      # See authoring #73 and scripts/spectral-rule-coverage.py.
+      #
+      # This step asserts the complement: every rule's JSONPath selects at least
+      # one node somewhere in the corpus. Add a construct to the given-coverage
+      # fixtures when a new rule has nothing to select — the allowlist is the
+      # fallback, not the habit.
+      - name: Install the coverage-harness dependency
+        run: python -m pip install --quiet PyYAML
+
+      - name: Every OpenAPI rule's `given` selects something
+        run: |
+          scripts/spectral-rule-coverage.py \
+            --ruleset schemas/spectral/specfuse-openapi.yaml \
+            --allowlist schemas/spectral/coverage-allowlist.yaml \
+            "${RUNNER_TEMP}/hello-orders.bundle.yaml" \
+            'schemas/spectral/fixtures/*.yaml'
+
+      - name: Every AsyncAPI rule's `given` selects something
+        run: |
+          scripts/spectral-rule-coverage.py \
+            --ruleset schemas/spectral/specfuse-asyncapi.yaml \
+            --allowlist schemas/spectral/coverage-allowlist.yaml \
+            examples/hello-orders/api/specs/v1/asyncapi.yaml \
+            'schemas/spectral/fixtures/*.yaml'
+
+      - name: Every Arazzo rule's `given` selects something
+        run: |
+          scripts/spectral-rule-coverage.py \
+            --ruleset schemas/spectral/specfuse-arazzo.yaml \
+            --allowlist schemas/spectral/coverage-allowlist.yaml \
+            'examples/hello-orders/api/specs/v1/scenarios/**/*.yaml' \
+            schemas/spectral/fixtures/given-coverage-arazzo.yaml
+
+      # The coverage harness proves a rule SELECTS. It cannot prove a rule
+      # REJECTS — a `then` can be silent on a live `given` too. Three of the
+      # rules below were checking `$ref` on the RESOLVED document, where the ref
+      # has already been inlined, and stayed silent even after their JSONPath
+      # was repaired. So assert the findings, not the exit code.
+      - name: The rules authoring #73 found inert actually reject (regression)
+        run: |
+          # This fixture is SUPPOSED to fail, so spectral exits 1 and `bash -e`
+          # would abort before the assertions run. Same opener as the other
+          # fixture steps in this file.
+          set +e
+          set -uo pipefail
+          REPORT="${RUNNER_TEMP}/inert-rules.txt"
+
+          spectral lint \
+            --ruleset schemas/spectral/specfuse-openapi.yaml \
+            schemas/spectral/fixtures/inert-rules-regression.yaml \
+            >"$REPORT" 2>&1
+          STATUS=$?
+          cat "$REPORT"
+          [ $STATUS -ge 2 ] && { echo "::error::Spectral crashed on the inert-rules fixture" >&2; exit 1; }
+
+          fail=0
+          for rule in specfuse-auth-meta-present specfuse-auth-roles-pascal \
+                      specfuse-401-required specfuse-401-predefined \
+                      specfuse-403-required specfuse-403-predefined \
+                      specfuse-400-required specfuse-400-predefined \
+                      specfuse-404-predefined specfuse-415-when-request-body \
+                      specfuse-406-when-alt-accept \
+                      specfuse-list-response-requires-pagination-params; do
+            if ! grep -q "$rule" "$REPORT"; then
+              echo "::error::$rule did not fire on a fixture that violates it." >&2
+              echo "It has gone inert again — see authoring #73." >&2
+              fail=1
+            fi
+          done
+          [ $fail -eq 0 ] || exit 1
+          echo "==> all twelve rules fired."
+
+      - name: The AsyncAPI x-ai rule actually rejects (regression)
+        run: |
+          set +e
+          set -uo pipefail
+          REPORT="${RUNNER_TEMP}/async-ai.txt"
+
+          spectral lint \
+            --ruleset schemas/spectral/specfuse-asyncapi.yaml \
+            schemas/spectral/fixtures/given-coverage-async.yaml \
+            >"$REPORT" 2>&1
+          STATUS=$?
+          cat "$REPORT"
+          [ $STATUS -ge 2 ] && { echo "::error::Spectral crashed on the async coverage fixture" >&2; exit 1; }
+
+          if ! grep -q "specfuse-async-ai-must-have-entities" "$REPORT"; then
+            echo "::error::specfuse-async-ai-must-have-entities did not fire on an x-ai" >&2
+            echo "block that is enabled and declares no entities. It has gone inert." >&2
+            exit 1
+          fi
+          echo "==> specfuse-async-ai-must-have-entities fired."
+
       # Regression net for authoring issue #14. Asserts two things that a
       # passing hello-orders run cannot assert on its own, because the example
       # contains no nulls and no duplicate enums:

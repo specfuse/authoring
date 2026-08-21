@@ -831,7 +831,12 @@ rules:
     description: "x-ai with enabled: true must declare entities (reads/creates/updates/deletes)"
     message: "x-ai at '{{path}}' is enabled but missing 'entities'. Declare which entities the AI worker reads and writes."
     severity: error
-    given: $.operations[*].x-ai[?(@ && @.enabled == true)]
+    # Same defect as the eleven OpenAPI rules in authoring #73: a filter placed
+    # AFTER `.x-ai` selects among x-ai's own children (enabled, task, entities,
+    # fallback), asking which of THEM has a truthy `.enabled`. None does, so
+    # this error-severity rule matched nothing in any document. The filter has
+    # to sit where the x-ai object is itself the child being filtered.
+    given: $.operations[*][?(@property === 'x-ai' && @.enabled == true)]
     then:
       field: entities
       function: truthy

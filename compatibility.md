@@ -677,6 +677,51 @@ $ java -jar specfuse-generator-0.5.8.jar validate <bundle-with-delete.reason>
 
 `0.5.8` **rejects** it. Widening the guard now would ship a ruleset accepting a value the pinned jar errors on — the `0.7.0` erratum verbatim (follow-up 18: *"a ruleset that accepts a value the generator errors on is equally adoption-blocking and equally silent"*). The reporter's framing that "the kit is the thing preventing adoption" is right about the guard and wrong about the cause: **the pin is the blocker**, and they are running a `0.5.9-SNAPSHOT` build, which is why it works for them. The guard change belongs in the same PR as the pin bump.
 
+### 31. Thirteen rules — eleven at `error` — had never fired, and a clean run could not tell you
+
+**Status:** kit-side **done** (11 OpenAPI `given`s and 1 AsyncAPI `given` repaired, 5 resolution/`then` defects fixed, coverage harness + rejection fixture wired into CI). No generator action.
+
+Reported by `restomanager-specs`, 2026-08-21 (authoring #73) against kit `0.5.9`. The report named two rules. Thirteen had never fired: twelve had a `given` of the shape below, and a thirteenth was dead for the resolution reason recorded further down.
+
+**The defect.** A JSONPath filter selects among the node's **children**. These rules put the filter *after* the method union had already selected the operation:
+
+```yaml
+given: $.paths[*][get,post,put,patch,delete][?(@ && @.security)]
+```
+
+so the filter asked which of `summary` / `parameters` / `responses` / `x-scopes` is itself an object with a truthy `.security`. None is. The empty set, in every valid OpenAPI document, since the rules were written.
+
+**Why no amount of green CI surfaced it.** These rules emit output only when metadata is missing or malformed. A conformant spec produces silence; so does a rule that matches nothing. **A clean run and a no-op run are indistinguishable** — the same shape as the crash-reads-as-pass problem `scripts/spectral-lint.sh` exists for, one level further in.
+
+**What was actually inert.** All thirteen. Every row but the last two is `severity: error`; the reporter's report covered `specfuse-auth-meta-present` and a scopes rule since replaced:
+
+| Rule | Severity |
+|---|---|
+| `specfuse-401-required`, `specfuse-401-predefined` | error |
+| `specfuse-403-required`, `specfuse-403-predefined` | error |
+| `specfuse-400-required`, `specfuse-400-predefined` | error |
+| `specfuse-404-predefined` | error |
+| `specfuse-list-response-requires-pagination-params` | error |
+| `specfuse-auth-meta-present`, `specfuse-auth-roles-pascal` | error |
+| `specfuse-async-ai-must-have-entities` (AsyncAPI, same shape) | error |
+| `specfuse-415-when-request-body`, `specfuse-406-when-alt-accept` | warn |
+
+So the RFC 9457 error-envelope contract — 400/401/403/404 must be present *and* must use the kit's predefined components — was unenforced on every project extending this ruleset, alongside the authorization-metadata gate the report opened with.
+
+**Repairing the JSONPath was not sufficient.** Three rules stayed silent with a working `given`:
+
+1. `function: pattern` reports **nothing when the field is absent**, so the four `-predefined` rules passed any response declaring no `$ref` at all — an inline response bypassing the shared component was clean. Each now pairs `truthy` with the pattern.
+2. The same four ran on the **resolved** document, where the `$ref` they inspect has already been inlined. They now carry `resolved: false`.
+3. `specfuse-list-response-requires-pagination-params` keys off a response schema whose `$ref` **name** ends in `List` — also erased by resolution. It now runs unresolved, and its parameter check accepts both the inline (`name: page`) and `$ref` forms, since an unresolved `$ref` parameter has no `name`.
+
+**One rule contradicted its own description once live.** `specfuse-406-when-alt-accept` demands 406 only when *multiple* response media types are declared, but a JSONPath filter cannot count an object's keys — so the `given` matched any operation with a 200 body and produced 8 findings against a conformant `hello-orders`. While the rule was inert nobody could notice, because **a rule that matches nothing never contradicts its own description.** The media-type count moved into `then` as `minProperties: 2`.
+
+**Consumer impact — read this before upgrading.** Ten `error`-severity rules that have never reported will start reporting against specs written while they were asleep. `examples/hello-orders/` needed one real change (415 on the five operations with request bodies; `UnsupportedMediaTypeError` is now in the errors template), but a project of any size should expect a first number. This is exactly the case `scripts/spectral-ratchet.py` and `schemas/README.md` §"Turning the ruleset on against existing specs" exist for: baseline per rule, fail on regression, burn down the inherited count separately.
+
+**The guard.** `scripts/spectral-rule-coverage.py` probes every rule's `given` with a `then` that fails against any value, so the finding count per rule is the number of nodes it selects; zero is a build failure unless allowlisted with a reason, and the allowlist is checked in both directions. All three rulesets run at full coverage with an empty allowlist (102/102, 78/78, 27/27). Because that only proves a rule **selects**, `fixtures/inert-rules-regression.yaml` violates each of the thirteen once and CI asserts every finding appears — which is what caught defects 1–3 above.
+
+**Worth stating plainly, because the reporter said it first and it generalises past this ruleset:** the reporter recorded *"dropping `x-roles` fails validation on all 38 operations"* in a design doc and planned an overlay around it. There was no break. They planned a migration to relax a gate that was never closed. A lint result you have not proven can fail is not evidence.
+
 ---
 
 ## Outstanding kit-side work

@@ -1,0 +1,203 @@
+# =============================================================================
+# Regression fixture: the rules that authoring #73 found inert
+# =============================================================================
+# Twelve OpenAPI rules — ten of them `severity: error` — had a `given` that
+# selected zero nodes in any document, so they had never once fired. Fixing the
+# JSONPath is only half the repair: scripts/spectral-rule-coverage.py proves a
+# rule SELECTS, and this fixture proves it REJECTS. Both halves are needed,
+# because a rule can also be silent with a perfectly good `given` — five of the
+# rules below were additionally inspecting a `$ref` on the RESOLVED document,
+# where the ref has already been inlined and nothing is left to see, and one of
+# those five (specfuse-404-predefined) had a working `given` all along.
+#
+# Every operation here violates exactly the rules named above it, and CI asserts
+# each rule code appears in the report. Do not "fix" this file: a clean run
+# against it is the failure.
+#
+# Deliberately NOT covered here, because other fixtures already own them:
+#   x-scopes grammar ............... fixtures/scope-grammar.yaml
+#   x-entity shape keys ............ fixtures/xentity-shape-keys.yaml
+# =============================================================================
+openapi: 3.0.3
+info:
+  title: Inert-rules regression fixture
+  version: "1.0.0"
+
+paths:
+  # Violates: specfuse-auth-meta-present (no x-roles, no x-scopes)
+  #           specfuse-401-required     (secured, no 401)
+  #           specfuse-403-required     (secured, no 403)
+  /v1/bare-secured:
+    get:
+      summary: Secured but carries no authorization metadata and no 401/403.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: string
+
+  # Violates: specfuse-401-predefined (401 is inline, not the shared component)
+  #           specfuse-403-predefined (403 points at the wrong component)
+  #           specfuse-auth-roles-pascal (`admin` is not PascalCase)
+  /v1/wrong-error-refs:
+    get:
+      summary: Declares 401 and 403, but neither resolves to the kit's component.
+      security:
+        - bearerAuth: []
+      x-roles: [admin]
+      x-scopes: [coverage.read]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: string
+        '401':
+          description: Inline 401 that bypasses UnauthorizedError entirely
+        '403':
+          $ref: '#/components/responses/SomeOtherError'
+
+  # Violates: specfuse-400-required   (has a requestBody, declares no 400)
+  #           specfuse-415-when-request-body (has a requestBody, declares no 415)
+  /v1/body-without-400:
+    post:
+      summary: Accepts a body but declares neither 400 nor 415.
+      security:
+        - bearerAuth: []
+      x-roles: [Admin]
+      x-scopes: [coverage.write]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Created
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  # Violates: specfuse-400-predefined (400 points at the wrong component)
+  /v1/body-with-wrong-400:
+    post:
+      summary: Declares 400, but not as BadRequestError.
+      security:
+        - bearerAuth: []
+      x-roles: [Admin]
+      x-scopes: [coverage.write]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Created
+        '400':
+          $ref: '#/components/responses/SomeOtherError'
+        '415':
+          description: Unsupported Media Type
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  # Violates: specfuse-404-predefined (404 points at the wrong component)
+  /v1/things/{thingId}:
+    get:
+      summary: Has an {xxxId} parameter and a 404 that is not NotFoundError.
+      security:
+        - bearerAuth: []
+      x-roles: [Admin]
+      x-scopes: [coverage.read]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: string
+        '404':
+          $ref: '#/components/responses/SomeOtherError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  # Violates: specfuse-406-when-alt-accept (two 200 media types, no 406)
+  /v1/two-media-types:
+    get:
+      summary: Offers JSON and CSV on 200 but never declares 406.
+      security:
+        - bearerAuth: []
+      x-roles: [Admin]
+      x-scopes: [coverage.read]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: string
+            text/csv:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  # Violates: specfuse-list-response-requires-pagination-params
+  #           (returns a *List schema and declares no page/pageSize/sort)
+  /v1/things:
+    get:
+      summary: Returns a List projection with no pagination parameters at all.
+      security:
+        - bearerAuth: []
+      x-roles: [Admin]
+      x-scopes: [coverage.read]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThingList'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    UnauthorizedError:
+      description: Unauthorized
+    ForbiddenError:
+      description: Forbidden
+    NotFoundError:
+      description: Not Found
+    BadRequestError:
+      description: Bad Request
+    # The decoy every "wrong $ref" case above points at.
+    SomeOtherError:
+      description: Not one of the kit's predefined error responses
+  schemas:
+    ThingList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: string

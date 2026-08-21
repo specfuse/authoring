@@ -161,7 +161,7 @@ rules:
   specfuse-415-when-request-body:
     description: "Endpoints with requestBody should define 415."
     severity: warn
-    given: $.paths[*][post,put,patch,delete][?(@ && @.requestBody)]
+    given: $.paths[*][?(["post","put","patch","delete"].indexOf(@property) !== -1 && @.requestBody)]
     then:
       field: responses.415
       function: truthy
@@ -169,10 +169,40 @@ rules:
   specfuse-406-when-alt-accept:
     description: "If multiple response media types are declared, include 406."
     severity: warn
-    given: $.paths[*][get,post,put,patch,delete][?(@ && @.responses && @.responses["200"] && @.responses["200"].content)]
+    # The "multiple media types" half of this rule cannot live in `given`:
+    # JSONPath filters cannot count an object's keys. While the `given` was
+    # inert nobody noticed, because a rule that matches nothing never
+    # contradicts its own description. Live, the old form demanded 406 from
+    # EVERY operation returning a 200 body — 8 findings against a conformant
+    # hello-orders. The media-type count therefore belongs in `then`, where
+    # JSON Schema can express it as `minProperties: 2`.
+    given: $.paths[*][?(["get","post","put","patch","delete"].indexOf(@property) !== -1 && @.responses && @.responses["200"] && @.responses["200"].content)]
     then:
-      field: responses.406
-      function: truthy
+      function: schema
+      functionOptions:
+        schema:
+          if:
+            type: object
+            required: [responses]
+            properties:
+              responses:
+                type: object
+                required: ["200"]
+                properties:
+                  "200":
+                    type: object
+                    required: [content]
+                    properties:
+                      content:
+                        type: object
+                        minProperties: 2
+          then:
+            type: object
+            required: [responses]
+            properties:
+              responses:
+                type: object
+                required: ["406"]
 
   # ===== Concurrency & ETags =====
   specfuse-etag-on-get:
@@ -213,7 +243,7 @@ rules:
   specfuse-401-required:
     description: "Protected operations must declare 401."
     severity: error
-    given: $.paths[*][get,post,put,patch,delete][?(@ && @.security)]
+    given: $.paths[*][?(["get","post","put","patch","delete"].indexOf(@property) !== -1 && @.security)]
     then:
       field: responses.401
       function: truthy
@@ -221,17 +251,25 @@ rules:
   specfuse-401-predefined:
     description: "Protected operations must use components.responses.UnauthorizedError for 401."
     severity: error
-    given: $.paths[*][get,post,put,patch,delete][?(@ && @.security)].responses.401
+    given: $.paths[*][?(["get","post","put","patch","delete"].indexOf(@property) !== -1 && @.security)].responses.401
+    # `resolved: false` is load-bearing: on the resolved document the `$ref` has
+    # already been inlined, so `field: $ref` sees nothing and this error-severity
+    # rule reports on no document, ever. The `truthy` check is the second half —
+    # `pattern` alone is silent on a MISSING `$ref`, so an inline response that
+    # bypasses the shared component passed the rule even once it could see it.
+    resolved: false
     then:
-      field: $ref
-      function: pattern
-      functionOptions:
-        match: "^#/components/responses/UnauthorizedError$"
+      - field: $ref
+        function: truthy
+      - field: $ref
+        function: pattern
+        functionOptions:
+          match: "^#/components/responses/UnauthorizedError$"
 
   specfuse-403-required:
     description: "Protected operations must declare 403."
     severity: error
-    given: $.paths[*][get,post,put,patch,delete][?(@ && @.security)]
+    given: $.paths[*][?(["get","post","put","patch","delete"].indexOf(@property) !== -1 && @.security)]
     then:
       field: responses.403
       function: truthy
@@ -239,12 +277,20 @@ rules:
   specfuse-403-predefined:
     description: "Protected operations must use components.responses.ForbiddenError for 403."
     severity: error
-    given: $.paths[*][get,post,put,patch,delete][?(@ && @.security)].responses.403
+    given: $.paths[*][?(["get","post","put","patch","delete"].indexOf(@property) !== -1 && @.security)].responses.403
+    # `resolved: false` is load-bearing: on the resolved document the `$ref` has
+    # already been inlined, so `field: $ref` sees nothing and this error-severity
+    # rule reports on no document, ever. The `truthy` check is the second half —
+    # `pattern` alone is silent on a MISSING `$ref`, so an inline response that
+    # bypasses the shared component passed the rule even once it could see it.
+    resolved: false
     then:
-      field: $ref
-      function: pattern
-      functionOptions:
-        match: "^#/components/responses/ForbiddenError$"
+      - field: $ref
+        function: truthy
+      - field: $ref
+        function: pattern
+        functionOptions:
+          match: "^#/components/responses/ForbiddenError$"
 
   specfuse-404-required:
     description: "Operations with {xxxId} path parameters must declare 404 Not Found."
@@ -258,16 +304,24 @@ rules:
     description: "Operations with {xxxId} path parameters must use components.responses.NotFoundError for 404."
     severity: error
     given: $.paths[?(@property.match("\\{[a-zA-Z0-9]+Id\\}"))][get,post,put,patch,delete].responses.404
+    # `resolved: false` is load-bearing: on the resolved document the `$ref` has
+    # already been inlined, so `field: $ref` sees nothing and this error-severity
+    # rule reports on no document, ever. The `truthy` check is the second half —
+    # `pattern` alone is silent on a MISSING `$ref`, so an inline response that
+    # bypasses the shared component passed the rule even once it could see it.
+    resolved: false
     then:
-      field: $ref
-      function: pattern
-      functionOptions:
-        match: "^#/components/responses/NotFoundError$"
+      - field: $ref
+        function: truthy
+      - field: $ref
+        function: pattern
+        functionOptions:
+          match: "^#/components/responses/NotFoundError$"
 
   specfuse-400-required:
     description: "Operations with requestBody must declare 400 Bad Request."
     severity: error
-    given: $.paths[*][post,put,patch,delete][?(@ && @.requestBody)]
+    given: $.paths[*][?(["post","put","patch","delete"].indexOf(@property) !== -1 && @.requestBody)]
     then:
       field: responses.400
       function: truthy
@@ -275,12 +329,20 @@ rules:
   specfuse-400-predefined:
     description: "Operations with requestBody must use components.responses.BadRequestError for 400."
     severity: error
-    given: $.paths[*][post,put,patch,delete][?(@ && @.requestBody)].responses.400
+    given: $.paths[*][?(["post","put","patch","delete"].indexOf(@property) !== -1 && @.requestBody)].responses.400
+    # `resolved: false` is load-bearing: on the resolved document the `$ref` has
+    # already been inlined, so `field: $ref` sees nothing and this error-severity
+    # rule reports on no document, ever. The `truthy` check is the second half —
+    # `pattern` alone is silent on a MISSING `$ref`, so an inline response that
+    # bypasses the shared component passed the rule even once it could see it.
+    resolved: false
     then:
-      field: $ref
-      function: pattern
-      functionOptions:
-        match: "^#/components/responses/BadRequestError$"
+      - field: $ref
+        function: truthy
+      - field: $ref
+        function: pattern
+        functionOptions:
+          match: "^#/components/responses/BadRequestError$"
 
   # ===== Pagination Consistency =====
   # NOTE: "If pagination params present -> response must be List" cannot be expressed in
@@ -289,7 +351,14 @@ rules:
   specfuse-list-response-requires-pagination-params:
     description: "If response is {Resource}List, all pagination parameters (page, pageSize, sort) must be present."
     severity: error
-    given: $.paths[*].get[?(@ && @.responses && @.responses["200"])]
+    # `resolved: false` is load-bearing: the `if` below keys off a response
+    # schema whose `$ref` NAME ends in `List`, and on the resolved document that
+    # ref has already been inlined. With the ref gone the condition is never
+    # satisfied, so this error-severity rule stays silent even now that its
+    # `given` selects nodes again. Fixing the JSONPath alone left it inert —
+    # see fixtures/inert-rules-regression.yaml.
+    resolved: false
+    given: $.paths[*][?(@property === 'get' && @.responses && @.responses["200"])]
     then:
       function: schema
       functionOptions:
@@ -316,22 +385,40 @@ rules:
                 required: ["200"]
             required: ["responses"]
           then:
+            # Each parameter is accepted either inline (`name: page`) or as a
+            # `$ref` whose pointer ends in the parameter name — the shape the
+            # kit's own templates and examples/hello-orders/ use. Both forms are
+            # needed because `resolved: false` above is what lets the `if` see
+            # the response schema's ref NAME, and on an unresolved document a
+            # $ref parameter has no `name` to match. A project that stores its
+            # `page` parameter under some other component key will read as
+            # missing here; that is the cost of keying off the pointer, and it
+            # is what scripts/spectral-ratchet.py exists to absorb.
             properties:
               parameters:
                 type: array
                 allOf:
                   - contains:
                       type: object
-                      properties: { name: { const: "page" } }
-                      required: [name]
+                      anyOf:
+                        - properties: { name: { const: "page" } }
+                          required: [name]
+                        - properties: { $ref: { type: string, pattern: "/page$" } }
+                          required: ["$ref"]
                   - contains:
                       type: object
-                      properties: { name: { const: "pageSize" } }
-                      required: [name]
+                      anyOf:
+                        - properties: { name: { const: "pageSize" } }
+                          required: [name]
+                        - properties: { $ref: { type: string, pattern: "/pageSize$" } }
+                          required: ["$ref"]
                   - contains:
                       type: object
-                      properties: { name: { const: "sort" } }
-                      required: [name]
+                      anyOf:
+                        - properties: { name: { const: "sort" } }
+                          required: [name]
+                        - properties: { $ref: { type: string, pattern: "/sort$" } }
+                          required: ["$ref"]
             required: ["parameters"]
 
   # ===== Security =====
@@ -355,7 +442,7 @@ rules:
   specfuse-auth-meta-present:
     description: "Secured operations must declare x-roles and x-scopes."
     severity: error
-    given: $.paths[*][get,post,put,patch,delete][?(@ && @.security)]
+    given: $.paths[*][?(["get","post","put","patch","delete"].indexOf(@property) !== -1 && @.security)]
     then:
       - field: x-roles
         function: schema
@@ -383,7 +470,7 @@ rules:
   specfuse-auth-roles-pascal:
     description: "x-roles values must be PascalCase identifiers. The kit does not bake in the closed value-set — projects add an overlay rule that constrains values to their declared role enum."
     severity: error
-    given: $.paths[*][get,post,put,patch,delete][?(@ && @.security)]["x-roles"][*]
+    given: $.paths[*][?(["get","post","put","patch","delete"].indexOf(@property) !== -1 && @.security)]["x-roles"][*]
     then:
       function: pattern
       functionOptions:

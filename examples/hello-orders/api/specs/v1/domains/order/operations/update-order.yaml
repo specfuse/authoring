@@ -33,4 +33,5 @@ patch:
     '401': { $ref: '../../../common/responses/errors.yaml#/UnauthorizedError' }
     '403': { $ref: '../../../common/responses/errors.yaml#/ForbiddenError' }
     '404': { $ref: '../../../common/responses/errors.yaml#/NotFoundError' }
+    '415': { $ref: '../../../common/responses/errors.yaml#/UnsupportedMediaTypeError' }
     '412': { $ref: '../../../common/responses/errors.yaml#/PreconditionFailedError' }
