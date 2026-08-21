@@ -673,7 +673,21 @@ What counts as "unchanged" is decided by the change-detection rules in `AsyncAPI
 - Include ETag in all GET responses for mutable resources
 - Validate If-Match before processing PUT/PATCH
 - Return current ETag in 412 responses
-- Consider including `currentResource` in 412 to reduce round-trips
+- Consider including `currentResource` in 412 to reduce round-trips. Declare it
+  as an explicit open map (`type: object` **plus** `additionalProperties: true`),
+  not a bare `type: object` — the 412 body is shared across endpoints so its
+  shape differs per resource and no `$ref` can name it, and the generator
+  rejects an anonymous inline object (`ANONYMOUS_OBJECT_PLACEHOLDER`) because it
+  cannot be modelled into a DTO. The same applies to `Error.details`.
+
+  These two are the **only** sanctioned open maps in the contract, and they do
+  not soften the ban that governs event payloads (`AsyncAPI_Handbook.md`
+  §"closed universe"). That ban exists because an open map hides fields from
+  typing, from the snapshot-version cascade, and from the PII/classification
+  rules. None of those apply to a 412 echo of a resource the caller already
+  holds an ETag for: it discloses nothing the caller could not already read, and
+  nothing downstream consumes it by shape. A client must still be able to
+  proceed without it.
 
 **For API Consumers:**
 - Always store ETag when fetching resources
