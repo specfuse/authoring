@@ -634,3 +634,56 @@ jobs:
             exit 1
           fi
           echo "==> No dot-before-bracket JSONPath unions in any ruleset."
+
+      # Regression net for the phantom cascade keys. Both directions matter and
+      # the *accept* direction matters more: `cascadeDelete` and `children` are
+      # read by nothing, but they are still accepted by the shape guard on
+      # purpose (retiring an extension is the generator's call, follow-up 23).
+      # A rule that errored here would fail lint on specs that generate exactly
+      # as they do today — the forbidden direction.
+      - name: Phantom cascade keys warn but do not block (regression)
+        run: |
+          # See the note on the earlier fixture steps: `bash -e` would abort on
+          # the fixture's expected error-severity findings.
+          set +e
+          set -uo pipefail
+          REPORT="${RUNNER_TEMP}/cascade-phantom.txt"
+
+          spectral lint \
+            --ruleset schemas/spectral/specfuse-openapi.yaml \
+            schemas/spectral/fixtures/xentity-shape-keys.yaml \
+            >"$REPORT" 2>&1
+          STATUS=$?
+          cat "$REPORT"
+
+          if [[ $STATUS -ge 2 ]]; then
+            echo "::error::Spectral crashed on the xentity-shape fixture (exit ${STATUS})." >&2
+            exit 1
+          fi
+
+          fail=0
+
+          # Fires on the entity that declares them.
+          for rule in specfuse-xentity-cascade-phantom specfuse-xentity-children-phantom; do
+            if ! grep "$rule" "$REPORT" | grep -q "CascadePhantom"; then
+              echo "::error::${rule} did not fire on CascadePhantom." >&2
+              fail=1
+            fi
+          done
+
+          # Still ACCEPTED by the closed guard — a shape error here would mean
+          # the kit had unilaterally retired a key the generator has not.
+          if grep "specfuse-xentity-shape" "$REPORT" | grep -q "CascadePhantom"; then
+            echo "::error::specfuse-xentity-shape rejected CascadePhantom. The phantom keys" >&2
+            echo "must stay accepted; the nudge is a WARNING, not an error." >&2
+            fail=1
+          fi
+
+          # Silent on an entity that declares neither.
+          if grep -E "specfuse-xentity-(cascade|children)-phantom" "$REPORT" | grep -q "CascadeClean"; then
+            echo "::error::A phantom-key rule fired on CascadeClean, which declares neither key." >&2
+            fail=1
+          fi
+
+          [[ $fail -eq 0 ]] || exit 1
+          echo "==> Phantom cascade keys warn, stay accepted, and do not over-match."

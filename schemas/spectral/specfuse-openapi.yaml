@@ -771,10 +771,10 @@ rules:
             # `hard`, the pre-FEAT-2026-0080 generator behaviour, so no
             # existing entity changes meaning by this key being added.
             #
-            # Distinct from `cascadeDelete` below, which declares what happens
-            # to the entity's CHILDREN. An aggregate may legitimately carry
-            # both; they answer different questions and are not required to
-            # agree.
+            # `delete` is ALSO what decides the cascade — see the note on
+            # `cascadeDelete` below, which is a phantom key. `hard` cascades to
+            # the aggregate's descendants; `soft` stamps one row and leaves the
+            # children live.
             #
             # Shorthand string form or long object form. `retention` is `none`
             # (keep forever) or an ISO-8601 duration, and is only meaningful
@@ -802,9 +802,27 @@ rules:
                     retention:
                       type: string
                       pattern: "^(none|P(?=\\d|T\\d)(\\d+Y)?(\\d+M)?(\\d+W)?(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?(\\d+S)?)?)$"
-            # Cascade policy on delete (API_Handbook.md §"Cascade Deletion").
-            # `children` names the entities the cascade reaches. Scopes the
-            # entity's CHILDREN — see `delete` above for the entity's own row.
+            # PHANTOM KEYS — accepted here, read by NOTHING.
+            #
+            # Neither `cascadeDelete` nor `children` appears in the generator at
+            # any version checked (compatibility.md §23, §30). A spec declaring
+            # them lints clean, validates clean, and cascades nothing — the
+            # failure mode `x-entity.delete` was introduced to fix.
+            #
+            # They stay ACCEPTED rather than being removed, on the standing rule
+            # that retiring an extension is the generator's call and not the
+            # kit's (follow-up 23's open ask, the `x-entity.schema` precedent).
+            # Rejecting them here would turn a silently-inert declaration into a
+            # lint error on specs that generate exactly as they do today — the
+            # forbidden direction — and would do it for a key the generator has
+            # not said it is dropping.
+            #
+            # The nudge is `specfuse-xentity-cascade-phantom` (WARN) below.
+            # Accepting without warning is how a phantom key stays invisible;
+            # warning without accepting is the bug that would replace it.
+            #
+            # What actually cascades: `delete: hard`, over the aggregate's
+            # descendant set. `delete: soft` does not cascade at all.
             cascadeDelete: { type: string, enum: ["soft", "hard"] }
             children:
               type: array
@@ -998,6 +1016,26 @@ rules:
     given: $.components.schemas[?(@ && @["x-entity"])]["x-entity"]
     then:
       field: schema
+      function: undefined
+
+  # Two rules, not one, so the ratchet counts them separately and so the
+  # message can name the key the author actually wrote.
+  specfuse-xentity-cascade-phantom:
+    description: "x-entity.cascadeDelete is read by nothing — the generator has no cascade key, so declaring it cascades nothing while the spec says otherwise. Cascade follows x-entity.delete alone: `hard` cascades to the aggregate's descendants, `soft` does not cascade at all. Remove it, and if children must be archived with the parent that is application logic today. See API_Handbook.md §\"Cascade Deletion\" and compatibility.md §30."
+    message: "{{description}}"
+    severity: warn
+    given: $.components.schemas[?(@ && @["x-entity"])]["x-entity"]
+    then:
+      field: cascadeDelete
+      function: undefined
+
+  specfuse-xentity-children-phantom:
+    description: "x-entity.children is read by nothing — it named the reach of a cascade the generator does not implement. Aggregate membership is already declared by hasMany / hasOne / belongsTo, which the generator does read. Remove it. See API_Handbook.md §\"Cascade Deletion\" and compatibility.md §30."
+    message: "{{description}}"
+    severity: warn
+    given: $.components.schemas[?(@ && @["x-entity"])]["x-entity"]
+    then:
+      field: children
       function: undefined
 
   specfuse-xentity-concurrency-unprotected-needs-reason:
