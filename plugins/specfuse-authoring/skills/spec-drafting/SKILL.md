@@ -48,13 +48,13 @@ Still shipped from nowhere the authoring plane can reach:
 - `shared/schemas/test-plan.schema.json`.
 - `shared/rules/escalation-protocol.md`, `shared/rules/verify-before-report.md`.
 
-If anything in either list is unresolvable, STOP and report:
+If anything above is unresolvable, STOP and report:
 
 > This skill requires substrate the authoring plugin does not ship. If
 > `.specfuse/methodology/` is absent, run `specfuse init .` and retry. If what is
 > missing is `feature-registry.md`, `test-plan.schema.json`,
-> `escalation-protocol.md` or `verify-before-report.md`, core does not ship it
-> yet — see authoring #26 / #55. No files were created or modified.
+> `escalation-protocol.md` or `verify-before-report.md`, core does not ship it to
+> this plane yet — see authoring #26 / #55. No files were created or modified.
 
 Do not improvise a replacement, skip the validation step, or read the artifacts
 out of a sibling `../orchestrator/` checkout.

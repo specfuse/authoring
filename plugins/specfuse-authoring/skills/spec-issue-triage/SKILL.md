@@ -55,20 +55,30 @@ Resolving from `.specfuse/methodology/` once init has run:
 - `rules/correlation-ids.md`, `rules/never-touch.md`,
   `rules/role-switch-hygiene.md`.
 
+Available as **core CLI commands**, not as files to read — `specfuse init`
+installs the `specfuse` package that provides them:
+
+- `specfuse validate-event --file <path>` — validates the envelope AND the
+  per-type payload, including `spec_issue_resolved`, `spec_issue_routed` and
+  `human_escalation`. Verified against core 0.12.1 in a repo with only
+  `specfuse init` run; no orchestrator checkout involved.
+
+Use this rather than looking for `scripts/validate-event.py`. That path is how
+the orchestrator resolved the validator from its own checkout.
+
 Still shipped from nowhere the authoring plane can reach:
 
-- `scripts/validate-event.py` — exists nowhere; see authoring #26.
-- `shared/schemas/events/human_escalation.schema.json`.
 - `shared/templates/spec-issue.md`, `shared/templates/human-escalation.md`.
 - `shared/rules/escalation-protocol.md`, `shared/rules/verify-before-report.md`.
 
-If anything in either list is unresolvable, STOP and report:
+If anything above is unresolvable, STOP and report:
 
 > This skill requires substrate the authoring plugin does not ship. If
 > `.specfuse/methodology/` is absent, run `specfuse init .` and retry. If what is
-> missing is `validate-event.py`, `human_escalation.schema.json`, the
-> `spec-issue` / `human-escalation` templates, `escalation-protocol.md` or
-> `verify-before-report.md`, core does not ship it yet — see authoring #26 / #55.
+> missing is the `spec-issue` / `human-escalation` template,
+> `escalation-protocol.md` or `verify-before-report.md`, core does not ship it to
+> this plane yet — see authoring #26 / #55. If a `specfuse validate-*` command is
+> missing, the core package is not installed, which `specfuse init` also fixes.
 > No spec was changed, no event was emitted, and no inbox file was archived.
 
 Do not improvise a replacement, skip the validation step, or read the artifacts

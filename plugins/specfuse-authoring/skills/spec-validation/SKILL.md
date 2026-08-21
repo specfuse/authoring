@@ -42,14 +42,30 @@ Resolving from `.specfuse/methodology/` once init has run:
 - `rules/correlation-ids.md`, `rules/never-touch.md`,
   `rules/role-switch-hygiene.md`, `rules/verification-discipline.md`.
 
+Available as **core CLI commands**, not as files to read — `specfuse init`
+installs the `specfuse` package that provides them:
+
+- `specfuse validate-event --file <path>` — validates the envelope AND the
+  per-type payload, including `feature_state_changed` and `spec_validated`.
+  Verified against core 0.12.1 in a repo with only `specfuse init` run: no
+  orchestrator checkout, `INIT-` correlation IDs accepted.
+- `specfuse validate-frontmatter --file <path>` — validates registry-entry
+  frontmatter against `feature-frontmatter.schema.json`. An initiative entry
+  needs `feature_graph` present; that is the schema's discriminator, not a
+  planning field this skill has to invent.
+
+Use these rather than looking for `scripts/validate-event.py` or
+`scripts/validate-frontmatter.py`. Those paths are how the orchestrator
+resolved the validators from its own checkout; the CLI is how every other plane
+reaches the same schemas.
+
 Still shipped from nowhere the authoring plane can reach:
 
-- `scripts/validate-event.py`, `scripts/validate-frontmatter.py` — these exist
-  nowhere; see authoring #26.
-- `shared/schemas/feature-frontmatter.schema.json` — being split at the seam,
-  `specfuse/orchestrator#87`.
-- `shared/schemas/events/feature_state_changed.schema.json`.
 - `shared/rules/escalation-protocol.md`, `shared/rules/verify-before-report.md`.
+- `feature-frontmatter.schema.json` **as a readable file**. Validation against
+  it works (above); reading it to inspect its shape does not, because the
+  ownership manifest categorises it as an execution-plane schema —
+  `specfuse/orchestrator#87`. This skill only validates, so it is not blocked.
 
 In core but **held back from provisioning**, so still unreachable today:
 
@@ -62,14 +78,14 @@ In core but **held back from provisioning**, so still unreachable today:
   decision is `specfuse/specfuse#137`. Repointing these citations is a
   one-line change here once it lands.
 
-If anything in either list is unresolvable, STOP and report:
+If anything above is unresolvable, STOP and report:
 
 > This skill requires substrate the authoring plugin does not ship. If
 > `.specfuse/methodology/` is absent, run `specfuse init .` and retry. If what is
-> missing is `validate-event.py`, `feature-frontmatter.schema.json`,
-> `feature_state_changed.schema.json`, `state-vocabulary.md`,
-> `escalation-protocol.md` or `verify-before-report.md`, core does not ship it
-> yet — see authoring #26 / #55. No spec was validated, no event was emitted, and
+> missing is `escalation-protocol.md`, `verify-before-report.md` or the state
+> vocabulary, core does not ship it to this plane yet — see authoring #26 / #55.
+> If a `specfuse validate-*` command is missing, the core package is not
+> installed, which `specfuse init` also fixes. No spec was validated, no event was emitted, and
 > no state was transitioned.
 
 Do not improvise a replacement, skip the validation step, or read the artifacts

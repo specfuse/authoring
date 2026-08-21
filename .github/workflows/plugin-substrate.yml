@@ -75,3 +75,46 @@ jobs:
 
       - name: Every substrate citation resolves
         run: scripts/check-substrate-citations.py --provisioned /tmp/target
+
+      # The gates tell an agent to reach `feature-frontmatter.schema.json` and
+      # the per-type event payloads through the core CLI rather than as files,
+      # because that is the only way they are reachable from this plane. That
+      # claim has to be exercised, not asserted: an `--help` check would pass
+      # even if the schemas resolved only inside an orchestrator checkout, which
+      # is exactly what the old `scripts/validate-*.py` citations assumed.
+      - name: The core validators work from a plain provisioned repo
+        run: |
+          set -uo pipefail
+          cd /tmp/target
+
+          # A well-formed initiative entry: INIT- id, and feature_graph, which is
+          # the schema branch discriminator an initiative mint has to supply.
+          cat > entry.md <<'MD'
+          ---
+          correlation_id: INIT-2026-0001
+          state: drafting
+          involved_repos: [specs]
+          autonomy_default: supervised
+          feature_graph: []
+          ---
+          body
+          MD
+          /tmp/core/bin/specfuse validate-frontmatter --file entry.md             || { echo "::error::specfuse validate-frontmatter rejected a well-formed INIT- registry entry, or could not resolve feature-frontmatter.schema.json outside an orchestrator checkout." >&2; exit 1; }
+
+          # spec_validated exercises a payload schema core provisions; a
+          # passing envelope-only run would not prove the per-type schemas
+          # resolve, so the payload is complete on purpose.
+          cat > ev.jsonl <<'JSON'
+          {"event_type":"spec_validated","correlation_id":"INIT-2026-0001","timestamp":"2026-08-21T12:00:00Z","source":"specs","source_version":"n/a","payload":{"feature_correlation_id":"INIT-2026-0001","pass":true,"spec_files_checked":["product/specs/x.yaml"],"errors":[],"validator_version":"n/a"}}
+          JSON
+          /tmp/core/bin/specfuse validate-event --file ev.jsonl             || { echo "::error::specfuse validate-event rejected a well-formed spec_validated event, or could not resolve its per-type payload schema." >&2; exit 1; }
+
+          # And it must still REJECT: a validator that accepts everything is
+          # indistinguishable from one that resolved no schema at all.
+          echo '{"event_type":"spec_validated","correlation_id":"INIT-2026-0001","timestamp":"2026-08-21T12:00:00Z","source":"specs","source_version":"n/a","payload":{}}' > bad.jsonl
+          if /tmp/core/bin/specfuse validate-event --file bad.jsonl >/dev/null 2>&1; then
+            echo "::error::specfuse validate-event ACCEPTED a spec_validated event with an empty payload. The per-type schema is not being applied, so this check proves nothing." >&2
+            exit 1
+          fi
+
+          echo "==> core validators resolve their schemas from a plain provisioned repo."

@@ -43,14 +43,27 @@ Resolving from `.specfuse/methodology/` once init has run:
 - `schemas/events/initiative_created.schema.json` — per-type payload.
 - `rules/correlation-ids.md`, `rules/never-touch.md`.
 
+Available as **core CLI commands**, not as files to read — `specfuse init`
+installs the `specfuse` package that provides them:
+
+- `specfuse validate-frontmatter --file <path>` — validates the minted registry
+  entry against `feature-frontmatter.schema.json`. `INIT-` correlation IDs are
+  accepted, and `feature_graph` is the branch discriminator the schema requires.
+- `specfuse validate-event --file <path>` — validates the envelope AND the
+  `initiative_created` payload.
+
+Both verified against core 0.12.1 in a repo with only `specfuse init` run. Use
+them rather than looking for `scripts/validate-frontmatter.py` or
+`scripts/validate-event.py`; those paths are how the orchestrator resolved the
+validators from its own checkout.
+
 Still shipped from nowhere the authoring plane can reach:
 
-- `scripts/validate-frontmatter.py`, `scripts/validate-event.py` — these exist
-  nowhere; see authoring #26.
-- `shared/schemas/feature-frontmatter.schema.json` — being split at the seam,
-  `specfuse/orchestrator#87`.
 - `shared/templates/feature-registry.md`.
 - `shared/rules/escalation-protocol.md`, `shared/rules/verify-before-report.md`.
+- `feature-frontmatter.schema.json` **as a readable file** — validation against
+  it works (above), reading it does not; `specfuse/orchestrator#87`. This skill
+  only validates, so it is not blocked.
 
 In core but **held back from provisioning**, so still unreachable today:
 
@@ -63,13 +76,14 @@ In core but **held back from provisioning**, so still unreachable today:
   decision is `specfuse/specfuse#137`. Repointing these citations is a
   one-line change here once it lands.
 
-If anything in either list is unresolvable, STOP and report:
+If anything above is unresolvable, STOP and report:
 
 > This skill requires substrate the authoring plugin does not ship. If
 > `.specfuse/methodology/` is absent, run `specfuse init .` and retry. If what is
-> missing is `validate-frontmatter.py`, `feature-frontmatter.schema.json`,
-> `feature-registry.md`, `state-vocabulary.md`, `escalation-protocol.md` or
-> `verify-before-report.md`, core does not ship it yet — see authoring #26 / #55.
+> missing is `feature-registry.md`, `escalation-protocol.md`,
+> `verify-before-report.md` or the state vocabulary, core does not ship it to
+> this plane yet — see authoring #26 / #55. If a `specfuse validate-*` command is
+> missing, the core package is not installed, which `specfuse init` also fixes.
 > No id was minted, no registry entry was written, and no event was emitted.
 
 Do not improvise a replacement, skip the validation step, or read the artifacts
