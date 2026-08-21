@@ -1,0 +1,77 @@
+# Copyright 2026 Specfuse contributors
+# Licensed under the Apache License, Version 2.0. See LICENSE.
+#
+# plugin-substrate.yml — the specs agent's substrate citations must resolve.
+#
+# The skills under plugins/specfuse-authoring/ cite the shared methodology
+# contract by path. Since authoring #55 those paths are `.specfuse/methodology/...`,
+# which the core `specfuse` package provisions into a repo. Nothing else in CI
+# reads those files, so a citation naming something core does not ship fails
+# nowhere until an agent tries to read it mid-session. This job is the only
+# thing that would notice.
+#
+# Kept OUT of ci.yml deliberately. ci.yml is the always-run required gate and
+# installs nothing from PyPI; this job does, so a PyPI outage must not be able
+# to block every PR in the repo.
+#
+# Two triggers, because the check can go stale from either side:
+#   - plugins/** or the script changed  -> we may have broken a citation
+#   - the weekly schedule               -> CORE may have changed what it ships,
+#     which no push to this repo would otherwise surface
+#
+# The installed core version is deliberately NOT pinned. The point is to notice
+# when core's provisioner changes; pinning would hide exactly the drift this
+# exists to catch.
+
+name: plugin-substrate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'plugins/**'
+      - 'scripts/check-substrate-citations.py'
+      - '.github/workflows/plugin-substrate.yml'
+  pull_request:
+    paths:
+      - 'plugins/**'
+      - 'scripts/check-substrate-citations.py'
+      - '.github/workflows/plugin-substrate.yml'
+  schedule:
+    # Mondays 06:00 UTC — catches a core release that changed what it provisions.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  citations:
+    name: Substrate citations resolve against a real `specfuse init`
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install the core specfuse package
+        run: |
+          python -m venv /tmp/core
+          /tmp/core/bin/pip install --quiet --upgrade pip
+          /tmp/core/bin/pip install --quiet specfuse
+          /tmp/core/bin/pip show specfuse | sed -n '1,2p'
+
+      - name: Provision the methodology substrate into a scratch repo
+        run: |
+          # `specfuse init` is the actual mechanism a consuming specs repo runs.
+          # Asserting against its real output beats asserting against a list of
+          # filenames committed here, which would only ever restate what we
+          # already believe.
+          mkdir -p /tmp/target
+          cd /tmp/target && git init -q .
+          /tmp/core/bin/specfuse init .
+          test -d /tmp/target/.specfuse/methodology \
+            || { echo "::error::specfuse init provisioned no methodology/ — the substrate is gone or the install path moved." >&2; exit 1; }
+
+      - name: Every substrate citation resolves
+        run: scripts/check-substrate-citations.py --provisioned /tmp/target
