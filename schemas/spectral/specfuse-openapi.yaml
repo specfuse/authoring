@@ -889,6 +889,48 @@ rules:
                     retention:
                       type: string
                       pattern: "^(none|P(?=\\d|T\\d)(\\d+Y)?(\\d+M)?(\\d+W)?(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?(\\d+S)?)?)$"
+                    # `reason` records WHY an entity is `hard` — added in
+                    # generator 0.6.0. It matters because `hard` is also what an
+                    # ABSENT declaration resolves to, so "deliberate" and
+                    # "nobody decided" are otherwise indistinguishable.
+                    #
+                    # OPTIONAL here on purpose, and this is the same split
+                    # `concurrency` already has: whether a project REQUIRES a
+                    # reason is a project convention, not a universal contract.
+                    # A soft-delete-only project wants it mandatory; a project
+                    # where `delete` is rarely declared does not. Consumers that
+                    # want it required add an overlay rule — see schemas/README
+                    # §"What the project must provide".
+                    #
+                    # Kebab-case is the spelling the handbooks use. The
+                    # generator lower-cases before matching, so SCREAMING_SNAKE
+                    # also parses; the kit pins one spelling so a codebase does
+                    # not drift between two.
+                    reason:
+                      type: string
+                      enum: ["no-delete-surface", "reordered-rows", "patch-reconciled", "other"]
+                    reasonText: { type: string, minLength: 1 }
+                  allOf:
+                    # `reasonText` is required by `other` and FORBIDDEN by every
+                    # other value — both directions, mirroring
+                    # DELETE_REASON_TEXT_REQUIRED, which fires on each. Same
+                    # treatment `concurrency.reasonText` already gets, so this
+                    # is the existing pattern applied to the sibling key rather
+                    # than a new one.
+                    - if:
+                        properties: { reason: { const: "other" } }
+                        required: ["reason"]
+                      then:
+                        required: ["reasonText"]
+                      else:
+                        not: { required: ["reasonText"] }
+                    # `reason` explains a `hard` delete; on `soft` it is
+                    # meaningless and the generator says so
+                    # (DELETE_REASON_REQUIRES_HARD).
+                    - if:
+                        required: ["reason"]
+                      then:
+                        properties: { mode: { const: "hard" } }
             # PHANTOM KEYS — accepted here, read by NOTHING.
             #
             # Neither `cascadeDelete` nor `children` appears in the generator at

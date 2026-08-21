@@ -202,6 +202,39 @@ FEAT-2026-0080 adds six ERROR and two WARNING coherence rules:
 | `DELETE_RETENTION_INVALID` | ERROR | `retention` is neither `none` nor a valid ISO-8601 duration |
 | `DELETE_SEMANTICS_UNDECLARED` | WARNING | the entity is the target of a DELETE operation and declares no `delete` |
 | `DELETE_SOFT_STATUS_ENUM_OVERLAP` | WARNING | a soft-delete entity whose status enum also carries a `deleted`/`archived` member |
+| `DELETE_REASON_INVALID` | ERROR | `reason` outside the closed set |
+| `DELETE_REASON_REQUIRES_HARD` | ERROR | `reason` alongside `mode: soft` |
+| `DELETE_REASON_TEXT_REQUIRED` | ERROR | `reason: other` without `reasonText`, **or** `reasonText` beside any other reason |
+| `DELETE_REASON_CONTRADICTED` | ERROR | the declared reason is refuted by the spec — e.g. `no-delete-surface` on an entity that *is* a DELETE target, or `patch-reconciled` where no parent `Update{Parent}` DTO carries a collection of it |
+| `DELETE_REASON_MISSING` | — | reserved; not raised by default in `0.6.0` |
+
+### `delete.reason` — why an entity is `hard` (generator 0.6.0)
+
+`hard` is also what an **absent** `delete` declaration resolves to, so a bare `hard` cannot distinguish a decision from an oversight. `reason` records which it is:
+
+```yaml
+x-entity:
+  delete:
+    mode: hard
+    reason: no-delete-surface      # | reordered-rows | patch-reconciled | other
+```
+
+| Value | Means |
+|---|---|
+| `no-delete-surface` | Nothing can delete this entity through the API; the `hard` default is never exercised. |
+| `reordered-rows` | Rows are removed and re-added as a normal flow (ordered collections). |
+| `patch-reconciled` | The collection is reconciled inside a parent's `PATCH` body, so children are removed there rather than through a DELETE route. |
+| `other` | Anything else. **Requires `reasonText`.** |
+
+Three constraints, all enforced in both directions:
+
+- `reasonText` is **required** by `other` and **forbidden** by every other value.
+- `reason` is meaningful only on `mode: hard`. On `soft` it is an error.
+- `patch-reconciled` is checked against the spec, not taken on trust: the generator looks for a parent `Update{Parent}` DTO carrying a collection of the entity, and errors if there is none.
+
+**The key is optional in the kit, deliberately.** Whether a project *requires* a reason on every `hard` is a project convention, not a universal contract — a soft-delete-only project wants it mandatory; a project where `delete` is rarely declared does not. This is the same split `concurrency` already has. Projects that want it required add an overlay rule; see `schemas/README.md` §"What the project must provide".
+
+Kebab-case is the spelling used throughout. The generator lower-cases before matching, so `SCREAMING_SNAKE` also parses, but the kit pins one spelling so a codebase does not drift between two.
 
 > **Gate 1 is validation only.** No stamping, no column, no read filtering is
 > generated yet — that lands in gate 2. An entity that declares `delete: soft`
