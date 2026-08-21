@@ -1421,7 +1421,7 @@ The Workers group in the project's generator configuration file (a JSON file at 
 
 19. **Do NOT use the legacy `criticality: normal` value on `x-observability`.** The four-level enum is `low | medium | high | critical`. Migrate `normal` → `medium`.
 
-20. **Do NOT use the per-field `x-pii: true` / `x-sensitive: true` flags.** Use `x-classification: [pii | sensitive | encrypted | exposed]` on the entity property schema instead. See `Vendor_Extensions.md §1.5`.
+20. **Do NOT use the per-field `x-pii: true` / `x-sensitive: true` flags.** Use `x-classification` on the entity property schema instead. The value set is `pii | sensitive | confidential | exposed | financial | credential | cardholder | sad | encrypted` — widened from four values on 2026-08-21, authoring #76. See `Vendor_Extensions.md §1.5`.
 
 ---
 

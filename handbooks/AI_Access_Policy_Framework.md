@@ -141,7 +141,16 @@ Soft-delete is the only delete in a Specfuse project (see [`API_Handbook.md §2`
 
 ### 3.2 Encrypted fields excluded from implicit read
 
-When `readableProperties` is omitted on a tier 1+ entity, the agent reads every top-level property *except* fields listed in `encryptedProperties` (or fields carrying `x-classification: [encrypted]`).
+When `readableProperties` is omitted on a tier 1+ entity, the agent reads every top-level property *except* fields listed in **`x-entity.encryptedProperties`**.
+
+> **⚠ Corrected 2026-08-21 (authoring #76).** This sentence previously read "…or fields
+> carrying `x-classification: [encrypted]`", treating the two as interchangeable. They are
+> not. `encryptedProperties` is the only declaration the generator reads; a field
+> classified `encrypted` but absent from that array **is** in the implicit read surface.
+> Verified against the pinned `0.5.8` jar — no class in it references both keys. This is
+> the permissive direction, so an entity authored on the old wording grants AI read access
+> the author believed was withheld. Audit any entity that relies on classification alone.
+> See `Vendor_Extensions.md` §1.5.
 
 To grant AI read access to an encrypted field, list it explicitly in `readableProperties`:
 
@@ -300,7 +309,8 @@ The flowchart is biased toward restriction by design.
 | Extension | Relationship |
 |---|---|
 | `x-entity` | `aiAccess` is a property of `x-entity`. See [`Vendor_Extensions.md §1.1.1`](./Vendor_Extensions.md). |
-| `encryptedProperties` / `x-classification: [encrypted]` | Encrypted fields are excluded from the implicit read surface (§3.2). |
+| `x-entity.encryptedProperties` | **The only key that excludes a field from the implicit read surface** (§3.2). |
+| `x-classification: [encrypted]` | Records intent for humans and for kit lint. **Excludes nothing on its own** — it is not a derived view of `encryptedProperties`, corrected 2026-08-21, authoring #76. |
 | `x-classification: [pii \| sensitive]` | PII/sensitive fields are not auto-excluded from AI read, but they trigger snapshot acknowledgement rules (`x-snapshot-pii-acknowledged`) when included in event snapshots. See `AsyncAPI_Handbook.md §2.3`. |
 | `x-ai-safe` (operations) | **Read by nothing — do not gate on it.** It was intended to operate at the HTTP operation level (may an AI agent invoke this endpoint without approval) where `aiAccess` operates at the entity/repository level, but no generated code and no lint rule enforces it. `aiAccess` is enforced; `x-ai-safe` is documentation. The live per-tool control is `x-mcp.safeForAutoInvoke` on an Arazzo scenario (`Arazzo_Handbook.md` §4.8). See `Vendor_Extensions.md` §4.1 and `compatibility.md` §25. |
 | `x-ai.entities` (AsyncAPI workers) | When an AsyncAPI worker declares `x-ai.entities.{reads,creates,updates,deletes}`, every listed entity MUST have a matching `aiAccess` block granting the corresponding operation. The cross-spec validator enforces this. See `AsyncAPI_Handbook.md §4.3`. |

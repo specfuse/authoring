@@ -1831,10 +1831,29 @@ rules:
 
   specfuse-classification-values:
     description: >-
-      x-classification must be a non-empty array drawn from [pii, sensitive, encrypted, exposed].
+      x-classification must be a non-empty array drawn from [pii, sensitive,
+      confidential, exposed, financial, credential, cardholder, sad, encrypted].
     # Not scoped to x-entity schemas: a stray x-classification on a DTO or a
     # value object is still a typo worth naming, and the value set is the same
     # wherever it is written.
+    #
+    # WIDENED from four values to nine (authoring #76). The four-value set was
+    # an ERROR against five tokens the vocabulary now carries, which is the one
+    # direction a kit rule must never take (compatibility.md §18) — a consumer
+    # writing `cardholder` got a false lint failure with no way past it but to
+    # fork the ruleset.
+    #
+    # Safe against the PINNED jar, and the reason matters. 0.5.8 does not
+    # reject the new tokens; it has no opinion on any of them —
+    # `PiiClassificationValidationRule` knows only pii/sensitive/encrypted and
+    # `validate` PASSES a spec declaring `cardholder`. So this widening cannot
+    # contradict a jar position, on the same footing as the x-scopes grammar
+    # (compatibility.md §28). It is NOT adopted because a newer jar validates
+    # nine values — that jar (0.5.9-SNAPSHOT) is unreleased and unpinned.
+    #
+    # `encrypted` stays in the set until a released generator removes it. See
+    # specfuse-classification-encrypted-superseded below for why it is not an
+    # error today.
     severity: error
     given: $.components.schemas[*].properties[*]["x-classification"]
     then:
@@ -1846,7 +1865,46 @@ rules:
           uniqueItems: true
           items:
             type: string
-            enum: ["pii", "sensitive", "encrypted", "exposed"]
+            enum:
+              - pii
+              - sensitive
+              - confidential
+              - exposed
+              - financial
+              - credential
+              - cardholder
+              - sad
+              - encrypted
+
+  specfuse-classification-encrypted-superseded:
+    description: >-
+      x-classification 'encrypted' is expected to be replaced by
+      x-protection.atRest — but not yet, and not against the pinned generator.
+    # A notice, deliberately not an error and deliberately not advice to
+    # migrate. `x-protection` appears ZERO times in the pinned 0.5.8 jar, so a
+    # spec that moves to `atRest: encrypted` today loses the only declaration
+    # the shipped generator actually reads. Telling authors to migrate now is
+    # the same permissive failure as Vendor_Extensions.md:834 (authoring #76
+    # ask 2): the author believes a protection decision is recorded, and the
+    # runtime never sees it.
+    #
+    # This rule exists so the replacement is not a surprise when it lands, and
+    # so nobody "helpfully" migrates early. Promote it to error, and add the
+    # x-protection shape guard, in the release that pins a generator where
+    # FE-G02 (`encrypted` removed) and FE-G18 (SENSITIVE_FIELD_IN_RESPONSE
+    # accepting `atRest: encrypted`) ship together — they have to land in one
+    # window or `portalPassword`-shaped properties break.
+    message: "'encrypted' is scheduled for replacement by x-protection.atRest. Keep it for now — the pinned generator does not read x-protection. See compatibility.md §26."
+    severity: warn
+    given: $.components.schemas[*].properties[*]["x-classification"]
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          type: array
+          not:
+            contains:
+              const: encrypted
 
   specfuse-classification-exposed-contradiction:
     description: >-

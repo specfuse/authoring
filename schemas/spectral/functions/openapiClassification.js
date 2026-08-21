@@ -36,8 +36,43 @@
 // Entity schemas only, matching the generator: `New*` / `Update*` / `Basic*`
 // project the same fields and would double-flag every PII property.
 
-const CLASSES = ["pii", "sensitive", "encrypted", "exposed"];
-const MASKING_CLASSES = ["sensitive", "encrypted"];
+// The nine-value set. Widened from four in authoring #76 — see the note on
+// specfuse-classification-values for why this is safe against the pinned jar
+// (0.5.8 has no opinion on any of these tokens; it does not reject them).
+const CLASSES = [
+  "pii",
+  "sensitive",
+  "confidential",
+  "exposed",
+  "financial",
+  "credential",
+  "cardholder",
+  "sad",
+  "encrypted",
+];
+
+// The classes that CONTRADICT `exposed`. Not simply "everything sensitive":
+// `pii` is deliberately absent, because a person's own email returned to that
+// person is both PII and legitimately exposed, and the rule has always allowed
+// it. `confidential` and `financial` follow that precedent — an invoice total
+// shown to the customer who owes it is exactly that pairing.
+//
+// `credential`, `cardholder` and `sad` do not have an owner-visible reading.
+// A credential, a PAN or PCI Sensitive Authentication Data marked
+// safe-to-return is a defect in every context, and `sad` may not be retained
+// after authorisation at all.
+//
+// Widening the value set without widening this one would have opened a hole
+// that did not exist before #76: `[cardholder, exposed]` would lint clean,
+// which is precisely the "one consumer masks it, another serves it" ambiguity
+// this check exists to catch.
+const MASKING_CLASSES = [
+  "sensitive",
+  "encrypted",
+  "credential",
+  "cardholder",
+  "sad",
+];
 
 // OpenAPI string-formats that always denote PII.
 const PII_FORMATS = new Set(["email", "tel"]);
