@@ -30,11 +30,16 @@ publishes to PyPI via **OIDC trusted publishing** (no API token).
 
 1. **Decide the version** `X.Y.Z` (semver). Bump on any handbook contract
    change, sample/schema change, generator pin, or CLI change.
-2. **Bump the version in all three places** (the workflow enforces agreement):
+2. **Bump the version in all four places:**
    - `pyproject.toml` → `project.version`
    - `specfuse/authoring/__init__.py` → `__version__`
    - `generator.lock` → `kit_version`
-   - (and the `README.md` Status line, for humans)
+   - `README.md` → the Status line (`**Incubating** (`vX.Y.Z`)`)
+
+   The workflow enforces agreement between the **first three only**. The
+   `README.md` line is checked by nobody, which is precisely why it is the one
+   that goes stale — and it is the version a reader sees first. Bump it in the
+   same commit, not afterwards.
 3. **Update `compatibility.md`** — add/adjust the row for this kit version
    (and the generator version it pins), if the contract or pin changed.
 4. **Sanity-check locally:**
