@@ -572,13 +572,28 @@ jobs:
             "specfuse-classification-pii-required|firstName|a PII-named property with no classification was accepted"
             "specfuse-classification-pii-required|dateOfBirth|a PII-named property with no classification was accepted"
             "specfuse-classification-pii-required|contactEmail|a format:email property with no classification was accepted"
-            # Widening the vocabulary (authoring #76) grew the contradiction set
-            # with it. Without these three, `[cardholder, exposed]` would lint
-            # clean — the widening would have opened a hole that did not exist.
-            "specfuse-classification-exposed-contradiction|exposedCard|exposed + cardholder was accepted"
-            "specfuse-classification-exposed-contradiction|exposedSecret|exposed + credential was accepted"
-            "specfuse-classification-exposed-contradiction|exposedCvv|exposed + sad was accepted"
+            # NOTE: #76 asserted exposedCard / exposedSecret / exposedCvv here,
+            # on a contradiction set reasoned rather than measured. Generator
+            # 0.6.0 ACCEPTS [cardholder, exposed] and owns credential and sad
+            # through different rules, so those three assertions were wrong and
+            # are gone. exposedCardholder below is now a must-STAY-SILENT
+            # control for exactly that reason.
             "specfuse-classification-encrypted-superseded|sinEncrypted|the encrypted supersession notice did not fire"
+            # x-protection, generator 0.6.0. Each of these was cross-checked
+            # against the jar: the kit fires exactly where the generator does.
+            "specfuse-xprotection-atrest-required|classifiedNoAtRest|a classified property with no atRest was accepted"
+            "specfuse-xprotection-none-requires-rationale|noneNoRationale|atRest none with no rationale was accepted"
+            "specfuse-xprotection-shape|unknownSubKey|an unknown x-protection sub-key was accepted"
+            "specfuse-xprotection-shape|badAtRest|an atRest value outside the enum was accepted"
+            "specfuse-xprotection-shape|camelNeverPersist|neverPersist was accepted; the separator is an underscore"
+            "specfuse-xprotection-shape|badBlindIndexKey|an unknown blindIndex sub-key was accepted"
+            "specfuse-xprotection-mode-deterministic-unsupported|deterministicMode|mode deterministic was accepted"
+            # The exposed mutex, corrected in this PR to mirror the generator.
+            "specfuse-classification-exposed-contradiction|exposedSensitive|exposed + sensitive was accepted"
+            "specfuse-classification-exposed-contradiction|exposedConfidential|exposed + confidential was accepted"
+            "specfuse-classification-exposed-contradiction|exposedButEncrypted|exposed + an encrypted atRest was accepted"
+            "specfuse-xprotection-sad-not-persisted|exposedCvv|sad on an x-entity property was accepted (PCI-DSS: never stored)"
+            "specfuse-xprotection-never-persist-not-mapped|exposedCvv|never_persist on a persisted x-entity property was accepted"
           )
           for row in "${EXPECTED[@]}"; do
             IFS='|' read -r rule needle why <<<"$row"
@@ -597,7 +612,7 @@ jobs:
           # classified `[pii, encrypted]`, and `encrypted` now draws a WARN
           # supersession notice by design (authoring #76) — that is the rule
           # working, not over-matching. An ERROR on this schema still is.
-          if grep "specfuse-classification" "$REPORT" | grep "error" | grep -q "Customer"; then
+          if grep -E "specfuse-(classification|xprotection)" "$REPORT" | grep "error" | grep -q "Customer"; then
             echo "::error::A classification rule raised an ERROR on the Customer control schema," >&2
             echo "every property of which is correctly classified. It is over-matching." >&2
             fail=1
@@ -625,10 +640,32 @@ jobs:
           # `pii` beside `exposed` has always been legal — your own email, shown
           # to you. `confidential` and `financial` follow that precedent on
           # purpose; if they start contradicting, the widening went too far.
-          for ok in ownInvoiceTotal ownMemo; do
+          if grep "specfuse-classification-exposed-contradiction" "$REPORT" | grep -q "ownInvoiceTotal"; then
+            echo "::error::exposed-contradiction fired on 'ownInvoiceTotal'. [financial, exposed] is" >&2
+            echo "accepted by generator 0.6.0 — data shown to the person it concerns stays pairable." >&2
+            fail=1
+          fi
+
+          # The generator ACCEPTS these two pairings. #76 set the contradiction
+          # set by reasoning rather than measurement and got both backwards —
+          # it rejected `cardholder` (which the jar accepts) and accepted
+          # `confidential` (which the jar rejects). Rejecting what the generator
+          # accepts is the forbidden direction; these two assertions are what
+          # stops it coming back.
+          for ok in exposedCardholder exposedFinancial; do
             if grep "specfuse-classification-exposed-contradiction" "$REPORT" | grep -q "$ok"; then
-              echo "::error::exposed-contradiction fired on '${ok}'. Data legitimately visible to" >&2
-              echo "the person it concerns must stay pairable with 'exposed'." >&2
+              echo "::error::exposed-contradiction fired on '${ok}', which generator 0.6.0 accepts." >&2
+              echo "The kit must not reject what the jar it distributes permits." >&2
+              fail=1
+            fi
+          done
+
+          # Valid x-protection blocks must stay silent, or the shape guard is
+          # rejecting the vocabulary it is meant to admit.
+          for ok in okEncrypted okNoneWithRationale okUnbounded; do
+            if grep "specfuse-xprotection" "$REPORT" | grep -q "$ok"; then
+              echo "::error::An x-protection rule fired on '${ok}', which is valid against" >&2
+              echo "generator 0.6.0. The guard is over-matching." >&2
               fail=1
             fi
           done

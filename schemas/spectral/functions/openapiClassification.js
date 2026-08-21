@@ -51,28 +51,35 @@ const CLASSES = [
   "encrypted",
 ];
 
-// The classes that CONTRADICT `exposed`. Not simply "everything sensitive":
-// `pii` is deliberately absent, because a person's own email returned to that
-// person is both PII and legitimately exposed, and the rule has always allowed
-// it. `confidential` and `financial` follow that precedent — an invoice total
-// shown to the customer who owes it is exactly that pairing.
+// The classes that CONTRADICT `exposed`, mirroring PROTECTION_EXPOSED_MUTEX in
+// generator 0.6.0:
 //
-// `credential`, `cardholder` and `sad` do not have an owner-visible reading.
-// A credential, a PAN or PCI Sensitive Authentication Data marked
-// safe-to-return is a defect in every context, and `sad` may not be retained
-// after authorisation at all.
+//   "declares x-classification: [exposed] alongside sensitive/confidential or
+//    an encrypted/hashed atRest — a value that must be masked can never also
+//    be marked safe to expose"
 //
-// Widening the value set without widening this one would have opened a hole
-// that did not exist before #76: `[cardholder, exposed]` would lint clean,
-// which is precisely the "one consumer masks it, another serves it" ambiguity
-// this check exists to catch.
-const MASKING_CLASSES = [
-  "sensitive",
-  "encrypted",
-  "credential",
-  "cardholder",
-  "sad",
-];
+// CORRECTED. #76 set this to sensitive/encrypted/credential/cardholder/sad by
+// reasoning from first principles, because 0.5.8 had no opinion to check
+// against. 0.6.0 has one, and it disagrees on two of them — measured, not
+// assumed:
+//
+//   [cardholder, exposed]    generator ACCEPTS   <- the kit was rejecting it
+//   [confidential, exposed]  generator ERRORS    <- the kit was accepting it
+//
+// Rejecting what the generator accepts is the forbidden direction
+// (compatibility.md §18), so `cardholder` comes out and `confidential` goes in.
+//
+// `credential` and `sad` also come out, and not because they are safe beside
+// `exposed` — they are not. The generator owns them through DIFFERENT rules
+// with different remedies: PROTECTION_CREDENTIAL_REQUIRES_WRITE_ONLY (a
+// credential must be `writeOnly`) and PROTECTION_SAD_MAPPED (SAD may not be an
+// x-entity property at all, since entity properties are persisted by
+// construction). Folding those into "contradicts exposed" would give an author
+// the wrong fix for a real problem.
+//
+// `pii` and `financial` stay absent, as before: data legitimately shown to the
+// person it concerns is both, and the generator accepts both pairings.
+const MASKING_CLASSES = ["sensitive", "confidential"];
 
 // OpenAPI string-formats that always denote PII.
 const PII_FORMATS = new Set(["email", "tel"]);
@@ -130,13 +137,31 @@ function checkExposedContradiction(schema, basePath) {
     if (!classes || !classes.includes("exposed")) continue;
 
     const conflicting = MASKING_CLASSES.filter((c) => classes.includes(c));
-    if (conflicting.length === 0) continue;
+
+    // The second half of PROTECTION_EXPOSED_MUTEX: `exposed` beside an
+    // at-rest decision that is itself an admission the value must be hidden.
+    // A property can reach this with NO conflicting class at all —
+    // `[pii, exposed]` is legal, but `[pii, exposed]` + `atRest: encrypted`
+    // is not, and the class list alone would never have caught it.
+    const protection = prop && typeof prop === "object" ? prop["x-protection"] : null;
+    const atRest =
+      protection && typeof protection === "object" && typeof protection.atRest === "string"
+        ? protection.atRest.toLowerCase()
+        : null;
+    const hidingAtRest = atRest === "encrypted" || atRest === "hashed";
+
+    if (conflicting.length === 0 && !hidingAtRest) continue;
+
+    const reasons = [
+      ...conflicting.map((c) => `'${c}'`),
+      ...(hidingAtRest ? [`x-protection.atRest: ${atRest}`] : []),
+    ];
 
     results.push({
       message:
         `'${name}' declares x-classification 'exposed' alongside ` +
-        `${conflicting.map((c) => `'${c}'`).join(" and ")}. 'exposed' asserts the value is safe ` +
-        `to return as authored; ${conflicting.join("/")} demands masking or ciphertext. Pick the ` +
+        `${reasons.join(" and ")}. 'exposed' asserts the value is safe ` +
+        `to return as authored; the other says it must be masked or stored as ciphertext. Pick the ` +
         `one that is true — if the field really is safe, it is not sensitive.`,
       path: [...basePath, "properties", name, "x-classification"],
     });

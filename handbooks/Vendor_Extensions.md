@@ -831,8 +831,8 @@ x-classification:
 | `credential` | Secrets that authenticate a principal | Never safe to return. MUST NOT co-occur with `exposed`. |
 | `cardholder` | Cardholder data (PAN and equivalents) | Never safe to return. MUST NOT co-occur with `exposed`. |
 | `sad` | PCI Sensitive Authentication Data (CVV, track, PIN block) | Never safe to return, and MUST NOT be retained after authorisation. MUST NOT co-occur with `exposed`. |
-| `encrypted` | Records intent that the value be encrypted at rest | **Records intent only.** Encryption converters and the `aiAccess.readableProperties` exclusion are driven by `x-entity.encryptedProperties`, not by this value — corrected 2026-08-21, authoring #76. List the property in that array as well. Implies `sensitive`. Expected to be superseded by `x-protection.atRest`; do not migrate yet. |
-| `exposed` | Secret-shaped name, human-reviewed, safe to expose | Escape hatch for the `SENSITIVE_FIELD_IN_RESPONSE` validator (see below). Asserts a reviewer confirmed the field is safe on a response despite a secret-shaped name. **Grants no access** on its own; carries no encryption/masking obligation. Contradictory with `sensitive`, `encrypted`, `credential`, `cardholder` and `sad` — MUST NOT co-occur with any of them. May co-occur with `pii`, `confidential` or `financial`, which are legitimately visible to the person they concern. Requires a `description` justifying why exposure is safe. |
+| `encrypted` | Legacy. Records intent that the value be encrypted at rest | **Superseded by `x-protection.atRest: encrypted`** (generator 0.6.0). Still a valid classification value — the generator has not removed it — but the at-rest decision now lives on the other axis, and `x-protection.atRest` is REQUIRED on every classified property regardless. Encryption converters and the `aiAccess.readableProperties` exclusion are still driven by `x-entity.encryptedProperties`, not by this value. Implies `sensitive`. |
+| `exposed` | Secret-shaped name, human-reviewed, safe to expose | Escape hatch for the `SENSITIVE_FIELD_IN_RESPONSE` validator (see below). Asserts a reviewer confirmed the field is safe on a response despite a secret-shaped name. **Grants no access** on its own; carries no encryption/masking obligation. Contradictory with `sensitive` and `confidential`, and with an `x-protection.atRest` of `encrypted` or `hashed` — MUST NOT co-occur with any of them (`PROTECTION_EXPOSED_MUTEX`). May co-occur with `pii`, `financial` or `cardholder`, which the generator accepts. Requires a `description` justifying why exposure is safe. |
 
 **Multiple classifications** are allowed (e.g., `[pii, encrypted]` for a tax ID). The generator unions the implications.
 
@@ -887,6 +887,45 @@ Customer:
       # no classification — unclassified
 ```
 
+### The two axes (generator 0.6.0)
+
+`x-classification` says **what the data is**. `x-protection` says **how it is handled**. They are independent, and from generator `0.6.0` the second is mandatory wherever the first appears.
+
+```yaml
+email:
+  type: string
+  format: email
+  x-classification: [pii]          # what it is
+  x-protection:                     # how it is handled
+    atRest: none
+    rationale: The application must read it in plaintext to send notifications.
+    reviewedOn: '2026-08-21'
+    reviewedBy: platform team
+```
+
+**`x-protection` sub-keys.** The guard is closed (`additionalProperties: false`); an unknown key is `UNKNOWN_PROTECTION_SUBKEY`.
+
+| Key | Type | Notes |
+|---|---|---|
+| `atRest` | `none` \| `encrypted` \| `hashed` \| `never_persist` | **Required on every classified property.** Note the underscore — `neverPersist` is not accepted. |
+| `mode` | `randomized` \| `deterministic` | `deterministic` parses and is then refused: `PROTECTION_MODE_UNSUPPORTED` ("declared but unsupported in v1"). Only `randomized` is implemented. |
+| `blindIndex` | `{ equality, prefix, normalization[], scope }` | `scope` is `tenant` \| `global`. How an encrypted value stays searchable. |
+| `masking` | `{ first, last }` | How many leading/trailing characters survive masking. |
+| `unbounded` | boolean | The value has no length bound. |
+| `rationale` | string | **Required when `atRest: none`.** |
+| `reviewedOn` / `reviewedBy` | date / string | Who signed the decision off, and when. |
+
+**`atRest: none` is a decision, not a default.** It is the only value that requires a `rationale`, because it is the only one that leaves a classified value in plaintext. An unreviewed escape hatch is how a classified field quietly ends up unprotected; the rationale is what makes it reviewable by the next person.
+
+**Two values carry constraints beyond their own axis**, and the generator reports them separately rather than folding them into the classification rules:
+
+- `credential` must be `writeOnly` — `PROTECTION_CREDENTIAL_REQUIRES_WRITE_ONLY`.
+- `sad` (PCI Sensitive Authentication Data) may not be an `x-entity` property at all — `PROTECTION_SAD_MAPPED` — because entity properties are persisted by construction and SAD may not be retained after authorisation. It belongs on a request DTO.
+
+Likewise `atRest: hashed` may not be response-bound (`PROTECTION_HASHED_RESPONSE_BOUND`) and `atRest: never_persist` may not be mapped to a persisted property (`PROTECTION_NEVER_PERSIST_MAPPED`).
+
+All four are mirrored kit-side. "Response-bound" sounds like it needs the operation graph and does not: the generator's own test is exactly *"neither `writeOnly` nor `x-internal-only`"*, which is local to the property. "Persisted" is equally local — an `x-entity` property is mapped to a column by construction. Both remedies are modelling changes (mark it write-only, or move it to a request DTO), which is much cheaper to hear while authoring than at generate time.
+
 **Validation rules**
 
 The two sides split cleanly, and the split is the generator's own: `PiiClassificationValidationRule` states that it enforces **presence** only and that "the classification value itself … is a structural concern handled by Spectral". Everything decidable from the property schema alone is therefore a kit rule.
@@ -897,8 +936,14 @@ The two sides split cleanly, and the split is the generator's own: `PiiClassific
 | 2 | `x-classification: [encrypted]` requires the property to be representable as a string (encryption produces opaque ciphertext). | **nothing yet** — see `compatibility.md` §26 |
 | 3 | A snapshot referencing a property whose source entity carries `pii` or `sensitive` MUST declare `x-snapshot-pii-acknowledged.{propertyName}` with a justification ≥ 20 chars (see §11.2). | kit — `specfuse-async-snapshot-guardrails` (AsyncAPI ruleset) |
 | 4 | When `aiAccess.readableProperties` is omitted, properties listed in **`x-entity.encryptedProperties`** are excluded from the implicit allow-set (§1.1.1 rule 5). `x-classification: [encrypted]` does **not** do this — corrected 2026-08-21, authoring #76. | generator |
-| 5 | `x-classification: [exposed]` MUST NOT co-occur with `sensitive`, `encrypted`, `credential`, `cardholder` or `sad` — those demand masking or ciphertext, which contradicts "safe to expose". `pii`, `confidential` and `financial` are deliberately excluded: data legitimately shown to the person it belongs to is both. | kit — `specfuse-classification-exposed-contradiction` (error) |
-| 8 | `x-classification: [encrypted]` is expected to be superseded by `x-protection.atRest`, but MUST NOT be migrated yet — `x-protection` is absent from the pinned generator. | kit — `specfuse-classification-encrypted-superseded` (warn) |
+| 5 | `x-classification: [exposed]` MUST NOT co-occur with `sensitive` or `confidential`, nor with an `x-protection.atRest` of `encrypted` or `hashed`. `pii`, `financial` and `cardholder` may pair with `exposed` — data legitimately shown to the person it concerns is both. **Corrected against generator 0.6.0**; the earlier set was reasoned rather than measured and had `cardholder` and `confidential` the wrong way round. | generator — `PROTECTION_EXPOSED_MUTEX` (error); mirrored by kit `specfuse-classification-exposed-contradiction` |
+| 8 | `x-classification: [encrypted]` is superseded by `x-protection.atRest: encrypted`. Still accepted; prefer the protection axis on new properties. | kit — `specfuse-classification-encrypted-superseded` (warn) |
+| 9 | Every property carrying `x-classification` MUST declare `x-protection.atRest`. | generator — `PROTECTION_ATREST_REQUIRED` (error); mirrored by kit `specfuse-xprotection-atrest-required` |
+| 10 | `x-protection.atRest: none` MUST carry a `rationale`. | generator — `PROTECTION_NONE_REQUIRES_RATIONALE` (error); mirrored by kit `specfuse-xprotection-none-requires-rationale` |
+| 11 | `x-protection` sub-keys and values must come from the closed set in §"The two axes". | generator — `UNKNOWN_PROTECTION_SUBKEY` / `INVALID_EXTENSION_VALUE`; mirrored by kit `specfuse-xprotection-shape` (error) |
+| 12 | `x-protection.mode: deterministic` is declared but unsupported in v1. | generator — `PROTECTION_MODE_UNSUPPORTED` (error); mirrored by kit `specfuse-xprotection-mode-deterministic-unsupported` |
+| 13 | `credential`, and `atRest: hashed`, require `writeOnly` or `x-internal-only`. | generator — `PROTECTION_CREDENTIAL_REQUIRES_WRITE_ONLY` / `PROTECTION_HASHED_RESPONSE_BOUND`; mirrored by kit `specfuse-xprotection-credential-write-only` / `-hashed-not-response-bound` |
+| 14 | `sad`, and `atRest: never_persist`, MUST NOT appear on an `x-entity` property — those are persisted by construction. | generator — `PROTECTION_SAD_MAPPED` / `PROTECTION_NEVER_PERSIST_MAPPED`; mirrored by kit `specfuse-xprotection-sad-not-persisted` / `-never-persist-not-mapped` |
 | 6 | A property carrying `x-classification: [exposed]` MUST carry a non-empty `description` justifying why exposure is safe. | kit — `specfuse-classification-exposed-needs-description` (error) |
 | 7 | A property the validator reads as PII MUST declare `x-classification` (see "Where it is required" above). | generator — `PII_FIELD_MISSING_CLASSIFICATION` (error); mirrored in the editor by kit `specfuse-classification-pii-required` |
 

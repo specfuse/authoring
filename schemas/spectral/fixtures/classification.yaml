@@ -72,18 +72,22 @@ components:
           type: string
           format: email
           x-classification: [pii]
+          x-protection: { atRest: none, rationale: Read in plaintext to send order mail. }
         taxId:
           type: string
           x-classification: [pii, encrypted]
+          x-protection: { atRest: encrypted }
         creditScore:
           type: number
           x-classification: [sensitive]
+          x-protection: { atRest: encrypted }
         avatarHash:
           type: string
           description: >-
             Content address of the public avatar image; not a credential and
             safe on responses despite the secret-shaped name.
           x-classification: [exposed]
+          x-protection: { atRest: none, rationale: A public content address; nothing to protect. }
         emails:
           type: array
           items: { type: string }
@@ -98,12 +102,15 @@ components:
         nickname:
           type: string
           x-classification: [secret]
+          x-protection: { atRest: none, rationale: Fixture control. }
         alias:
           type: string
           x-classification: pii
+          x-protection: { atRest: none, rationale: Fixture control. }
         tag:
           type: string
           x-classification: []
+          x-protection: { atRest: none, rationale: Fixture control. }
 
     # ---- `exposed` violations. ---------------------------------------------
     BadExposed:
@@ -112,21 +119,28 @@ components:
         domain: crm
         type: entity
       properties:
+        # `encrypted` as a CLASS no longer contradicts `exposed`: generator
+        # 0.6.0 accepts that pairing, because the contradiction moved onto the
+        # atRest axis. The declaration below is what still contradicts it.
         sessionHash:
           type: string
           description: Session fingerprint.
           x-classification: [exposed, encrypted]
+          x-protection: { atRest: encrypted }
         resetSalt:
           type: string
           description: Password reset salt.
           x-classification: [exposed, sensitive]
+          x-protection: { atRest: none, rationale: Fixture control. }
         tokenHash:
           type: string
           x-classification: [exposed]
+          x-protection: { atRest: none, rationale: Fixture control. }
         blankHash:
           type: string
           description: "   "
           x-classification: [exposed]
+          x-protection: { atRest: none, rationale: Fixture control. }
 
     # ---- Missing classification on PII-shaped properties. ------------------
     MissingPii:
@@ -142,6 +156,7 @@ components:
           type: string
           description: Reviewed — published directory listing.
           x-classification: [exposed]
+          x-protection: { atRest: none, rationale: Fixture control. }
         inboxCount: { type: integer }
 
     # ---- Not an entity. The entity-scoped rules must not reach it. ---------
@@ -167,18 +182,34 @@ components:
         internalMemo:
           type: string
           x-classification: [confidential]
+          x-protection: { atRest: encrypted }
         invoiceTotal:
           type: number
           x-classification: [financial]
+          x-protection: { atRest: none, rationale: Shown to the payer on every invoice. }
         apiToken:
           type: string
+          writeOnly: true
           x-classification: [credential]
+          x-protection: { atRest: hashed }
         cardNumber:
           type: string
           x-classification: [cardholder]
+          x-protection: { atRest: encrypted, masking: { first: 0, last: 4 } }
+
+    # ---- `sad` belongs on a request DTO, never on an entity. --------------
+    # PCI-DSS forbids retaining sensitive authentication data after
+    # authorisation, and an x-entity property is persisted by construction — so
+    # the correct shape is a non-entity payload, and this is the control that
+    # says so. Must stay silent.
+    PaymentAuthorisationRequest:
+      type: object
+      properties:
         cardVerificationValue:
           type: string
+          writeOnly: true
           x-classification: [sad]
+          x-protection: { atRest: never_persist }
 
     # ---- `exposed` pairings under the widened set. ------------------------
     # The contradiction set grew with the vocabulary. Without that, widening
@@ -193,27 +224,22 @@ components:
       properties:
         id: { type: string, format: uuid }
         # MUST fire — never safe to return.
-        exposedCard:
-          type: string
-          description: Reviewed — displayed on the receipt.
-          x-classification: [cardholder, exposed]
-        exposedSecret:
-          type: string
-          description: Reviewed — public key material.
-          x-classification: [credential, exposed]
+        # exposedCard / exposedSecret lived here under #76's reasoned
+        # contradiction set. Generator 0.6.0 ACCEPTS [cardholder, exposed] and
+        # owns `credential` through PROTECTION_CREDENTIAL_REQUIRES_WRITE_ONLY,
+        # so both were removed rather than kept as wrong assertions.
+        # exposedCardholder below is the accepted case, as a silent control.
         exposedCvv:
           type: string
           description: Reviewed — shown during entry.
           x-classification: [sad, exposed]
+          x-protection: { atRest: never_persist }
         # MUST NOT fire — legitimately visible to the person it concerns.
         ownInvoiceTotal:
           type: number
           description: Reviewed — the customer's own invoice total, shown to that customer.
           x-classification: [financial, exposed]
-        ownMemo:
-          type: string
-          description: Reviewed — the account note the account holder wrote.
-          x-classification: [confidential, exposed]
+          x-protection: { atRest: none, rationale: Shown to the payer. }
 
     # ---- `encrypted` is noticed, not rejected. ----------------------------
     # It stays valid until a RELEASED generator removes it. The warn-level
@@ -229,3 +255,111 @@ components:
         sinEncrypted:
           type: string
           x-classification: [encrypted]
+          x-protection: { atRest: encrypted }
+
+    # ---- x-protection, generator 0.6.0 (authoring #76 follow-up). ---------
+    # Every case below was cross-checked against specfuse-generator-0.6.0.jar:
+    # the kit must not reject what the generator accepts, nor accept what it
+    # rejects. CI asserts the kit half; the cross-check is in the PR.
+    ProtectionShape:
+      type: object
+      x-entity:
+        domain: crm
+        type: entity
+      properties:
+        id: { type: string, format: uuid }
+        # MUST fire: classified, no atRest.  (PROTECTION_ATREST_REQUIRED)
+        classifiedNoAtRest:
+          type: string
+          x-classification: [pii]
+        # MUST fire: atRest none, no rationale. (PROTECTION_NONE_REQUIRES_RATIONALE)
+        noneNoRationale:
+          type: string
+          x-classification: [pii]
+          x-protection: { atRest: none }
+        # MUST fire: unknown sub-key.          (UNKNOWN_PROTECTION_SUBKEY)
+        unknownSubKey:
+          type: string
+          x-classification: [pii]
+          x-protection: { atRest: encrypted, nope: 1 }
+        # MUST fire: value outside the enum.   (INVALID_EXTENSION_VALUE)
+        badAtRest:
+          type: string
+          x-classification: [pii]
+          x-protection: { atRest: bogus }
+        # MUST fire: camelCase spelling is not accepted — the separator is `_`.
+        camelNeverPersist:
+          type: string
+          x-classification: [pii]
+          x-protection: { atRest: neverPersist }
+        # MUST fire: parses, but unsupported.  (PROTECTION_MODE_UNSUPPORTED)
+        deterministicMode:
+          type: string
+          x-classification: [pii]
+          x-protection: { atRest: encrypted, mode: deterministic }
+        # MUST fire: unknown nested sub-key.
+        badBlindIndexKey:
+          type: string
+          x-classification: [pii]
+          x-protection: { atRest: encrypted, blindIndex: { equality: true, nope: 1 } }
+        # MUST NOT fire — all valid.
+        okEncrypted:
+          type: string
+          x-classification: [pii]
+          x-protection:
+            atRest: encrypted
+            mode: randomized
+            blindIndex: { equality: true, prefix: 3, normalization: [lower, trim], scope: tenant }
+            masking: { first: 0, last: 4 }
+        okNoneWithRationale:
+          type: string
+          x-classification: [pii]
+          x-protection:
+            atRest: none
+            rationale: Displayed throughout the UI; encrypting it buys nothing.
+            reviewedOn: '2026-08-21'
+            reviewedBy: kit maintainers
+        okUnbounded:
+          type: string
+          x-classification: [confidential]
+          x-protection: { atRest: encrypted, unbounded: true }
+
+    # ---- The exposed mutex, corrected to mirror the generator. ------------
+    # #76 set the contradiction set by reasoning; 0.6.0 disagrees on two
+    # tokens, measured. The generator is the authority.
+    ExposedMutex:
+      type: object
+      x-entity:
+        domain: crm
+        type: entity
+      properties:
+        id: { type: string, format: uuid }
+        # MUST fire — generator: PROTECTION_EXPOSED_MUTEX.
+        exposedSensitive:
+          type: string
+          description: Reviewed — see rationale.
+          x-classification: [sensitive, exposed]
+          x-protection: { atRest: none, rationale: reviewed }
+        exposedConfidential:
+          type: string
+          description: Reviewed — see rationale.
+          x-classification: [confidential, exposed]
+          x-protection: { atRest: none, rationale: reviewed }
+        # MUST fire — `exposed` beside an at-rest decision that hides the value.
+        # No conflicting CLASS at all; the class list alone would miss this.
+        exposedButEncrypted:
+          type: string
+          description: Reviewed — see rationale.
+          x-classification: [pii, exposed]
+          x-protection: { atRest: encrypted }
+        # MUST NOT fire — the generator ACCEPTS both of these.
+        exposedCardholder:
+          type: string
+          description: Reviewed — last four only, printed on the receipt.
+          x-classification: [cardholder, exposed]
+          x-protection: { atRest: none, rationale: Last four digits only. }
+        exposedFinancial:
+          type: string
+          description: Reviewed — the customer's own invoice total.
+          x-classification: [financial, exposed]
+          x-protection: { atRest: none, rationale: Shown to the payer. }

@@ -30,16 +30,48 @@ properties:
   updatedAt:
     type: string
     format: date-time
+  # x-protection is REQUIRED on every classified property from generator 0.6.0
+  # (PROTECTION_ATREST_REQUIRED, error, no grace period). `atRest: none` is a
+  # decision, not a default — it needs a rationale, which is what makes it
+  # reviewable later.
   firstName:
     type: string
     x-classification: [pii]
+    x-protection:
+      atRest: none
+      rationale: >-
+        Given name. Shown throughout the ordering UI and printed on every order
+        confirmation, and searchable via aiAccess.searchableProperties.
+        Encrypting it would make the customer list unsearchable for no real
+        privacy gain, since the name is displayed to any operator who can see
+        the order at all.
+      reviewedOn: '2026-08-21'
+      reviewedBy: specfuse-kit maintainers
   lastName:
     type: string
     x-classification: [pii]
+    x-protection:
+      atRest: none
+      rationale: >-
+        Family name. Shown and searched alongside firstName; the same reasoning
+        applies, and splitting the pair would make one half unsearchable while
+        the other stays in plaintext.
+      reviewedOn: '2026-08-21'
+      reviewedBy: specfuse-kit maintainers
   email:
     type: string
     format: email
     nullable: true
     x-classification: [pii]
+    x-protection:
+      atRest: none
+      rationale: >-
+        Contact address for order notifications. The application must read it in
+        plaintext to send them, so ciphertext at rest would buy nothing without
+        a key the same process holds. A deployment that treats email as
+        sensitive would declare `atRest: encrypted` with a blind index on
+        equality — which is exactly what this vocabulary exists to let it say.
+      reviewedOn: '2026-08-21'
+      reviewedBy: specfuse-kit maintainers
   status:
     $ref: './CustomerStatus.yaml'
