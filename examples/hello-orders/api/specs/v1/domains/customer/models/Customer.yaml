@@ -33,13 +33,28 @@ properties:
   firstName:
     type: string
     x-classification: [pii]
+    x-protection:
+      atRest: none
+      rationale: "Given name, shown throughout the ordering UI and printed on every order confirmation. Not a credential and not art. 59 sensitive information; encrypting it would make the customer list unsearchable for no privacy gain."
+      reviewedOn: 2026-08-21
+      reviewedBy: "specfuse-kit maintainers"
   lastName:
     type: string
     x-classification: [pii]
+    x-protection:
+      atRest: none
+      rationale: "Family name, shown and searched alongside firstName. Same reasoning."
+      reviewedOn: 2026-08-21
+      reviewedBy: "specfuse-kit maintainers"
   email:
     type: string
     format: email
     nullable: true
     x-classification: [pii]
+    x-protection:
+      atRest: none
+      rationale: "Contact address for order notifications; the application must read it in plaintext to send them. A deployment handling this as sensitive would declare atRest: encrypted with a blind index on equality, which is what the vocabulary exists to let it say."
+      reviewedOn: 2026-08-21
+      reviewedBy: "specfuse-kit maintainers"
   status:
     $ref: './CustomerStatus.yaml'
