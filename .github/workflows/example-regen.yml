@@ -612,7 +612,7 @@ jobs:
           # classified `[pii, encrypted]`, and `encrypted` now draws a WARN
           # supersession notice by design (authoring #76) — that is the rule
           # working, not over-matching. An ERROR on this schema still is.
-          if grep "specfuse-classification" "$REPORT" | grep "error" | grep -q "Customer"; then
+          if grep -E "specfuse-(classification|xprotection)" "$REPORT" | grep "error" | grep -q "Customer"; then
             echo "::error::A classification rule raised an ERROR on the Customer control schema," >&2
             echo "every property of which is correctly classified. It is over-matching." >&2
             fail=1

@@ -72,18 +72,22 @@ components:
           type: string
           format: email
           x-classification: [pii]
+          x-protection: { atRest: none, rationale: Read in plaintext to send order mail. }
         taxId:
           type: string
           x-classification: [pii, encrypted]
+          x-protection: { atRest: encrypted }
         creditScore:
           type: number
           x-classification: [sensitive]
+          x-protection: { atRest: encrypted }
         avatarHash:
           type: string
           description: >-
             Content address of the public avatar image; not a credential and
             safe on responses despite the secret-shaped name.
           x-classification: [exposed]
+          x-protection: { atRest: none, rationale: A public content address; nothing to protect. }
         emails:
           type: array
           items: { type: string }
@@ -98,12 +102,15 @@ components:
         nickname:
           type: string
           x-classification: [secret]
+          x-protection: { atRest: none, rationale: Fixture control. }
         alias:
           type: string
           x-classification: pii
+          x-protection: { atRest: none, rationale: Fixture control. }
         tag:
           type: string
           x-classification: []
+          x-protection: { atRest: none, rationale: Fixture control. }
 
     # ---- `exposed` violations. ---------------------------------------------
     BadExposed:
@@ -112,21 +119,28 @@ components:
         domain: crm
         type: entity
       properties:
+        # `encrypted` as a CLASS no longer contradicts `exposed`: generator
+        # 0.6.0 accepts that pairing, because the contradiction moved onto the
+        # atRest axis. The declaration below is what still contradicts it.
         sessionHash:
           type: string
           description: Session fingerprint.
           x-classification: [exposed, encrypted]
+          x-protection: { atRest: encrypted }
         resetSalt:
           type: string
           description: Password reset salt.
           x-classification: [exposed, sensitive]
+          x-protection: { atRest: none, rationale: Fixture control. }
         tokenHash:
           type: string
           x-classification: [exposed]
+          x-protection: { atRest: none, rationale: Fixture control. }
         blankHash:
           type: string
           description: "   "
           x-classification: [exposed]
+          x-protection: { atRest: none, rationale: Fixture control. }
 
     # ---- Missing classification on PII-shaped properties. ------------------
     MissingPii:
@@ -142,6 +156,7 @@ components:
           type: string
           description: Reviewed — published directory listing.
           x-classification: [exposed]
+          x-protection: { atRest: none, rationale: Fixture control. }
         inboxCount: { type: integer }
 
     # ---- Not an entity. The entity-scoped rules must not reach it. ---------
@@ -209,14 +224,11 @@ components:
       properties:
         id: { type: string, format: uuid }
         # MUST fire — never safe to return.
-        exposedCard:
-          type: string
-          description: Reviewed — displayed on the receipt.
-          x-classification: [cardholder, exposed]
-        exposedSecret:
-          type: string
-          description: Reviewed — public key material.
-          x-classification: [credential, exposed]
+        # exposedCard / exposedSecret lived here under #76's reasoned
+        # contradiction set. Generator 0.6.0 ACCEPTS [cardholder, exposed] and
+        # owns `credential` through PROTECTION_CREDENTIAL_REQUIRES_WRITE_ONLY,
+        # so both were removed rather than kept as wrong assertions.
+        # exposedCardholder below is the accepted case, as a silent control.
         exposedCvv:
           type: string
           description: Reviewed — shown during entry.
@@ -243,6 +255,7 @@ components:
         sinEncrypted:
           type: string
           x-classification: [encrypted]
+          x-protection: { atRest: encrypted }
 
     # ---- x-protection, generator 0.6.0 (authoring #76 follow-up). ---------
     # Every case below was cross-checked against specfuse-generator-0.6.0.jar:

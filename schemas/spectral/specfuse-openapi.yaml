@@ -1972,7 +1972,12 @@ rules:
     # at generate time, this one arrives in the editor.
     message: "Property carries x-classification but declares no x-protection.atRest. Every classified property needs an at-rest decision; use `atRest: none` with a rationale to record a deliberate one."
     severity: error
-    given: $.components.schemas[*].properties[?(@ && @["x-classification"])]
+    # Entity schemas only. The generator scopes it the same way — a plain DTO
+    # carrying `x-classification` and no `x-protection` validates clean against
+    # 0.6.0, so firing here would reject what the jar accepts. Measured, after
+    # an over-broad first draft did exactly that on the fixture's NotAnEntity
+    # control.
+    given: $.components.schemas[?(@ && @["x-entity"])].properties[?(@ && @["x-classification"])]
     then:
       field: x-protection.atRest
       function: truthy
@@ -2055,8 +2060,13 @@ rules:
       function: schema
       functionOptions:
         schema:
-          type: array
-          not: { contains: { const: sad } }
+          # Guarded on `type: array`: a malformed scalar `x-classification: sad`
+          # is `specfuse-classification-values`' finding, not this one. Without
+          # the guard, `not: { contains }` is vacuously true on a non-array and
+          # this rule piles a second, misleading error onto the same typo.
+          if: { type: array }
+          then:
+            not: { contains: { const: sad } }
 
   specfuse-xprotection-never-persist-not-mapped:
     description: >-
