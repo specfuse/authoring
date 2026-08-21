@@ -81,6 +81,16 @@ BadRequestError:
         items:
           $ref: '#/Error'
 
+UnsupportedMediaTypeError:
+  description: >
+    The request body's Content-Type is not supported by this operation. Declared
+    on every operation that accepts a request body (API Handbook §2). Added when
+    specfuse-415-when-request-body went live — see authoring #73.
+  content:
+    application/json:
+      schema:
+        $ref: '#/Error'
+
 ConflictError:
   description: >
     Business rule violation prevents the operation (NOT for concurrency control —

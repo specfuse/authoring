@@ -1,0 +1,105 @@
+# =============================================================================
+# Coverage fixture: every AsyncAPI `given` must have something to select
+# =============================================================================
+# The AsyncAPI counterpart of fixtures/given-coverage.yaml. Read that file's
+# header for the reasoning; in short, a `given` that selects nothing reports
+# clean forever and is indistinguishable from a rule that passes.
+#
+# examples/hello-orders/ declares domain events only — no worker operations, no
+# scheduled jobs, no AI enrichment, no subscriptions, no observability block and
+# no `components.messages`. So roughly a quarter of the AsyncAPI ruleset had
+# nothing anywhere in the corpus to select. This fixture carries one instance of
+# each of those constructs so scripts/spectral-rule-coverage.py can prove the
+# JSONPaths work.
+#
+# This is NOT a conformance fixture. Values here are chosen to be selectable,
+# not to be correct, and it is never linted for a clean result.
+# =============================================================================
+asyncapi: 3.0.0
+
+info:
+  title: Given-coverage AsyncAPI fixture
+  version: "1.0.0"
+
+channels:
+  coverageChannel:
+    address: coverage/events
+    messages:
+      coverageInline:
+        name: CoverageInline
+        # x-scheduled-job and x-trigger-mode live on the message.
+        x-trigger-mode: explicit
+        x-scheduled-job:
+          cron: "0 * * * *"
+          scope: perTenant
+          overlap: skip
+        payload:
+          type: object
+          properties:
+            snapshot:
+              type: object
+
+operations:
+  coverageWorker:
+    summary: Carries the operation-level extension blocks hello-orders omits.
+    tags:
+      - name: Order
+    action: receive
+    channel:
+      $ref: '#/channels/coverageChannel'
+    # x-worker, x-observability, x-ai and x-subscription all hang off the
+    # operation, and nothing in hello-orders declares any of them.
+    # x-worker is present but empty of sub-keys: the three `x-worker-no-*`
+    # rules only need the block itself to exist for their `given` to select,
+    # and the sub-keys they forbid would add violations this fixture is not
+    # trying to assert.
+    x-worker: {}
+    x-observability:
+      criticality: high
+      tracing: full
+    x-ai:
+      enabled: true
+      task: classification
+      entities:
+        reads: [Order]
+      fallback: skip
+    x-subscription:
+      name: coverage-subscription
+      triggerMode: push
+      filterOverride:
+        entities: [Order]
+
+  # Violates specfuse-async-ai-must-have-entities on purpose: x-ai is enabled
+  # and declares no `entities`. That rule had the same inert `given` as the
+  # eleven OpenAPI rules in authoring #73 — a filter placed after `.x-ai`, which
+  # selects among x-ai's own children. CI asserts this finding appears, so the
+  # rule cannot go back to sleep unnoticed.
+  coverageAiWithoutEntities:
+    summary: x-ai enabled with no entities — asserted by CI, see below.
+    tags:
+      - name: Order
+    action: receive
+    channel:
+      $ref: '#/channels/coverageChannel'
+    x-ai:
+      enabled: true
+      task: classification
+
+components:
+  # `components.messages` specifically — hello-orders declares its messages
+  # inline under channels, so the components-side snapshot guardrail given had
+  # no node to select.
+  messages:
+    coverageComponentMessage:
+      name: CoverageComponent
+      payload:
+        type: object
+        properties:
+          snapshot:
+            type: object
+  schemas:
+    CoverageSchema:
+      type: object
+      properties:
+        id:
+          type: string

@@ -220,6 +220,87 @@ only measure the error count going down.** Build a fixture with a genuine inline
 enum, a genuine inline object, and a compliant `$ref`, then assert the rule
 catches the first two and ignores the third.
 
+## Auditing your own ruleset for rules that select nothing
+
+A Spectral rule only speaks when a document violates it. So a rule whose `given`
+selects **zero nodes** is indistinguishable from a rule that passes: both emit
+silence, and silence is what CI reads as success. A clean run and a dead rule
+look identical forever.
+
+Eleven rules in `specfuse-openapi.yaml` — nine at `severity: error` — sat inert
+for the entire life of the kit for exactly that reason (authoring #73). They
+shared this `given`:
+
+```yaml
+given: $.paths[*][get,post,put,patch,delete][?(@ && @.security)]
+```
+
+which reads as "every secured operation" and evaluates as something else. A
+JSONPath filter selects among the node's **children**, so after the method union
+has already selected the operation, `[?(@ && @.security)]` asks *which
+properties of this operation are themselves objects with a truthy `.security`* —
+`summary`, `parameters`, `responses`, none of which is. The empty set, in every
+valid OpenAPI document. The filter has to sit one level up, where the operation
+is itself the child being filtered:
+
+```yaml
+given: $.paths[*][?(["get","post","put","patch","delete"].indexOf(@property) !== -1 && @.security)]
+```
+
+### The check
+
+`scripts/spectral-rule-coverage.py` audits this automatically. For each rule it
+synthesises a probe with the same `given` and the same `resolved` setting, and a
+`then` that fails against any value at all:
+
+```yaml
+then: { function: schema, functionOptions: { schema: { not: {} } } }
+```
+
+`not: {}` matches nothing, so every selected node reports. The finding count per
+rule is therefore the number of nodes its `given` actually selects, and zero
+means the rule is inert. Run it over the corpus you already lint:
+
+```bash
+scripts/spectral-rule-coverage.py \
+  --ruleset schemas/spectral/specfuse-openapi.yaml \
+  --allowlist schemas/spectral/coverage-allowlist.yaml \
+  bundled.yaml 'fixtures/*.yaml'
+```
+
+A rule can also select nothing because your corpus contains no instance of the
+construct it targets. Those go in the allowlist **with a reason**, and the check
+runs in both directions — an entry that starts matching also fails the build, so
+the allowlist cannot decay into a blanket exemption. Prefer adding the construct
+to a fixture over adding a line to the allowlist.
+
+One caveat worth knowing if you write your own version: Spectral compiles every
+rule's JSONPath into a single traversal program, and structurally similar
+expressions can **suppress one another** when probed together. Probing
+`specfuse-404-predefined` alongside `specfuse-400-predefined` reports zero for
+the first; probing it alone reports eleven. The script re-probes every apparent
+zero-match in isolation before believing it, because a harness that reported a
+live rule as dead would be making the same mistake it exists to catch.
+
+### What this does not prove
+
+It proves a rule **selects**. It does not prove a rule **rejects** — a `then`
+can be silent on a live `given` too, and three of those eleven rules stayed
+silent even after their JSONPath was repaired:
+
+- `function: pattern` reports nothing when the field is **absent**, so a
+  `field: $ref` + `pattern` check passed any response that declared no `$ref` at
+  all. Pair it with a `truthy` check on the same field.
+- A `field: $ref` check on the **resolved** document sees a ref that has already
+  been inlined. See the `resolved: false` section above; the same trap catches
+  any rule keying off a ref's name, including
+  `specfuse-list-response-requires-pagination-params`.
+
+The layer above this one is a fixture that violates each rule once and asserts
+the finding appears. `schemas/spectral/fixtures/inert-rules-regression.yaml` is
+that fixture for the twelve OpenAPI rules above; the thirteenth is asserted
+against the AsyncAPI ruleset. CI asserts every one of them fires.
+
 ## Turning the ruleset on against existing specs
 
 Switching a lint gate on against specs that predate it tends to produce a large

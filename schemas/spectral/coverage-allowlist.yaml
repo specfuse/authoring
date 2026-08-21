@@ -1,0 +1,22 @@
+# =============================================================================
+# Spectral rule-coverage allowlist
+# =============================================================================
+# Read scripts/spectral-rule-coverage.py first. In short: that script proves
+# every rule's `given` selects at least one node somewhere in the corpus,
+# because a `given` that selects nothing enforces nothing while reporting clean
+# (authoring #73 — nine `error` rules, none of which had ever fired).
+#
+# A rule listed here selects nothing for a legitimate reason: the corpus
+# contains no instance of the construct it targets. Every entry needs a reason,
+# and the check runs in BOTH directions — an entry that starts matching FAILS
+# the build, so this file cannot silently become an exemption for everything.
+#
+# Prefer extending the corpus over extending this list. A fixture that exercises
+# the construct proves more than a line of prose asserting it is untestable.
+# =============================================================================
+
+specfuse-openapi.yaml: {}
+
+specfuse-asyncapi.yaml: {}
+
+specfuse-arazzo.yaml: {}

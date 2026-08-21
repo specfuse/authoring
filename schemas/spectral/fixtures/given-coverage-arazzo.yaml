@@ -1,0 +1,42 @@
+# =============================================================================
+# Coverage fixture: every Arazzo `given` must have something to select
+# =============================================================================
+# The Arazzo counterpart of fixtures/given-coverage.yaml. Read that file's
+# header for the reasoning; in short, a `given` that selects nothing reports
+# clean forever and is indistinguishable from a rule that passes.
+#
+# examples/hello-orders/ exercises x-async.emit and x-async.poll but never
+# x-async.await, and declares no x-mcp block and no x-ui.platform. Those givens
+# therefore had nothing in the corpus to select. This fixture carries one
+# instance of each so scripts/spectral-rule-coverage.py can prove they work.
+#
+# This is NOT a conformance fixture. Values are chosen to be selectable, not to
+# be correct, and it is never linted for a clean result.
+# =============================================================================
+arazzo: "1.0.1"
+
+info:
+  title: "Given-coverage Arazzo fixture"
+  version: "1.0.0"
+
+sourceDescriptions:
+  - name: apiSpec
+    url: ../../openapi.yaml
+    type: openapi
+
+# The x-mcp block is document-level and hello-orders declares none.
+x-mcp:
+  toolName: coverage-tool
+
+workflows:
+  - workflowId: coverageWorkflow
+    steps:
+      - stepId: coverageStep
+        operationId: coverageOperation
+        x-async:
+          # `await` specifically — hello-orders uses emit and poll only.
+          await:
+            event: Coverage.Awaited
+            timeout: 30s
+        x-ui:
+          platform: web

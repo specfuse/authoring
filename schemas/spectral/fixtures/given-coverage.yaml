@@ -1,0 +1,129 @@
+# =============================================================================
+# Coverage fixture: every `given` must have something to select
+# =============================================================================
+# This is NOT a conformance fixture. It is deliberately full of violations and
+# it is never linted for a clean result. Its only job is to carry one instance
+# of each construct that the other fixtures and examples/hello-orders/ happen
+# not to contain, so that scripts/spectral-rule-coverage.py can prove every
+# rule's JSONPath selects a node.
+#
+# Why that matters: a `given` that selects nothing reports clean forever, which
+# is indistinguishable from a rule that passes. Eleven rules in this ruleset —
+# nine at `severity: error` — sat inert for the whole life of the kit for
+# exactly that reason (authoring #73).
+#
+# When you add a rule whose construct nothing else exercises, add the construct
+# here rather than adding the rule to schemas/spectral/coverage-allowlist.yaml.
+# A fixture proves the JSONPath works; an allowlist entry only asserts it.
+#
+# Constructs carried here, and the rules that need them:
+#   405 response ................... specfuse-405-allow
+#   429 / 503 responses ............ specfuse-retry-after-on-429-503
+#   inline property enum ........... specfuse-no-inline-enums
+#   x-sample on id/createdAt/
+#     updatedAt .................... specfuse-x-sample-no-server-generated (x3)
+#   x-sample on a schema ........... specfuse-x-sample-property-level-only
+#   x-entity on a New*/List schema . specfuse-xentity-main-only
+#   x-enum-case without an enum .... specfuse-xenumcase-on-enums-only
+#   x-value-object ................. specfuse-xvalueobject-shape
+#   x-value-object + x-entity ...... specfuse-xvalueobject-no-xentity
+#                                    specfuse-xvalueobject-not-main-resource
+# =============================================================================
+openapi: 3.0.3
+info:
+  title: Given-coverage fixture
+  version: "1.0.0"
+paths:
+  /v1/coverage:
+    get:
+      summary: Carries the response codes no other fixture declares.
+      security:
+        - bearerAuth: []
+      x-roles: [Admin]
+      x-scopes: [coverage.read]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: string
+        '405':
+          description: Method Not Allowed
+        '429':
+          description: Too Many Requests
+        '503':
+          description: Service Unavailable
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    # Inline enum on a property, and x-sample on the three server-generated
+    # properties the handbook forbids it on.
+    CoverageInlineEnum:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          x-sample:
+            provider: faker
+            path: string.uuid
+        createdAt:
+          type: string
+          format: date-time
+          x-sample:
+            provider: faker
+            path: date.past
+        updatedAt:
+          type: string
+          format: date-time
+          x-sample:
+            provider: faker
+            path: date.recent
+        status:
+          type: string
+          enum: [draft, active]
+
+    # x-sample hoisted to the schema instead of a property.
+    CoverageSchemaLevelSample:
+      type: object
+      x-sample:
+        provider: faker
+        path: string.uuid
+      properties:
+        name:
+          type: string
+
+    # A New* schema carrying x-entity, which belongs on the main resource only.
+    NewCoverageThing:
+      type: object
+      x-entity:
+        domain: coverage
+        type: aggregate
+      properties:
+        name:
+          type: string
+
+    # x-enum-case on a schema that declares no enum.
+    CoverageEnumCaseNoEnum:
+      type: object
+      x-enum-case: SCREAMING_SNAKE
+      properties:
+        name:
+          type: string
+
+    # x-value-object present, and present alongside x-entity.
+    CoverageValueObject:
+      type: object
+      x-value-object:
+        domain: coverage
+      x-entity:
+        domain: coverage
+        type: aggregate
+      properties:
+        amount:
+          type: integer
