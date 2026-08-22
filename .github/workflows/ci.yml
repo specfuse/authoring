@@ -160,6 +160,7 @@ jobs:
           fail=0
           # A schema using every documented key must lint clean.
           for good in FullyDocumented ShorthandDelete ConcurrencyUnprotected \
+                      DeleteReasonPlain DeleteReasonOtherWithText \
                       BareConcurrencyNone UnprotectedNoReason \
                       ConcurrencyOtherWithText ConcurrencyTextNoReason \
                       DeprecatedSchemaKey; do
@@ -171,6 +172,8 @@ jobs:
           done
           # Each malformed value must still be caught.
           for bad in BadCascadeValue BadChildName BadStorage UnknownSubKey \
+                     BadDeleteReason DeleteReasonOtherNoText \
+                     DeleteReasonTextWithoutOther DeleteReasonOnSoft \
                      BadDeleteMode BadRetention DeleteUnknownKey \
                      BadConcurrencyMode ConcurrencyUnknownKey TypoKey \
                      ConcurrencyFreeTextReason ConcurrencyOtherNoText \

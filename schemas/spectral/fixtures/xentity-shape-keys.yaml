@@ -140,6 +140,70 @@ components:
       properties:
         id: { type: string, format: uuid }
 
+    # ---- `delete.reason`, generator 0.6.0. Clean cases. -------------------
+    # `reason` records WHY an entity is hard-deleted, which matters because
+    # `hard` is also what an ABSENT declaration resolves to — so "decided" and
+    # "nobody decided" are otherwise indistinguishable. Optional in the kit by
+    # design; requiring it is a project convention, as with `concurrency`.
+    DeleteReasonPlain:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        delete: { mode: hard, reason: no-delete-surface }
+      properties:
+        id: { type: string, format: uuid }
+
+    DeleteReasonOtherWithText:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        delete: { mode: hard, reason: other, reasonText: Rows are rebuilt nightly from the source feed. }
+      properties:
+        id: { type: string, format: uuid }
+
+    # ---- `delete.reason`, the four ways to get it wrong. ------------------
+    BadDeleteReason:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        delete: { mode: hard, reason: because-i-said-so }   # outside the closed set
+      properties:
+        id: { type: string, format: uuid }
+
+    DeleteReasonOtherNoText:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        delete: { mode: hard, reason: other }               # `other` demands reasonText
+      properties:
+        id: { type: string, format: uuid }
+
+    DeleteReasonTextWithoutOther:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        # reasonText is FORBIDDEN unless reason is `other` — the generator
+        # reports this direction too (DELETE_REASON_TEXT_REQUIRED).
+        delete: { mode: hard, reason: reordered-rows, reasonText: superfluous }
+      properties:
+        id: { type: string, format: uuid }
+
+    DeleteReasonOnSoft:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        # `reason` explains a HARD delete; on soft it is meaningless
+        # (DELETE_REASON_REQUIRES_HARD).
+        delete: { mode: soft, reason: no-delete-surface }
+      properties:
+        id: { type: string, format: uuid }
+
     # ---- `concurrency`, object form, deliberately unprotected with its
     # ---- justification. Clean against both concurrency rules.
     ConcurrencyOtherWithText:

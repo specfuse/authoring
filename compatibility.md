@@ -758,6 +758,33 @@ So the RFC 9457 error-envelope contract — 400/401/403/404 must be present *and
 
 **Worth stating plainly, because the reporter said it first and it generalises past this ruleset:** the reporter recorded *"dropping `x-roles` fails validation on all 38 operations"* in a design doc and planned an overlay around it. There was no break. They planned a migration to relax a gate that was never closed. A lint result you have not proven can fail is not evidence.
 
+### 32. `x-entity.delete.reason` adopted — the guard was the blocker, and the pin cleared it
+
+**Status:** kit-side **done** (`specfuse-xentity-shape` widened, `Vendor_Extensions.md` §1.1 documents the vocabulary and its five diagnostics, fixture + CI both directions). §C stays a generator follow-up.
+
+Reported by `restomanager-specs` (`delete-cascade-semantics.md` §B/§C/§D). §30 recorded this as *"not adopted — the pin is the blocker, and the guard change belongs in the same PR as the pin bump."* Generator `0.6.0` shipped it and kit `0.11.0` pinned it, so this is that PR.
+
+**Why it mattered.** `hard` is also what an **absent** `delete` declaration resolves to, so a bare `hard` cannot distinguish a decision from an oversight. The reporter's workaround was a YAML **comment** convention plus a source-text guard (`check-delete-hard-justification.py`), because comments do not survive YAML→JSON and neither Spectral nor the generator can see them. They said they would drop it the day the kit shipped the structured form; they can now.
+
+**The shape, measured against `0.6.0` rather than taken from the proposal:**
+
+| Declaration | Generator | Kit |
+|---|---|---|
+| `{ mode: hard, reason: no-delete-surface }` | accepts | accepts |
+| `{ mode: hard, reason: other, reasonText: … }` | accepts | accepts |
+| `{ mode: hard, reason: other }` | `DELETE_REASON_TEXT_REQUIRED` | rejects |
+| `{ mode: hard, reason: reordered-rows, reasonText: … }` | `DELETE_REASON_TEXT_REQUIRED` | rejects |
+| `{ mode: hard, reason: bogus }` | `DELETE_REASON_INVALID` | rejects |
+| `{ mode: soft, reason: … }` | `DELETE_REASON_REQUIRES_HARD` | rejects |
+
+10/10 agreement across the shapes probed. `reasonText` is required by `other` and **forbidden** by every other value — the generator reports both directions, and so does the guard.
+
+**The key is optional, deliberately.** Whether a project *requires* a reason on every `hard` is a project convention, not a universal contract — the same split `concurrency` already has, and the split the reporter themselves proposed. Their house rules (require `reason` on `hard`; restrict the string shorthand to `soft`) stay out of the kit and live in their overlay.
+
+**`patch-reconciled` is no longer the trap it was.** §30 flagged `clabonte/generator#1219` — the contradiction check rejecting every PATCH-reconciled entity because it did not resolve the `Update{Child}` `items.$ref` indirection. `0.6.0`'s message now reads *"no parent `Update{Parent}` DTO carries a collection of 'X'"*, i.e. it resolves the parent relationship. The kit documents the member as usable on that basis.
+
+**§C is not kit work and stays open upstream.** The reporter's own framing: *"All belong in the generator rather than the kit's lint — two need the operation set and the entity set at once."* Confirmed absent from `0.6.0`: `DELETE_HARD_WITH_DELETE_SURFACE`, `DELETE_RETENTION_SHORTER_THAN_ANCESTOR`, `DELETE_SOFT_CLASSIFIED_NO_RETENTION`, `OPERATION_DELETES_WITHOUT_TARGET`, `DELETE_HARD_AI_DELETE_GRANT`, `DELETE_SOFT_IMMUTABLE_CONFLICT` — all six filed as `#1209`/`#1210`/`#1211`. The one with a live backlog is `DELETE_SOFT_CLASSIFIED_NO_RETENTION` (7 entities), and it generalises hardest: `soft` retains the row, `retention` is what eventually destroys it, and an entity with neither keeps identifying data forever while reading as "deleted".
+
 ---
 
 ## Outstanding kit-side work
