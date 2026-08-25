@@ -176,6 +176,7 @@ jobs:
                      DeleteReasonTextWithoutOther DeleteReasonOnSoft \
                      BadDeleteMode BadRetention DeleteUnknownKey \
                      BadConcurrencyMode ConcurrencyUnknownKey TypoKey \
+                     RetiredEncryptedProperties \
                      ConcurrencyFreeTextReason ConcurrencyOtherNoText \
                      ConcurrencyTextWithoutOther; do
             if ! grep "specfuse-xentity-shape" "$REPORT" | grep -q "$bad"; then

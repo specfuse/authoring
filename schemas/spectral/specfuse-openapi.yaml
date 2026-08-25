@@ -994,7 +994,7 @@ rules:
                     uniqueItems: true
                     items:
                       type: string
-                      enum: [pii, sensitive, confidential, exposed, financial, credential, cardholder, sad, encrypted]
+                      enum: [pii, sensitive, confidential, exposed, financial, credential, cardholder, sad]
                   # Anchored at its first use in document order and aliased
                   # by `specfuse-xprotection-shape` below. One definition, two
                   # call sites — a YAML alias cannot drift the way two
@@ -1127,10 +1127,6 @@ rules:
               type: array
               uniqueItems: true
               items: { type: string, pattern: "^[a-z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)*$" }
-            encryptedProperties:
-              type: array
-              uniqueItems: true
-              items: { type: string, pattern: "^[a-z][A-Za-z0-9]*$" }
             aiAccess:
               type: object
               additionalProperties: false
@@ -1933,7 +1929,7 @@ rules:
   specfuse-classification-values:
     description: >-
       x-classification must be a non-empty array drawn from [pii, sensitive,
-      confidential, exposed, financial, credential, cardholder, sad, encrypted].
+      confidential, exposed, financial, credential, cardholder, sad].
     # Not scoped to x-entity schemas: a stray x-classification on a DTO or a
     # value object is still a typo worth naming, and the value set is the same
     # wherever it is written.
@@ -1952,9 +1948,12 @@ rules:
     # (compatibility.md §28). It is NOT adopted because a newer jar validates
     # nine values — that jar (0.5.9-SNAPSHOT) is unreleased and unpinned.
     #
-    # `encrypted` stays in the set until a released generator removes it. See
-    # specfuse-classification-encrypted-superseded below for why it is not an
-    # error today.
+    # `encrypted` is GONE from the set as of the generator 0.7.0 pin, which is
+    # the "released generator removes it" condition this comment used to wait
+    # on. 0.7.0 rejects the token with INVALID_EXTENSION_VALUE at both the
+    # property level and the x-value-object usage site, so a spec declaring it
+    # now fails generation; the guard below is an error rather than a warning
+    # so lint fails first, where the fix is cheap.
     severity: error
     given: $.components.schemas[*].properties[*]["x-classification"]
     then:
@@ -1975,7 +1974,6 @@ rules:
               - credential
               - cardholder
               - sad
-              - encrypted
 
   # ===== x-protection (generator 0.6.0) ====================================
   #
@@ -2127,33 +2125,47 @@ rules:
 
   specfuse-classification-encrypted-superseded:
     description: >-
-      x-classification 'encrypted' is expected to be replaced by
-      x-protection.atRest — but not yet, and not against the pinned generator.
-    # A notice, deliberately not an error and deliberately not advice to
-    # migrate. `x-protection` appears ZERO times in the pinned 0.5.8 jar, so a
-    # spec that moves to `atRest: encrypted` today loses the only declaration
-    # the shipped generator actually reads. Telling authors to migrate now is
-    # the same permissive failure as Vendor_Extensions.md:834 (authoring #76
-    # ask 2): the author believes a protection decision is recorded, and the
-    # runtime never sees it.
+      x-classification 'encrypted' is retired. Declare x-protection.atRest
+      instead.
+    # PROMOTED TO ERROR at the generator 0.7.0 pin, which is the condition the
+    # previous revision of this comment named: land it "in the release that
+    # pins a generator where FE-G02 (`encrypted` removed) and FE-G18
+    # (SENSITIVE_FIELD_IN_RESPONSE accepting `atRest: encrypted`) ship
+    # together". 0.7.0 ships both, which is what makes the migration safe to
+    # advise rather than merely announce — the reason this sat at `warn` was
+    # that a spec moving early lost the only declaration the shipped generator
+    # read, and that is no longer true.
     #
-    # This rule exists so the replacement is not a surprise when it lands, and
-    # so nobody "helpfully" migrates early. Promote it to error, and add the
-    # x-protection shape guard, in the release that pins a generator where
-    # FE-G02 (`encrypted` removed) and FE-G18 (SENSITIVE_FIELD_IN_RESPONSE
-    # accepting `atRest: encrypted`) ship together — they have to land in one
-    # window or `portalPassword`-shaped properties break.
-    message: "'encrypted' is scheduled for replacement by x-protection.atRest. Keep it for now — the pinned generator does not read x-protection. See compatibility.md §26."
-    severity: warn
+    # The advice therefore INVERTS. It used to say "keep it for now"; it now
+    # says migrate, because 0.7.0 rejects the token outright with
+    # INVALID_EXTENSION_VALUE. Erroring here is the cheap failure: lint names
+    # the property, generation names only the schema.
+    #
+    # The token is also gone from the closed enum above, so a spec declaring it
+    # fails that guard too. Both fire deliberately — the enum says "not a
+    # member", this rule says what to do instead, and only the latter carries
+    # the replacement.
+    message: "'encrypted' is retired as an x-classification value (generator 0.7.0). Declare 'x-protection: {atRest: encrypted}' on the property instead. See compatibility.md."
+    severity: error
     given: $.components.schemas[*].properties[*]["x-classification"]
     then:
       function: schema
       functionOptions:
         schema:
-          type: array
-          not:
-            contains:
-              const: encrypted
+          # Guarded on `type: array` via if/then, not asserted as `type: array`.
+          # JSON Schema ignores `contains` on a non-array, so a bare
+          # `not: {contains: ...}` is FALSE for a scalar -- this rule fired on
+          # `x-classification: pii` (a malformed scalar, no `encrypted` in
+          # sight) and told the author a token they never wrote was retired.
+          # Tolerable noise while this was a warning; a blocking false message
+          # now that it is an error. A malformed scalar belongs to
+          # specfuse-classification-values, which already reports it.
+          if:
+            type: array
+          then:
+            not:
+              contains:
+                const: encrypted
 
   specfuse-classification-exposed-contradiction:
     description: >-
