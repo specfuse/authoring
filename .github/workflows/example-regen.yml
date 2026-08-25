@@ -565,7 +565,7 @@ jobs:
             "specfuse-classification-values|nickname|a value outside the closed set was accepted"
             "specfuse-classification-values|alias|a scalar x-classification was accepted"
             "specfuse-classification-values|tag|an empty x-classification was accepted"
-            "specfuse-classification-exposed-contradiction|sessionHash|exposed + encrypted was accepted"
+            "specfuse-classification-exposed-contradiction|sessionHash|exposed + an encrypted atRest was accepted"
             "specfuse-classification-exposed-contradiction|resetSalt|exposed + sensitive was accepted"
             "specfuse-classification-exposed-needs-description|tokenHash|exposed with no description was accepted"
             "specfuse-classification-exposed-needs-description|blankHash|exposed with a blank description was accepted"
@@ -608,22 +608,26 @@ jobs:
           # Customer is the positive control: every property correctly
           # classified, including a legitimate `exposed` with its justification.
           # A rule that flags any of it is over-matching.
-          # Scoped to `error`, not to any finding. Customer.taxId is correctly
-          # classified `[pii, encrypted]`, and `encrypted` now draws a WARN
-          # supersession notice by design (authoring #76) — that is the rule
-          # working, not over-matching. An ERROR on this schema still is.
+          # Customer.taxId used to be `[pii, encrypted]` and drew a WARN
+          # supersession notice. At the generator 0.7.0 pin the token was
+          # retired, so it is now `[pii]` + `x-protection.atRest: encrypted` —
+          # the migration this rule spent a release advertising. The control
+          # must be ERROR-free, which is what proves the migration has a
+          # landing place rather than merely a destination.
           if grep -E "specfuse-(classification|xprotection)" "$REPORT" | grep "error" | grep -q "Customer"; then
             echo "::error::A classification rule raised an ERROR on the Customer control schema," >&2
             echo "every property of which is correctly classified. It is over-matching." >&2
             fail=1
           fi
 
-          # ...and the notice must actually reach a correctly-classified
-          # `encrypted` property, or it is a rule that only fires on fixtures
-          # built for it.
-          if ! grep "specfuse-classification-encrypted-superseded" "$REPORT" | grep -q "taxId"; then
-            echo "::error::The encrypted supersession notice did not fire on Customer.taxId," >&2
-            echo "a correct [pii, encrypted] declaration. The notice is not reaching real usage." >&2
+          # The retirement must not be silent on a scalar it does not apply to.
+          # `not: {contains: ...}` is FALSE for a non-array in JSON Schema, so
+          # this rule used to fire on BadValues.alias (`x-classification: pii`)
+          # and tell the author a token they never wrote was retired. Harmless
+          # at WARN, a blocking false message now it is an ERROR.
+          if grep "specfuse-classification-encrypted-superseded" "$REPORT" | grep -q "alias"; then
+            echo "::error::The retirement rule fired on BadValues.alias, a malformed scalar that" >&2
+            echo "never mentions 'encrypted'. It is no longer scoped to arrays." >&2
             fail=1
           fi
 
@@ -670,12 +674,16 @@ jobs:
             fi
           done
 
-          # `encrypted` is NOTICED, not rejected. It stays valid until a
-          # RELEASED generator removes it; erroring here would reject a value
-          # the pinned jar still reads.
-          if grep "specfuse-classification-values" "$REPORT" | grep -q "sinEncrypted"; then
-            echo "::error::specfuse-classification-values rejected 'encrypted'. It must stay in" >&2
-            echo "the set until a released generator removes it — see compatibility.md §26." >&2
+          # `encrypted` is REJECTED, not noticed — inverted at the generator
+          # 0.7.0 pin, which is the "RELEASED generator removes it" condition
+          # this assertion used to wait on. The token left the closed set, so
+          # the values rule must now fire on it; a silent values rule here
+          # would mean the enum still admits a token the generator refuses,
+          # which is the direction that lets a spec pass lint and fail
+          # generation.
+          if ! grep "specfuse-classification-values" "$REPORT" | grep -q "sinEncrypted"; then
+            echo "::error::specfuse-classification-values did NOT reject 'encrypted'. Generator" >&2
+            echo "0.7.0 retired the token; the closed set must not still admit it." >&2
             fail=1
           fi
 

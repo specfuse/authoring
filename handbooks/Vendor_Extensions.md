@@ -50,7 +50,6 @@ x-entity:
   hasMany: string[]              # Optional: One-to-many child relationships
   filterableProperties: string[] # Optional: Fields usable in OData filter expressions
   searchableProperties: string[] # Optional: Fields available for free-text search
-  encryptedProperties: string[]  # Optional: Fields requiring encryption at rest
   requiresPagination: boolean    # Optional: Whether lists require pagination (default: true for aggregates)
   mutability: string             # Optional: "mutable" | "immutable" | "appendOnly" (default: "mutable")
   concurrency: string | object   # Required, NO default: "optimistic" | "none", or { mode, reason }
@@ -498,7 +497,6 @@ Customer:
     belongsTo:
       allOf: [Tenant]
     searchableProperties: [firstName, lastName, email, phone]
-    encryptedProperties: [taxId]
     requiresPagination: true
     valueObjects:
       homeAddress:
@@ -531,7 +529,7 @@ aiAccess:
 **Field semantics**:
 
 - **`operations`** — authoritative list of what the AI can do. Presence is the single source of truth; there is no separate `mode` flag. An **empty array** (`[]`) is the canonical Tier 0 declaration — explicit, reviewable, distinguishable from "author forgot." Absence is also semantically "no access" but triggers an authoring warning (`ENTITY_AIACCESS_MISSING`).
-- **`readableProperties`** — when omitted and `read` is granted, the agent may read every top-level property **except** fields listed in `encryptedProperties`. To grant read access to an encrypted field, list it explicitly. This enforces a safe-by-default read surface.
+- **`readableProperties`** — when omitted and `read` is granted, the agent may read every top-level property **except** those declaring `x-protection: {atRest: encrypted}`. To grant read access to an encrypted field, list it explicitly. This enforces a safe-by-default read surface.
 - **`writableProperties`** — must reference top-level properties of the entity. Write access is always an explicit allow-list; there is no "all fields" shortcut for writes. Required whenever `operations` includes any of `create`, `update`, `delete`.
 - **`immutableOnUpdate`** — subset of `writableProperties`. Fields the agent may supply on create but never modify on update (e.g., foreign keys, tenant scope).
 - **`ownedBy`** — records the system of record when both AI and backend can write:
@@ -547,7 +545,7 @@ aiAccess:
 3. If `operations` contains any of `create`/`update`/`delete`, then `writableProperties` (non-empty) and `reason` (non-empty) are required.
 4. `readableProperties`, `writableProperties`, and `immutableOnUpdate` must reference top-level properties that exist on the entity schema (BilingualText subfields like `title.en` allowed).
 5. `immutableOnUpdate` must be a subset of `writableProperties`.
-6. Encrypted fields (from `encryptedProperties`) are **not** included in the "absent = all properties" expansion of `readableProperties`. To grant AI read access to an encrypted field, list it explicitly in `readableProperties`.
+6. Encrypted fields (those declaring `x-protection: {atRest: encrypted}`) are **not** included in the "absent = all properties" expansion of `readableProperties`. To grant AI read access to an encrypted field, list it explicitly in `readableProperties`.
 7. `aiAccess` may only appear on schemas that carry `x-entity` (same placement rules as other entity metadata — never on derivatives like `Basic*`, `New*`, `Update*`).
 
 **Examples**:
@@ -557,10 +555,15 @@ aiAccess:
 Customer:
   x-entity:
     type: aggregate
-    encryptedProperties: [taxId]
     aiAccess:
       operations: [read]
-      # readableProperties omitted → every top-level field except taxId
+      # readableProperties omitted → every top-level field except taxId,
+      # which is excluded by its own x-protection.atRest below.
+  properties:
+    taxId:
+      type: string
+      x-classification: [pii]
+      x-protection: { atRest: encrypted }
 
 # Full CRUD with explicit write surface and immutable scope
 Order:
@@ -587,7 +590,6 @@ Order:
 Customer:
   x-entity:
     type: aggregate
-    encryptedProperties: [taxId]
     aiAccess:
       operations: [read]
       readableProperties:
@@ -614,7 +616,7 @@ PaymentMethod:
 ```
 
 **Interaction with other extensions**:
-- **`encryptedProperties`**: AI read of encrypted fields requires explicit listing in `readableProperties`. Masking rules still apply on the wire.
+- **`x-protection.atRest: encrypted`**: AI read of encrypted fields requires explicit listing in `readableProperties`. Masking rules still apply on the wire.
 - **`filterableProperties` / `searchableProperties`**: these govern HTTP query surfaces, not AI repository methods. AI filtering/search allow-lists may be derived separately by the generator from `readableProperties`.
 - **`x-ai-safe` (operations, §4.1)**: intended to operate at the HTTP operation level — whether an AI agent may invoke a specific endpoint without approval — where `aiAccess` operates at the entity/repository level. **`x-ai-safe` is read by nothing, so this complementarity is aspirational**; `aiAccess` is enforced and it is not. See §4.1 and `compatibility.md` §25.
 - **Future per-agent scoping**: the single `aiAccess` block treats "AI" as monolithic. When multiple agents with different trust levels emerge, this will be extended to allow `aiAccess` keyed by agent role without breaking the single-block form. Until then, keep access blocks conservative.
@@ -864,12 +866,12 @@ x-classification:
 | `credential` | Secrets that authenticate a principal | Never safe to return. MUST NOT co-occur with `exposed`. |
 | `cardholder` | Cardholder data (PAN and equivalents) | Never safe to return. MUST NOT co-occur with `exposed`. |
 | `sad` | PCI Sensitive Authentication Data (CVV, track, PIN block) | Never safe to return, and MUST NOT be retained after authorisation. MUST NOT co-occur with `exposed`. |
-| `encrypted` | Legacy. Records intent that the value be encrypted at rest | **Superseded by `x-protection.atRest: encrypted`** (generator 0.6.0). Still a valid classification value — the generator has not removed it — but the at-rest decision now lives on the other axis, and `x-protection.atRest` is REQUIRED on every classified property regardless. Encryption converters and the `aiAccess.readableProperties` exclusion are still driven by `x-entity.encryptedProperties`, not by this value. Implies `sensitive`. |
+| ~~`encrypted`~~ | **RETIRED — generator 0.7.0.** | Rejected with `INVALID_EXTENSION_VALUE` at both the property level and the `x-value-object.classification` usage site. Declare `x-protection: {atRest: encrypted}` on the property instead; that is the axis the generator reads, and it is REQUIRED on every classified property regardless. The closed set is now the eight values above. |
 | `exposed` | Secret-shaped name, human-reviewed, safe to expose | Escape hatch for the `SENSITIVE_FIELD_IN_RESPONSE` validator (see below). Asserts a reviewer confirmed the field is safe on a response despite a secret-shaped name. **Grants no access** on its own; carries no encryption/masking obligation. Contradictory with `sensitive` and `confidential`, and with an `x-protection.atRest` of `encrypted` or `hashed` — MUST NOT co-occur with any of them (`PROTECTION_EXPOSED_MUTEX`). May co-occur with `pii`, `financial` or `cardholder`, which the generator accepts. Requires a `description` justifying why exposure is safe. |
 
-**Multiple classifications** are allowed (e.g., `[pii, encrypted]` for a tax ID). The generator unions the implications.
+**Multiple classifications** are allowed (e.g., `[pii, financial]` for a settlement reference). The generator unions the implications. A tax ID, which this example used to show as `[pii, encrypted]`, is now `[pii]` plus `x-protection: {atRest: encrypted}` — the class says what the data *is*, the protection axis says how it is *handled*.
 
-**Relationship with `x-entity.encryptedProperties`**: `x-entity.encryptedProperties` is the **only** declaration the generator reads. Nothing is derived from `x-classification`.
+**Relationship with `x-protection.atRest`**: `x-protection.atRest` is the **only** declaration the generator reads for the at-rest decision. Nothing is derived from `x-classification`. `x-entity.encryptedProperties`, which used to hold this role, was retired outright in generator 0.7.0 — an entity still declaring it fails with `ENTITY_INVALID_CONFIG` naming the replacement.
 
 > **⚠ Corrected 2026-08-21 (authoring #76).** This paragraph previously said the
 > `encryptedProperties` set is "computed automatically by the generator" when a field
@@ -886,9 +888,14 @@ x-classification:
 > `AiAccessValidationRule` reads the array, `PiiClassificationValidationRule` reads the
 > classification, and the two never meet.
 
-So today: to exclude a field from the implicit AI read surface, or to have encryption converters emitted, it **must** be listed in `x-entity.encryptedProperties`. Classifying it `encrypted` records intent for humans and for the kit's lint, and does nothing else.
+> **⚠ Superseded 2026-08-25 (generator 0.7.0).** The paragraph above records how
+> this worked up to generator 0.6.0 and is kept because the permissive failure it
+> describes is worth remembering, not because it is current. **Both declarations it
+> names are gone.**
 
-`x-classification: [encrypted]` is expected to be superseded by `x-protection.atRest: encrypted` — but not yet. `x-protection` appears **zero times** in the pinned generator, so migrating to it today would replace a declaration the generator reads with one it cannot see. Keep both the array and the classification until a released generator retires them together; `specfuse-classification-encrypted-superseded` carries the same notice at lint time. See `compatibility.md` §26.
+**As of generator 0.7.0 there is one axis, and it is `x-protection.atRest`.** To exclude a field from the implicit AI read surface, or to have encryption converters emitted, declare `x-protection: {atRest: encrypted}` on the property. `x-entity.encryptedProperties` is retired outright — an entity still declaring it fails with `ENTITY_INVALID_CONFIG` naming the replacement — and `x-classification: [encrypted]` is rejected with `INVALID_EXTENSION_VALUE`.
+
+The migration is mechanical and both halves land in the same release, which is what makes it safe: 0.7.0 also taught `SENSITIVE_FIELD_IN_RESPONSE` to accept `atRest: encrypted` as a satisfier, so a `portalPassword`-shaped property does not start failing as you move it. `specfuse-classification-encrypted-superseded` is now an **error** carrying the replacement text. See `compatibility.md`.
 
 **Example**:
 
@@ -968,7 +975,7 @@ The two sides split cleanly, and the split is the generator's own: `PiiClassific
 | 1 | Values must come from the closed set `[pii, sensitive, confidential, exposed, financial, credential, cardholder, sad, encrypted]`, as a non-empty array with no duplicates. Widened from four values on 2026-08-21 (authoring #76). | kit — `specfuse-classification-values` (error) |
 | 2 | `x-classification: [encrypted]` requires the property to be representable as a string (encryption produces opaque ciphertext). | **nothing yet** — see `compatibility.md` §26 |
 | 3 | A snapshot referencing a property whose source entity carries `pii` or `sensitive` MUST declare `x-snapshot-pii-acknowledged.{propertyName}` with a justification ≥ 20 chars (see §11.2). | kit — `specfuse-async-snapshot-guardrails` (AsyncAPI ruleset) |
-| 4 | When `aiAccess.readableProperties` is omitted, properties listed in **`x-entity.encryptedProperties`** are excluded from the implicit allow-set (§1.1.1 rule 5). `x-classification: [encrypted]` does **not** do this — corrected 2026-08-21, authoring #76. | generator |
+| 4 | When `aiAccess.readableProperties` is omitted, properties declaring **`x-protection: {atRest: encrypted}`** are excluded from the implicit allow-set (§1.1.1 rule 5). Generator 0.7.0 resolves this set from the protection axis; `x-entity.encryptedProperties`, which held this role through 0.6.0, is retired. `atRest` values `hashed`, `none` and `never-persist` do **not** exclude. | generator |
 | 5 | `x-classification: [exposed]` MUST NOT co-occur with `sensitive` or `confidential`, nor with an `x-protection.atRest` of `encrypted` or `hashed`. `pii`, `financial` and `cardholder` may pair with `exposed` — data legitimately shown to the person it concerns is both. **Corrected against generator 0.6.0**; the earlier set was reasoned rather than measured and had `cardholder` and `confidential` the wrong way round. | generator — `PROTECTION_EXPOSED_MUTEX` (error); mirrored by kit `specfuse-classification-exposed-contradiction` |
 | 8 | `x-classification: [encrypted]` is superseded by `x-protection.atRest: encrypted`. Still accepted; prefer the protection axis on new properties. | kit — `specfuse-classification-encrypted-superseded` (warn) |
 | 9 | Every property carrying `x-classification` MUST declare `x-protection.atRest`. | generator — `PROTECTION_ATREST_REQUIRED` (error); mirrored by kit `specfuse-xprotection-atrest-required` |

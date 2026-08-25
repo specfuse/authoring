@@ -12,7 +12,7 @@
 #   Customer (the positive control — every property correct, NO finding)
 #     id            unclassified scalar, not PII-shaped
 #     email         format: email + [pii]                        clean
-#     taxId         [pii, encrypted]                             clean
+#     taxId         [pii] + x-protection.atRest: encrypted       clean
 #     creditScore   [sensitive]                                  clean
 #     avatarHash    [exposed] + a description                    clean
 #     emails        an array named like PII but NOT an exact
@@ -75,7 +75,12 @@ components:
           x-protection: { atRest: none, rationale: Read in plaintext to send order mail. }
         taxId:
           type: string
-          x-classification: [pii, encrypted]
+          # Migrated at the generator 0.7.0 pin: `encrypted` left the closed
+          # classification set, and the at-rest decision it used to record now
+          # lives on the x-protection axis below. This is the control for the
+          # migration having a landing place -- `[pii]` + `atRest: encrypted`
+          # says everything `[pii, encrypted]` did, to a generator that reads it.
+          x-classification: [pii]
           x-protection: { atRest: encrypted }
         creditScore:
           type: number
@@ -119,13 +124,14 @@ components:
         domain: crm
         type: entity
       properties:
-        # `encrypted` as a CLASS no longer contradicts `exposed`: generator
-        # 0.6.0 accepts that pairing, because the contradiction moved onto the
-        # atRest axis. The declaration below is what still contradicts it.
+        # The contradiction lives on the atRest axis, not the class axis. This
+        # used to read `[exposed, encrypted]`; the token was retired at the
+        # 0.7.0 pin, and carrying it here would have made this case fire the
+        # closed-set rule as well and stopped isolating the one under test.
         sessionHash:
           type: string
           description: Session fingerprint.
-          x-classification: [exposed, encrypted]
+          x-classification: [exposed]
           x-protection: { atRest: encrypted }
         resetSalt:
           type: string
@@ -241,11 +247,14 @@ components:
           x-classification: [financial, exposed]
           x-protection: { atRest: none, rationale: Shown to the payer. }
 
-    # ---- `encrypted` is noticed, not rejected. ----------------------------
-    # It stays valid until a RELEASED generator removes it. The warn-level
-    # notice must fire, and must not be an error, and must not tell anyone to
-    # migrate to x-protection — absent from the pinned jar.
-    EncryptedStillValid:
+    # ---- `encrypted` is REJECTED, and told where to go. -------------------
+    # Generator 0.7.0 is the released generator the previous revision of this
+    # block was waiting for: it removed the token, so the notice that used to
+    # say "keep it for now" is now an error that says migrate. Both rules fire
+    # here on purpose -- the closed-set rule says the token is not a member,
+    # and this one carries the replacement. Only the second is worth reading,
+    # which is why it is asserted by name.
+    RetiredEncryptedToken:
       type: object
       x-entity:
         domain: crm

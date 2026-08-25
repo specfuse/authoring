@@ -103,7 +103,6 @@ components:
         belongsTo: { allOf: [Tenant] }
         filterableProperties: [status]
         searchableProperties: [reference]
-        encryptedProperties: [taxId]
         delete:
           mode: soft
           retention: P30D
@@ -287,6 +286,19 @@ components:
           address:
             storage: 'flatten'
             prefix: 'addr_'             # misspelling of propertyPrefix
+      properties:
+        id: { type: string, format: uuid }
+
+    RetiredEncryptedProperties:
+      type: object
+      # Generator 0.7.0 retired x-entity.encryptedProperties outright: the
+      # entity fails with ENTITY_INVALID_CONFIG naming the replacement. The
+      # shape guard must reject it too, so lint names the key before
+      # generation names only the schema.
+      x-entity:
+        domain: orders
+        type: aggregate
+        encryptedProperties: [taxId]
       properties:
         id: { type: string, format: uuid }
 
