@@ -34,6 +34,7 @@ than conventional.
 | `validate-arazzo-spectral.sh` | Arazzo against the kit's Spectral ruleset. |
 | `validate-openapi-generator.sh` | The spec is consumable by openapi-generator. |
 | `check-extension-vocabulary.py` | The rulesets' closed vendor-extension guards still cover the generator's vocabulary — run by `validate-spectral.sh` before it lints. |
+| `spectral-overlay-diff.py` | Which of *your* Spectral rules the kit now owns. Not part of `validate-specs.sh` — run it by hand when adopting or re-adopting the kit's rulesets. |
 
 **Why the vocabulary check exists.** Several rules validate a vendor extension
 with `additionalProperties: false`. That is a closed schema over a vocabulary
@@ -52,6 +53,30 @@ so the skip cannot become the normal state. `SPECFUSE_GENERATOR_JAR` points it
 at a specific jar. A generator key that legitimately belongs to a different
 surface goes in `.specfuse/authoring/vocabulary-exceptions.yaml` with a reason —
 declared, not silently tolerated.
+
+**Why the overlay diff exists.** If your `.spectral.yaml` was copied from
+another Specfuse project rather than written against the kit, it is a *fork* of
+the kit's own rules under older ids (`rm-*` rather than `specfuse-*`). Extending
+the kit on top of that double-reports every shared rule — two ids, two findings,
+one violation — and the natural reaction is to back the change out. The script
+classifies every rule as redundant / diverged / project-specific / kit-only-new,
+matching ids through `.specfuse/authoring/schemas/spectral/rule-renames.yaml`,
+so the deletion is a decision rather than a guess:
+
+```bash
+pip install PyYAML   # its only dependency
+python3 scripts/specfuse/spectral-overlay-diff.py \
+  --kit-ruleset     .specfuse/authoring/schemas/spectral/specfuse-openapi.yaml \
+  --project-ruleset api/spectral.myproject.yaml
+```
+
+Exit `0` nothing redundant, `1` redundant rules found, `2` could not run — and
+it treats a wrong file pair or a stale map as could-not-run rather than reporting
+a clean bill of health for a comparison that never happened. The full procedure,
+including the order that keeps the gate on throughout, is in
+`.specfuse/authoring/schemas/README.md` §"Reducing an overlay that forked from
+the kit". Once the overlay is reduced the script exits `0` and is worth leaving
+in CI: it then fails the day someone re-adds a rule the kit already owns.
 
 The Spectral validators lint against the rulesets delivered into
 `.specfuse/authoring/schemas/spectral/`, so they follow the kit rather than a
@@ -94,7 +119,7 @@ npm install -g @stoplight/spectral-cli             # the Spectral validators
 npm install -g @openapitools/openapi-generator-cli # validate-openapi-generator
 npm install -g @asyncapi/cli                       # serve-async-docs
 pipx install specfuse                              # generation (the whole Specfuse suite)
-pip install PyYAML                                 # bundle-async-spec (dedup pass)
+pip install PyYAML                                 # bundle-async-spec (dedup pass), spectral-overlay-diff
 ```
 
 Each script checks for what it needs and prints the install command if it is

@@ -5,10 +5,22 @@
 # spectral-overlay-diff.py — classify a project Spectral ruleset against the
 # kit's, so an overlay that FORKED from the kit can be reduced safely.
 #
-# REFERENCE IMPLEMENTATION, NOT A SUPPORTED KIT TOOL, on the same terms as
-# `spectral-ratchet.py`: documented, working, no compatibility guarantee across
-# kit releases. Copy it and own it. See `schemas/README.md` §"Reducing an
-# overlay that forked from the kit" for the procedure this supports.
+# KIT-OWNED, AND SHIPPED INTO PROJECTS. It lives in `scripts/specfuse/`, which
+# `specfuse authoring upgrade` replaces wholesale — edits here are overwritten on
+# the next upgrade. That is the opposite of `spectral-ratchet.py`, which stays a
+# copy-it-and-own-it reference implementation in the kit repo, and the difference
+# is deliberate: the ratchet is run for months inside a project's own CI, where
+# local ownership is the point, while this one is run DURING an upgrade — the
+# moment when telling someone to go fetch a file from another repository is worst.
+#
+# In a project:
+#
+#   python3 scripts/specfuse/spectral-overlay-diff.py \
+#     --kit-ruleset     .specfuse/authoring/schemas/spectral/specfuse-openapi.yaml \
+#     --project-ruleset api/spectral.myproject.yaml
+#
+# See `.specfuse/authoring/schemas/README.md` §"Reducing an overlay that forked
+# from the kit" for the procedure this supports.
 #
 # WHY
 #
@@ -70,7 +82,7 @@
 # question is which rules the project itself declares, and following the chain
 # after adoption would report the kit's own rules back as the project's.
 #
-# Usage:
+# Usage (from the kit repo; see above for the in-project form):
 #   spectral-overlay-diff.py \
 #     --kit-ruleset schemas/spectral/specfuse-openapi.yaml \
 #     --project-ruleset api/spectral.myproject.yaml \
@@ -381,8 +393,9 @@ def main() -> int:
 
     if redundant and not args.report_only:
         print("\n❌ The overlay still duplicates rules the kit owns. Extending the kit "
-              "as-is\n   double-reports every one of them. See schemas/README.md "
-              "§\"Reducing an\n   overlay that forked from the kit\" for the order to "
+              "as-is\n   double-reports every one of them. See "
+              "schemas/README.md §\"Reducing an overlay\n   that forked from the kit\" "
+              "(shipped at .specfuse/authoring/schemas/README.md)\n   for the order to "
               "do this in.", file=sys.stderr)
         return 1
 
