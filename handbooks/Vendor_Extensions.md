@@ -1025,7 +1025,11 @@ Rules 5 and 6 were documented here for some time and enforced by **nothing** on 
 
 **`SENSITIVE_FIELD_IN_RESPONSE` — the `exposed` escape hatch**
 
-The generator's `SENSITIVE_FIELD_IN_RESPONSE` rule flags any **response-bound** entity property whose name is *secret-shaped* — a **string**-typed property whose name ends in `hash`, `secret`, `salt` or `password` (case-insensitive) — because such a field on a response DTO is a likely credential leak.
+The generator's `SENSITIVE_FIELD_IN_RESPONSE` rule flags any **response-bound** entity property whose name is *secret-shaped* — a **string**-typed property whose name ends in `hash`, `secret`, `salt` or `password` (case-insensitive) — because such a field reaching a response is a likely credential leak.
+
+> **The rule only sees `x-entity` schemas, and that is where the guarantee stops.** A secret-shaped property on a plain response DTO — one with no `x-entity` — is outside the rule entirely, whatever it is named and whatever it returns. Measured against generator `0.7.0`: `Account.accountSecret` on an entity schema is flagged; `TokenResponse.deviceSecret` on an ordinary response schema is not, in the same document, in the same run.
+>
+> That limit is not obvious from the rule's name, and it is the shape a leak actually takes — a response DTO that returns a freshly minted bearer token has no entity behind it to be checked. **Nothing in the kit or the generator guards it.** If you mint credentials into response DTOs, review them by hand or add a project overlay rule; do not read a clean validation run as coverage. Reported by a consumer against three such flows (`clabonte/generator#1233`).
 
 > **`*Token` is not in the heuristic**, and earlier revisions of this section wrongly said it was. The generator excludes plain `*token` deliberately: a one-time or public token is not a persisted credential, and including the suffix flagged enough legitimate fields to make the rule noise. Do not reach for `x-classification: [exposed]` to "clear" a `shareToken` — nothing was ever flagging it, and an `exposed` that overrides nothing is an assertion in the spec with no reviewer behind it.
 >
@@ -1035,7 +1039,7 @@ A secret-shaped, response-bound property **passes** the rule only if it carries 
 
 - `writeOnly: true` — the field is never serialized onto responses, so there is nothing to leak; or
 - `x-internal-only: true` — the field is stripped from all external response layers (see §1.3); or
-- `x-classification: [encrypted]` — the serialized value is opaque ciphertext; or
+- `x-protection: {atRest: encrypted}` — the serialized value is opaque ciphertext. **Not `x-classification: [encrypted]`**, which `0.7.0` rejects outright (`INVALID_EXTENSION_VALUE`): it stops the rule firing only because the document no longer validates at all; or
 - `x-classification: [exposed]` — a reviewer has confirmed the field is safe to return as-is.
 
 `x-classification: [sensitive]` alone does **not** satisfy the rule: `sensitive` means *must be masked*, not *may be exposed*. Using `exposed` is an explicit, reviewed override — reach for it only when the secret-shaped name is a false positive, e.g. a public `avatarHash` content-address. Not for a `*Token`: that suffix is not in the heuristic at all, so there is nothing to override.
