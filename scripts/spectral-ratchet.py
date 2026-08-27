@@ -55,9 +55,28 @@
 # hard failure on every rule at once. This script detects that shape and tells
 # you to re-baseline instead of dumping 200 spurious regressions.
 #
+# Re-baselining, though, is the blunt fix: it accepts today's counts as the new
+# floor and throws away the record of what you had already paid down. The sharp
+# fix is to REKEY the baseline you have. `--migrate-rule-ids` does that, through
+# `schemas/spectral/rule-renames.yaml`, and reports each baselined rule as:
+#
+#   renamed         the map names a successor; the count moves across
+#   unchanged       already canonical; kept as-is
+#   no counterpart  project-specific; the kit does not own it; kept as-is
+#   retired         deleted with no successor; the key is DROPPED
+#
+# plus, in the other direction, every rule the kit defines that the baseline has
+# no entry for. Those are new coverage: they will fail on the first run, and
+# they need a deliberate seed rather than a surprise.
+#
+# The migration is held to the same standard as everything else here: a
+# migration that leaves the baseline empty is refused, because an empty baseline
+# is indistinguishable from a working one until the day it should have fired.
+#
 # Usage:
 #   spectral-ratchet.py --ruleset <path> --baseline <path> <target> [<target>...]
-#   spectral-ratchet.py ... --update      # rewrite the baseline from this run
+#   spectral-ratchet.py ... --update             # rewrite the baseline from this run
+#   spectral-ratchet.py --ruleset <path> --baseline <path> --migrate-rule-ids
 #
 # Exit codes: 0 pass, 1 regression, 2 could not run.
 
@@ -68,6 +87,7 @@ import json
 import shutil
 import subprocess
 import sys
+import textwrap
 from collections import Counter
 from pathlib import Path
 
@@ -162,6 +182,248 @@ def looks_like_a_rename(baseline: dict[str, int], counts: Counter) -> bool:
     return baselined_all_silent and len(unknown) >= max(2, len(baseline) // 2)
 
 
+# ---------------------------------------------------------------------------
+# --migrate-rule-ids: rekey a committed baseline through the kit's rename map.
+# Everything below is reached only by that flag, and PyYAML is imported lazily
+# so the ratchet proper stays stdlib-only for anyone who copies it.
+# ---------------------------------------------------------------------------
+
+RENAME_MAP_NAME = "rule-renames.yaml"
+
+
+def _yaml():
+    try:
+        import yaml  # noqa: PLC0415 — deliberately lazy, see above
+    except ImportError:
+        die(
+            "--migrate-rule-ids needs PyYAML to read the rename map and the ruleset.",
+            "  pip install PyYAML",
+            "The ratchet itself is stdlib-only; this import is deliberately lazy",
+            "so copying the script into a project does not add a dependency.",
+        )
+    return yaml
+
+
+def _load_yaml(path: Path, what: str) -> dict:
+    if not path.exists():
+        die(f"no {what} at {path}.")
+    try:
+        doc = _yaml().safe_load(path.read_text())
+    except Exception as exc:  # yaml.YAMLError, but yaml is imported lazily
+        die(f"{what} {path} is not valid YAML ({exc}).")
+    if not isinstance(doc, dict):
+        die(f"{what} {path} must be a mapping.")
+    return doc
+
+
+def ruleset_rule_ids(path: Path, seen: set[Path] | None = None) -> set[str]:
+    """Every rule id a ruleset declares, following its local `extends` files.
+
+    A rule set to `off`/`false` is an inherited rule being DISABLED, not
+    coverage — counting it would report a switched-off rule as new coverage the
+    baseline is missing.
+    """
+    seen = seen if seen is not None else set()
+    path = path.resolve()
+    if path in seen:
+        return set()
+    seen.add(path)
+
+    doc = _load_yaml(path, "ruleset")
+    ids = {
+        name
+        for name, body in (doc.get("rules") or {}).items()
+        if body not in (False, "off", None)
+    }
+
+    extends = doc.get("extends")
+    for entry in extends if isinstance(extends, list) else [extends]:
+        # `extends` entries are either a path, or a [path, severity] pair. The
+        # built-in rulesets ("spectral:oas") are not ours to audit.
+        target = entry[0] if isinstance(entry, (list, tuple)) and entry else entry
+        if not isinstance(target, str) or target.startswith("spectral:"):
+            continue
+        child = (path.parent / target).resolve()
+        if child.exists():
+            ids |= ruleset_rule_ids(child, seen)
+    return ids
+
+
+def load_rename_map(path: Path, ruleset: Path) -> tuple[dict, dict, dict, set, str | None]:
+    """Flatten the per-surface map, and say which surface `ruleset` is.
+
+    Rule ids are globally unique across the three surfaces, so a baseline that
+    spans them migrates correctly against the flattened map. The surface is
+    still identified, because it is what makes the staleness check possible:
+    only the surface matching `--ruleset` can be checked against it.
+    """
+    doc = _load_yaml(path, "rename map")
+    surfaces = doc.get("rulesets")
+    if not isinstance(surfaces, dict) or not surfaces:
+        die(f"rename map {path} declares no `rulesets:`.")
+
+    renames: dict[str, str] = {}
+    non_mechanical: dict[str, dict] = {}
+    retained: dict[str, dict] = {}
+    retired: set[str] = set()
+    surface: str | None = None
+
+    for name, body in surfaces.items():
+        if not isinstance(body, dict):
+            die(f"rename map {path}: surface `{name}` must be a mapping.")
+        for legacy, canonical in (body.get("renames") or {}).items():
+            if renames.get(legacy, canonical) != canonical:
+                die(
+                    f"rename map {path}: `{legacy}` maps to two different ids "
+                    f"({renames[legacy]} and {canonical}).",
+                    "Rule ids are global; an id cannot have two successors.",
+                )
+            renames[legacy] = canonical
+        non_mechanical.update(body.get("non_mechanical") or {})
+        retained.update(body.get("retained") or {})
+        retired.update(body.get("retired") or [])
+        if Path(str(body.get("kit", ""))).name == ruleset.name:
+            surface = name
+
+    if not renames:
+        die(f"rename map {path} declares no renames — nothing to migrate through.")
+    return renames, non_mechanical, retained, retired, surface
+
+
+def check_map_is_live(path: Path, surfaces_doc: dict, surface: str | None,
+                      ruleset: Path, kit_ids: set[str]) -> None:
+    """Refuse a stale map rather than migrating a baseline onto dead rule ids.
+
+    Only the surface whose `kit:` file matches `--ruleset` can be checked: the
+    other surfaces name rules this ruleset legitimately does not define.
+    """
+    if surface is None:
+        print(f"    note: {path} declares no surface for {ruleset.name}, so its "
+              f"targets could not be checked against it.")
+        return
+    targets = set((surfaces_doc[surface].get("renames") or {}).values())
+    missing = sorted(targets - kit_ids)
+    if missing:
+        die(
+            f"the rename map is stale for surface `{surface}`.",
+            f"It maps onto {len(missing)} rule id(s) that {ruleset} does not define:",
+            "  " + ", ".join(missing[:8]),
+            "Migrating through it would move counts onto rules that no longer",
+            "exist, which is silence with extra steps. Fix the map first.",
+        )
+
+
+def migrate_rule_ids(args) -> int:
+    baseline = load_baseline(args.baseline)
+    if not baseline:
+        die(
+            f"baseline {args.baseline} is empty — there is nothing to migrate.",
+            "An empty baseline is not a starting point; it is a gate with no floor.",
+        )
+
+    map_path = args.rule_renames or (args.ruleset.parent / RENAME_MAP_NAME)
+    renames, non_mechanical, retained, retired, surface = load_rename_map(
+        map_path, args.ruleset)
+    kit_ids = ruleset_rule_ids(args.ruleset)
+    if not kit_ids:
+        die(f"{args.ruleset} declares no rules — refusing to migrate against it.")
+
+    print(f"==> migrating {args.baseline} through {map_path}")
+    print(f"    {len(baseline)} baselined rule(s); {args.ruleset.name} defines {len(kit_ids)}")
+    check_map_is_live(map_path, _load_yaml(map_path, "rename map")["rulesets"],
+                      surface, args.ruleset, kit_ids)
+
+    migrated: dict[str, int] = {}
+    sources: dict[str, list[str]] = {}
+    dropped: list[tuple[str, int]] = []
+    flagged: list[str] = []
+
+    for rule, count in sorted(baseline.items()):
+        if rule in retired:
+            dropped.append((rule, count))
+            print(f"  🗑  RETIRED         {rule}: {count} — no successor; key dropped")
+            continue
+        target = renames.get(rule)
+        if target is not None:
+            note = non_mechanical.get(rule)
+            if note:
+                flagged.append(rule)
+                print(f"  ⚠️  RENAMED*        {rule} -> {target}  "
+                      f"(NOT a prefix swap, kind: {note.get('kind', 'renamed')})")
+            else:
+                print(f"  ↦  renamed         {rule} -> {target}")
+        elif rule in kit_ids:
+            target = rule
+            print(f"  ·  unchanged       {rule} — already canonical")
+        else:
+            target = rule
+            entry = retained.get(rule) or {}
+            overlay = entry.get("overlay_for") or entry.get("partially_superseded_by")
+            tail = f" (the kit's {overlay} covers the shape only)" if overlay else ""
+            print(f"  ▸  no counterpart  {rule} — project-specific; kept{tail}")
+        migrated[target] = migrated.get(target, 0) + count
+        sources.setdefault(target, []).append(rule)
+
+    collisions = {t: s for t, s in sources.items() if len(s) > 1}
+    if collisions:
+        die(
+            f"{len(collisions)} rule id(s) would be written twice by this migration.",
+            *[f"  {t} <- {', '.join(s)}" for t, s in sorted(collisions.items())],
+            "That happens when a rule was MERGED into another one and both legacy",
+            "ids carry a count. Summing them double-counts and taking one of them",
+            "discards debt, so neither is safe to guess. Resolve the entries by",
+            "hand — or re-seed those rules with --update and read the diff.",
+        )
+
+    # Silence is failure, and it is failure here too. A migration that leaves
+    # nothing behind produces a baseline that can never fail, which is exactly
+    # the state --update refuses to write for the same reason.
+    if not migrated or sum(migrated.values()) == 0:
+        die(
+            f"the migration would leave the baseline empty ({len(baseline)} rule(s) in, "
+            f"{len(migrated)} out).",
+            "An empty baseline never fails, so this cannot be distinguished from a",
+            "working gate until the day it should have fired. Refusing to write it.",
+            "Dropped: " + ", ".join(r for r, _ in dropped[:8]) if dropped else
+            "Every entry migrated to a zero count.",
+        )
+
+    new_in_kit = sorted(kit_ids - set(migrated))
+    print(f"\n==> {len(migrated)} rule(s) after migration "
+          f"({sum(migrated.values())} errors carried).")
+
+    if flagged:
+        print(f"\n⚠️  {len(flagged)} rename(s) were NOT a prefix swap. A mechanical "
+              f"rewrite gets these wrong,")
+        print("   and the successor's semantics may differ — re-read the count "
+              "rather than trusting it:")
+        for rule in flagged:
+            print(f"     {rule} -> {renames[rule]}")
+            note = " ".join((non_mechanical[rule].get("note") or "").split())
+            if note:
+                print(textwrap.fill(note, width=78, initial_indent="       ",
+                                    subsequent_indent="       "))
+
+    if new_in_kit:
+        print(f"\n📋 {len(new_in_kit)} rule(s) are defined by {args.ruleset.name} with "
+              f"no baseline entry.")
+        print("   These are new coverage. Any of them that fires will fail the ratchet")
+        print("   on the first run — which is correct, but it should be a decision and")
+        print("   not a surprise. Seed them deliberately: run once without --update,")
+        print("   read what fires, fix what should be fixed, then --update the rest.")
+        for rule in new_in_kit:
+            print(f"     {rule}")
+
+    if args.dry_run:
+        print(f"\n(--dry-run: {args.baseline} not written.)")
+        return 0
+
+    args.baseline.write_text(json.dumps(dict(sorted(migrated.items())), indent=2) + "\n")
+    print(f"\n==> {args.baseline} rekeyed. Commit it with the ruleset bump, "
+          f"not separately.")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         prog="spectral-ratchet.py",
@@ -173,8 +435,35 @@ def main() -> int:
                     help="rewrite the baseline from this run")
     ap.add_argument("--force", action="store_true",
                     help="allow --update through the too-good-to-be-true guard")
-    ap.add_argument("targets", nargs="+")
+    ap.add_argument("--migrate-rule-ids", action="store_true",
+                    help="rekey the baseline through the ruleset's rule-renames.yaml "
+                         "instead of linting; does not run Spectral")
+    ap.add_argument("--rule-renames", type=Path, default=None,
+                    help=f"rename map (default: {RENAME_MAP_NAME} beside --ruleset)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="with --migrate-rule-ids, report without writing")
+    ap.add_argument("targets", nargs="*")
     args = ap.parse_args()
+
+    if args.migrate_rule_ids:
+        if args.update:
+            die("--migrate-rule-ids and --update do opposite things.",
+                "--update accepts today's counts as the new floor; --migrate-rule-ids",
+                "carries the counts you already have onto the new ids. Pick one.")
+        if args.targets:
+            die("--migrate-rule-ids does not lint, so it takes no targets.",
+                f"Unexpected: {' '.join(args.targets)}")
+        return migrate_rule_ids(args)
+
+    if args.dry_run or args.rule_renames:
+        # Silently ignoring a flag is how someone believes a run was a dry one.
+        die("--dry-run and --rule-renames only apply to --migrate-rule-ids.",
+            "A lint run does not read the rename map and --update is not a dry",
+            "operation, so accepting these here would promise something false.")
+
+    if not args.targets:
+        die("no targets given — nothing to lint.",
+            "Pass the specs to lint, or --migrate-rule-ids to rekey the baseline.")
 
     counts = counts_by_rule(run_spectral(args.ruleset, args.targets))
     total = sum(counts.values())
@@ -197,7 +486,12 @@ def main() -> int:
         die(
             "every baselined rule is silent and unknown rules are firing.",
             "That is the shape of a ruleset-wide rule rename, not a regression.",
-            "Re-baseline against the new rule IDs after confirming the counts:",
+            "Rekey the baseline you have — it keeps the debt you already paid down:",
+            f"  {sys.argv[0]} --ruleset {args.ruleset} --baseline {args.baseline} "
+            f"--migrate-rule-ids",
+            "That maps every id through the ruleset's rule-renames.yaml and names",
+            "the renames a prefix swap gets wrong. Only if no map covers this",
+            "ruleset, re-baseline from scratch and read the diff:",
             f"  {sys.argv[0]} --ruleset {args.ruleset} --baseline {args.baseline} "
             f"{' '.join(args.targets)} --update",
         )

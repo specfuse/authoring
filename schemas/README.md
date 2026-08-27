@@ -8,6 +8,8 @@ Machine-readable enforcement of the conventions documented in `handbooks/`. Two 
   - `specfuse-asyncapi.yaml` — AsyncAPI 3.0 conventions
   - `specfuse-arazzo.yaml` — Arazzo 1.0.1 scenario/recipe conventions
 
+  plus `rule-renames.yaml`, the complete legacy `rm-*` → `specfuse-*` rule-id map, read by `scripts/spectral-ratchet.py --migrate-rule-ids` and `scripts/spectral-overlay-diff.py`. See "Rename tracking" below.
+
 The `$id` base for the JSON Schemas is `https://schemas.specfuse.dev/arazzo/...`. The IDs are stable identifiers — projects do not need to host the URL; tooling resolves locally via the path.
 
 ## How to consume
@@ -378,10 +380,160 @@ crash or a mistyped target looks like; pass `--force` when the cleanup is real.
 every rule once already (`rm-*` → `specfuse-*`), and a rename turns *"rule not
 in the baseline"* into a hard failure on every rule simultaneously. The script
 detects that shape — every baselined rule silent while unknown rules fire — and
-tells you to re-baseline rather than reporting a wall of spurious regressions.
-Re-baseline deliberately across any release that renames rules, and read the
-diff rather than trusting the counts to carry over.
+stops rather than reporting a wall of spurious regressions.
+
+### Rekeying a baseline across a rename
+
+Re-baselining from scratch is the blunt fix: it accepts today's counts as the
+new floor, which throws away the record of the debt you had already paid down
+and quietly re-admits anything that regressed in the meantime. `--migrate-rule-ids`
+rekeys the baseline you already have instead, through
+[`spectral/rule-renames.yaml`](spectral/rule-renames.yaml):
+
+```bash
+scripts/spectral-ratchet.py \
+  --ruleset  .specfuse/authoring/schemas/spectral/specfuse-openapi.yaml \
+  --baseline api/spectral-baseline.json \
+  --migrate-rule-ids            # add --dry-run to read the report first
+```
+
+It does not run Spectral. Every baselined rule is reported as one of:
+
+| Report | Meaning | What happens to the count |
+|---|---|---|
+| `renamed` | the map names a successor | moves to the new id |
+| `RENAMED*` | renamed, but **not** a pure prefix swap | moves — and the reason is printed, because the successor's semantics may differ |
+| `unchanged` | already canonical | kept |
+| `no counterpart` | project-specific; the kit does not own it | kept under its own id |
+| `RETIRED` | deleted with no successor | **dropped** |
+
+Then, in the other direction, it lists every rule the kit defines that the
+baseline has no entry for. Those are new coverage: whichever of them fire will
+fail the ratchet the first time it runs, which is correct but should be a
+decision rather than a surprise. Seed them deliberately.
+
+Three things it refuses to do, for the same reason the rest of this script
+refuses things:
+
+- **Empty the baseline.** If retirements would leave nothing behind, it exits
+  `2` without writing. An empty baseline never fails, so it is indistinguishable
+  from a working gate until the day it should have fired.
+- **Merge two counts into one id.** When a rule was folded into another and both
+  legacy ids carry a count, summing double-counts and picking one discards debt.
+  Neither is safe to guess, so it stops and names both.
+- **Run against a stale map.** Every rename target must still exist in the
+  ruleset. A map pointing at rules the kit has dropped would move counts onto
+  ids that can never fire again — silence with extra steps.
+
+## Reducing an overlay that forked from the kit
+
+Everything above assumes you are adopting the rulesets **fresh**: extend them,
+add your value-set overlays, done. There is a second case, and it is the one
+that actually occurs.
+
+The kit's rulesets were generalised from a real project by renaming every rule
+`rm-*` → `specfuse-*`. That project — and any project bootstrapped by copying
+its ruleset — is holding a **fork of the kit's own rules under different ids**.
+For them, adopting the kit means *deleting duplicates*, not adding rules.
+
+Extending the kit without deleting anything is the failure mode:
+
+```yaml
+extends:
+  - ../spec-authoring-kit/schemas/spectral/specfuse-openapi.yaml   # 111 rules
+rules:
+  rm-delete-204: { ... }        # the same rule again, under the old name
+  rm-etag-on-get: { ... }
+```
+
+Every shared rule now reports twice — two ids, two findings, one violation. The
+error count roughly doubles, every baseline entry is wrong by an unknown factor,
+and the natural reaction is to back the change out.
+
+### Which of your rules the kit now owns
+
+That is the whole decision, and it is not visible by reading either file. Across
+the source project's own OpenAPI overlay it is 89 rules against 111, splitting
+four ways — and the split does not follow the naming. Do it with the script —
+a **reference implementation, not a supported kit tool**, on the same terms as
+the ratchet above:
+
+```bash
+scripts/spectral-overlay-diff.py \
+  --kit-ruleset     .specfuse/authoring/schemas/spectral/specfuse-openapi.yaml \
+  --project-ruleset api/spectral.myproject.yaml \
+  --json overlay-classification.json
+```
+
+Exit `0` nothing redundant, `1` redundant rules found, `2` could not run. Ids
+are matched through `rule-renames.yaml`, because a same-id comparison of a
+pre-rename fork finds nothing at all.
+
+| Bucket | Meaning | Action |
+|---|---|---|
+| **redundant** | the kit owns it, and both bodies select and check the same thing | delete yours |
+| **diverged** | the kit owns the id, but the bodies differ — the script prints the difference | **read it**, then delete |
+| **project-specific** | no kit counterpart | keep |
+| **kit-only, new** | a kit rule you have no equivalent of | new coverage; expect findings |
+
+`diverged` is the bucket that matters. It is not the script hedging — it is
+usually the kit's copy being the *repaired* one. Thirty-two of the source
+project's rules land there, and most are the inert-`given` family from the
+section above: the project's copy has been selecting nothing for its entire
+life, so its baseline count of zero is not evidence of a clean spec. Deleting
+those in the same sweep as the exact duplicates is right; assuming their counts
+carry over is not.
+
+### What has to stay
+
+Everything in the **"What the project must provide (overlays)"** table above.
+The kit's rules are deliberately structural for values that are project-defined,
+so for each of those the kit ships the *shape* rule and you keep the *value-set*
+rule. `rule-renames.yaml` records the pairing under `retained:`, and the script
+prints it:
+
+```
+●  rm-auth-roles-allowed   (value set for the kit's shape-only specfuse-auth-roles-pascal)
+```
+
+Two more categories stay. Rules for **vendor extensions the kit does not
+define** are yours to own entirely. And rules the map marks
+`partially_superseded_by` — where a kit rule covers the same construct but not
+the same property of it — drop a real check if you delete them; fold them into
+an overlay or keep them as they are.
+
+### The order, so the gate is never off
+
+1. **Classify, and read it.** Run the script. Fix the map or the file pairing
+   until the buckets make sense, before touching a ruleset.
+2. **Rekey the baseline** — `spectral-ratchet.py --migrate-rule-ids --dry-run`,
+   then for real. Do this *before* the ruleset changes, so the commit is a pure
+   rename and the diff is readable.
+3. **Extend and delete in the same commit.** Add the kit `extends:` and delete
+   every `redundant` and `diverged` rule in one change. Split across two commits
+   the tree is either double-reporting or ungated at the join; do not push that
+   state, and do not leave it on a branch someone else may build on.
+4. **Seed the new coverage.** Run the ratchet without `--update` and read what
+   the kit-only rules report. Fix what should be fixed now, then `--update` so
+   the ratchet has a floor for the rest.
+5. **Re-run the classifier.** It should exit `0`. Leave it in CI at that: it
+   then fails the day someone re-adds a rule the kit already owns, which is how
+   the overlay grew into a fork in the first place.
+
+Step 5 is the part worth keeping. The classifier is not a migration script that
+gets thrown away; it is a gate with a reachable steady state.
 
 ## Rename tracking
 
-The kit renamed all Spectral rule identifiers from the legacy `rm-*` prefix (inherited from the source project) to `specfuse-*`. The 12 rules whose renames were declared canonical in `compatibility.md` §1 are tracked there; this commit applied the same `rm-* -> specfuse-*` rule mechanically to every other ruleset entry as well. See `compatibility.md` for the generator-side follow-up.
+The kit renamed all Spectral rule identifiers from the legacy `rm-*` prefix
+(inherited from the source project) to `specfuse-*`.
+
+**The complete map is [`spectral/rule-renames.yaml`](spectral/rule-renames.yaml).**
+It is data rather than prose because two tools read it —
+`spectral-ratchet.py --migrate-rule-ids` and `spectral-overlay-diff.py` — and
+because a subset written out in prose is worse than nothing: it reads as
+complete. Per surface it records every rename, every legacy id with **no** kit
+counterpart (naming the shape-only kit rule it overlays, where there is one),
+and separately the renames that are **not** a pure prefix swap — the ones a
+mechanical rewrite gets wrong. `compatibility.md` §1 points at it rather than
+restating a subset; see it for the generator-side follow-up.
