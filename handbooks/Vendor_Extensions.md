@@ -204,7 +204,7 @@ FEAT-2026-0080 adds six ERROR and two WARNING coherence rules:
 | `DELETE_REASON_INVALID` | ERROR | `reason` outside the closed set |
 | `DELETE_REASON_REQUIRES_HARD` | ERROR | `reason` alongside `mode: soft` |
 | `DELETE_REASON_TEXT_REQUIRED` | ERROR | `reason: other` without `reasonText`, **or** `reasonText` beside any other reason |
-| `DELETE_REASON_CONTRADICTED` | ERROR | the declared reason is refuted by the spec — e.g. `no-delete-surface` on an entity that *is* a DELETE target, or `patch-reconciled` where no parent `Update{Parent}` DTO carries a collection of it |
+| `DELETE_REASON_CONTRADICTED` | ERROR | the declared reason is refuted by the spec — e.g. `no-delete-surface` on an entity that *is* a DELETE target, or `patch-reconciled` where no parent `Update{Parent}` DTO carries a collection of it. The `patch-reconciled` arm over-fires on the canonical shape in `0.7.0` — see the warning under `delete.reason` |
 | `DELETE_REASON_MISSING` | — | reserved; not raised by default in `0.6.0` |
 
 ### `delete.reason` — why an entity is `hard` (generator 0.6.0)
@@ -222,7 +222,7 @@ x-entity:
 |---|---|
 | `no-delete-surface` | Nothing can delete this entity through the API; the `hard` default is never exercised. |
 | `reordered-rows` | Rows are removed and re-added as a normal flow (ordered collections). |
-| `patch-reconciled` | The collection is reconciled inside a parent's `PATCH` body, so children are removed there rather than through a DELETE route. |
+| `patch-reconciled` | The collection is reconciled inside a parent's `PATCH` body, so children are removed there rather than through a DELETE route. **Not usable against generator `0.7.0` — see the warning below.** |
 | `other` | Anything else. **Requires `reasonText`.** |
 
 Three constraints, all enforced in both directions:
@@ -230,6 +230,40 @@ Three constraints, all enforced in both directions:
 - `reasonText` is **required** by `other` and **forbidden** by every other value.
 - `reason` is meaningful only on `mode: hard`. On `soft` it is an error.
 - `patch-reconciled` is checked against the spec, not taken on trust: the generator looks for a parent `Update{Parent}` DTO carrying a collection of the entity, and errors if there is none.
+
+> **Do not declare `patch-reconciled` yet — generator `0.7.0` rejects the shape
+> that earns it.** The check resolves the parent's collection `items.$ref` only
+> to the entity itself, but the PATCH-reconcile pattern this contract mandates
+> puts the child's `Update{Child}` DTO there instead. So a spec that follows the
+> pattern correctly is exactly the spec the check refuses:
+>
+> ```
+> [ERROR] DELETE_REASON_CONTRADICTED: Schema 'ComplianceTemplateItem' declares
+> `x-entity.delete.reason: patch-reconciled`, but no parent Update{Parent} DTO
+> carries a collection of 'ComplianceTemplateItem'.
+> ```
+>
+> Reproduced against `specfuse-generator-0.7.0.jar` (the pinned jar) on a probe
+> whose only variable is what the parent's collection names: point it at
+> `UpdateComplianceTemplateItem` and this fires; point it at
+> `ComplianceTemplateItem` and it does not. Tracked as `clabonte/generator#1219`.
+>
+> **Until it lands, declare `reason: other` with a `reasonText` naming the real
+> reason and the blocking issue** — the member is unreachable, not unused, so a
+> clean validation run says nothing about it:
+>
+> ```yaml
+> x-entity:
+>   delete:
+>     mode: hard
+>     reason: other
+>     reasonText: >-
+>       Aggregate-internal child reconciled by the parent PATCH collection.
+>       Should be `patch-reconciled`; blocked by clabonte/generator#1219.
+> ```
+>
+> The token stays in the kit's guard because it is legal and matches the jar —
+> what is blocked is the shape that justifies it, not the spelling.
 
 **The key is optional in the kit, deliberately.** Whether a project *requires* a reason on every `hard` is a project convention, not a universal contract — a soft-delete-only project wants it mandatory; a project where `delete` is rarely declared does not. This is the same split `concurrency` already has. Projects that want it required add an overlay rule; see `schemas/README.md` §"What the project must provide".
 

@@ -781,7 +781,20 @@ Reported by `restomanager-specs` (`delete-cascade-semantics.md` §B/§C/§D). §
 
 **The key is optional, deliberately.** Whether a project *requires* a reason on every `hard` is a project convention, not a universal contract — the same split `concurrency` already has, and the split the reporter themselves proposed. Their house rules (require `reason` on `hard`; restrict the string shorthand to `soft`) stay out of the kit and live in their overlay.
 
-**`patch-reconciled` is no longer the trap it was.** §30 flagged `clabonte/generator#1219` — the contradiction check rejecting every PATCH-reconciled entity because it did not resolve the `Update{Child}` `items.$ref` indirection. `0.6.0`'s message now reads *"no parent `Update{Parent}` DTO carries a collection of 'X'"*, i.e. it resolves the parent relationship. The kit documents the member as usable on that basis.
+**`patch-reconciled` is still the trap it was — this entry was wrong, and how it was wrong is the point.** It previously read *"no longer the trap it was"*, reasoning that `0.6.0`'s message now says *"no parent `Update{Parent}` DTO carries a collection of 'X'"* and therefore resolves the parent relationship. That inferred a behaviour change from a **message-wording change**. Nobody ran the jar. `clabonte/generator#1219` is live in the currently pinned `0.7.0`.
+
+Measured 2026-08-27 against `specfuse-generator-0.7.0.jar`, sha256 `5eb35c18…`, byte-identical to `generator.lock`. One probe spec, one variable — what the parent's collection `items.$ref` names:
+
+| Parent `Update{Parent}` carries a collection of… | Result |
+|---|---|
+| `UpdateComplianceTemplateItem` — the `Update{Child}` DTO FEAT-2026-0066 mandates | `DELETE_REASON_CONTRADICTED` |
+| `ComplianceTemplateItem` — the entity itself | clean |
+
+Every other diagnostic is identical across the two runs (`DDD_UNCLASSIFIED_ENTITY_RELATIONSHIP`, `ENTITY_DOMAIN_UNREGISTERED` ×2, `ENTITY_ORPHAN` — background from a minimal probe). So the check still resolves `items.$ref` only to the entity, and **the spec shape the contract requires is exactly the spec shape it rejects.**
+
+**Consequence for the kit, and it is a documentation decision, not a rule change.** The guard enum is correct and stays — it matches the jar, and `reason: patch-reconciled` is a legal token that parses. What was wrong is the prose telling authors the member is usable. Until `#1219` lands, the honest instruction is *"use `other` and explain yourself in `reasonText`"*, which is what the reporting project already does on all three of its PATCH-reconciled children. `handbooks/Vendor_Extensions.md` §1.1, under *`delete.reason` — why an entity is `hard`*, now says so at the point of use.
+
+**The reusable lesson.** A member the pinned jar hard-errors on is the §18 case, not the §28 case: better diagnostics are not evidence of corrected behaviour, and the widen-vs-hold test is decided by running the jar, never by reading a message or a release note.
 
 **§C is not kit work and stays open upstream.** The reporter's own framing: *"All belong in the generator rather than the kit's lint — two need the operation set and the entity set at once."* Confirmed absent from `0.6.0`: `DELETE_HARD_WITH_DELETE_SURFACE`, `DELETE_RETENTION_SHORTER_THAN_ANCESTOR`, `DELETE_SOFT_CLASSIFIED_NO_RETENTION`, `OPERATION_DELETES_WITHOUT_TARGET`, `DELETE_HARD_AI_DELETE_GRANT`, `DELETE_SOFT_IMMUTABLE_CONFLICT` — all six filed as `#1209`/`#1210`/`#1211`. The one with a live backlog is `DELETE_SOFT_CLASSIFIED_NO_RETENTION` (7 entities), and it generalises hardest: `soft` retains the row, `retention` is what eventually destroys it, and an entity with neither keeps identifying data forever while reading as "deleted".
 
