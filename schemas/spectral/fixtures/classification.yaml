@@ -216,6 +216,18 @@ components:
           writeOnly: true
           x-classification: [sad]
           x-protection: { atRest: never_persist }
+        # MUST NOT fire. The hyphen spelling is valid — the generator
+        # normalises it to the same value, and `extensions` (the command the
+        # kit tells consumers to derive a ruleset from) prints THIS form, so a
+        # project following that instruction writes it. The kit used to reject
+        # it, which made the ruleset stricter than the contract it mirrors.
+        # This is not an x-entity schema, so never-persist is legitimate here
+        # and nothing may complain — about the spelling or the mapping.
+        cardVerificationValueHyphen:
+          type: string
+          writeOnly: true
+          x-classification: [sad]
+          x-protection: { atRest: never-persist }
 
     # ---- `exposed` pairings under the widened set. ------------------------
     # The contradiction set grew with the vocabulary. Without that, widening
@@ -240,6 +252,19 @@ components:
           description: Reviewed — shown during entry.
           x-classification: [sad, exposed]
           x-protection: { atRest: never_persist }
+        # MUST fire, for the same reason as exposedCvv above and under the OTHER
+        # spelling. The generator normalises `never_persist` and `never-persist`
+        # to one value, so a guard anchored on the underscore alone would let
+        # this through — clean report, no coverage, on a property that must
+        # never reach a column. This is the assertion that pins that shut.
+        # `pii`, deliberately: `credential` and `sad` each drag in a second
+        # rule, and an assertion that passes for two possible reasons does not
+        # pin the one it names.
+        hyphenNeverPersist:
+          type: string
+          description: Reviewed — hyphen spelling, same meaning.
+          x-classification: [pii]
+          x-protection: { atRest: never-persist }
         # MUST NOT fire — legitimately visible to the person it concerns.
         ownInvoiceTotal:
           type: number
@@ -296,7 +321,8 @@ components:
           type: string
           x-classification: [pii]
           x-protection: { atRest: bogus }
-        # MUST fire: camelCase spelling is not accepted — the separator is `_`.
+        # MUST fire: camelCase is still not accepted. The generator's
+        # normalisation collapses separators, not case boundaries.
         camelNeverPersist:
           type: string
           x-classification: [pii]

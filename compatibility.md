@@ -798,6 +798,38 @@ Every other diagnostic is identical across the two runs (`DDD_UNCLASSIFIED_ENTIT
 
 **§C is not kit work and stays open upstream.** The reporter's own framing: *"All belong in the generator rather than the kit's lint — two need the operation set and the entity set at once."* Confirmed absent from `0.6.0`: `DELETE_HARD_WITH_DELETE_SURFACE`, `DELETE_RETENTION_SHORTER_THAN_ANCESTOR`, `DELETE_SOFT_CLASSIFIED_NO_RETENTION`, `OPERATION_DELETES_WITHOUT_TARGET`, `DELETE_HARD_AI_DELETE_GRANT`, `DELETE_SOFT_IMMUTABLE_CONFLICT` — all six filed as `#1209`/`#1210`/`#1211`. The one with a live backlog is `DELETE_SOFT_CLASSIFIED_NO_RETENTION` (7 entities), and it generalises hardest: `soft` retains the row, `retention` is what eventually destroys it, and an entity with neither keeps identifying data forever while reading as "deleted".
 
+### 33. `atRest` separator: the kit pinned a spelling its own published vocabulary does not use
+
+**Status:** kit-side **ADOPTED**; four generator-side asks filed below. Reported in the consumer handoff `extensions-underreports-nested-shapes.md`.
+
+The kit pinned `x-protection.atRest: never_persist` (underscore) with the comment *"the separator is an underscore"*. Measured against the pinned `specfuse-generator-0.7.0.jar` — it lower-cases and normalises separators before matching, so both forms reach it as one value:
+
+| `atRest` | Generator 0.7.0 | Kit before | Kit now |
+|---|---|---|---|
+| `never_persist` | accepts | accepts | accepts |
+| `never-persist` | accepts | **rejects** (`specfuse-xprotection-shape`) | accepts |
+| `neverPersist` | rejects | rejects | rejects |
+
+`specfuse-generator extensions` — the command this file tells consumers to derive a ruleset from (follow-ups 17/24) — prints the **hyphen** form. So the kit rejected the spelling the generator's own published vocabulary advertises, and a project that followed the derive-from-`extensions` instruction got a false positive from the kit for doing exactly that.
+
+**The half that mattered more.** Widening the enum alone would have opened a hole. `specfuse-xprotection-never-persist-not-mapped` guarded with `notMatch: "^never_persist$"`; against a widened enum the hyphen spelling walks straight past it, on a *"this must never reach a column"* check. Measured before fixing:
+
+```
+entity property atRest: never_persist -> specfuse-xprotection-never-persist-not-mapped
+entity property atRest: never-persist -> NOTHING FIRED
+```
+
+The guard now matches `^never[_-]persist$`, and `fixtures/classification.yaml` pins both directions: the hyphen spelling fires on an `x-entity` property, and stays silent on a request DTO where it is legitimate. Reverting either half fails CI with the message naming that half — the reporter inferred this consequence without running the kit's ruleset, and it reproduced.
+
+**Generator-side asks from the same handoff, none adopted here because none is kit work:**
+
+1. `extensions` prints `protection` as if it were a scalar enum by flattening its child `atRest`'s values onto it, and omits its other seven members. The JSON format already expresses nesting — `concurrency` uses `members` correctly — so this is a correct-use fix, not a format change. Until then *"`values` on a key"* cannot be read as *"this key takes one of these"*, which is the assumption the whole derive-from-`extensions` instruction rests on.
+2. `.classification` omits `encrypted` from its published values while the jar still accepts it. The kit's position is unchanged: `encrypted` is retired as a classification (follow-up 26, `specfuse-classification-encrypted-superseded`), so no kit change follows.
+3. A jar-scanning drift guard cannot distinguish these cases from the output alone — relevant to `check-extension-vocabulary.py`, which is why it is deliberately one-way.
+4. `x-entity.encryptedProperties` is retired generator-side. **Already done kit-side** — the guard no longer declares it.
+
+**Severity:** additive for specs using the underscore, which is every spec written against the handbook so far. It removes a false positive rather than creating a finding, and it closes a guard that would have gone silent the moment anyone fixed the false positive without the second half.
+
 ---
 
 ## Outstanding kit-side work

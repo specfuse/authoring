@@ -594,6 +594,10 @@ jobs:
             "specfuse-classification-exposed-contradiction|exposedButEncrypted|exposed + an encrypted atRest was accepted"
             "specfuse-xprotection-sad-not-persisted|exposedCvv|sad on an x-entity property was accepted (PCI-DSS: never stored)"
             "specfuse-xprotection-never-persist-not-mapped|exposedCvv|never_persist on a persisted x-entity property was accepted"
+            # BOTH spellings. The generator normalises them to one value, so a
+            # guard anchored on the underscore alone reports clean while
+            # covering nothing — on a property that must never reach a column.
+            "specfuse-xprotection-never-persist-not-mapped|hyphenNeverPersist|never-persist (hyphen) on a persisted x-entity property was accepted"
           )
           for row in "${EXPECTED[@]}"; do
             IFS='|' read -r rule needle why <<<"$row"
@@ -617,6 +621,19 @@ jobs:
           if grep -E "specfuse-(classification|xprotection)" "$REPORT" | grep "error" | grep -q "Customer"; then
             echo "::error::A classification rule raised an ERROR on the Customer control schema," >&2
             echo "every property of which is correctly classified. It is over-matching." >&2
+            fail=1
+          fi
+
+          # …and the hyphen spelling must be ACCEPTED where it is legitimate.
+          # `extensions` prints that form, so a project deriving its ruleset
+          # from the generator's published vocabulary writes it. The kit pinned
+          # the underscore and rejected it — stricter than the contract it
+          # mirrors. Widening the enum is only half the fix; the guard above is
+          # the other half, and this control is what proves the widening did
+          # not simply turn the guard off.
+          if grep -E "specfuse-xprotection" "$REPORT" | grep -q "cardVerificationValueHyphen"; then
+            echo "::error::x-protection.atRest 'never-persist' was flagged on a non-entity" >&2
+            echo "request DTO. Both separators are valid; the generator normalises them." >&2
             fail=1
           fi
 
