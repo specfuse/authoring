@@ -452,7 +452,7 @@ jobs:
           set -uo pipefail
           WORK="${RUNNER_TEMP}/overlay"; mkdir -p "$WORK"
           K=schemas/spectral/specfuse-openapi.yaml
-          D=scripts/spectral-overlay-diff.py
+          D=templates/project-init/scripts/specfuse/spectral-overlay-diff.py
           fail=0
 
           # A fork of the kit under legacy ids: one exact duplicate, one that

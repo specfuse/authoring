@@ -8,7 +8,7 @@ Machine-readable enforcement of the conventions documented in `handbooks/`. Two 
   - `specfuse-asyncapi.yaml` — AsyncAPI 3.0 conventions
   - `specfuse-arazzo.yaml` — Arazzo 1.0.1 scenario/recipe conventions
 
-  plus `rule-renames.yaml`, the complete legacy `rm-*` → `specfuse-*` rule-id map, read by `scripts/spectral-ratchet.py --migrate-rule-ids` and `scripts/spectral-overlay-diff.py`. See "Rename tracking" below.
+  plus `rule-renames.yaml`, the complete legacy `rm-*` → `specfuse-*` rule-id map, read by `spectral-ratchet.py --migrate-rule-ids` and `scripts/specfuse/spectral-overlay-diff.py`. See "Rename tracking" below.
 
 The `$id` base for the JSON Schemas is `https://schemas.specfuse.dev/arazzo/...`. The IDs are stable identifiers — projects do not need to host the URL; tooling resolves locally via the path.
 
@@ -251,7 +251,9 @@ given: $.paths[*][?(["get","post","put","patch","delete"].indexOf(@property) !==
 
 ### The check
 
-`scripts/spectral-rule-coverage.py` audits this automatically. For each rule it
+`scripts/spectral-rule-coverage.py` audits this automatically. Like the ratchet
+below, it is a kit-repo tool you copy rather than one the kit delivers — the
+path is in the kit's source tree, not in your project. For each rule it
 synthesises a probe with the same `given` and the same `resolved` setting, and a
 `then` that fails against any value at all:
 
@@ -354,6 +356,36 @@ implementation, not a supported kit tool** — documented, working, and carrying
 no compatibility guarantee across kit releases. Copy it into your project and
 own it. The kit is a spec-authoring contract, deliberately not a CI product.
 
+**It does not ship into your project, so every `scripts/spectral-ratchet.py` on
+this page is a path in the kit repository, not in yours.** Same for
+`scripts/spectral-rule-coverage.py`. Both are things you run for months inside
+your own CI, which is exactly where owning the copy is the point — but it does
+mean you have to fetch them once. From a provisioned project the kit is not on
+disk (only its contract is, under `.specfuse/authoring/`), so take them from the
+source tree:
+
+```bash
+# once, from a checkout of github.com/specfuse/authoring
+cp spec-authoring-kit/scripts/spectral-ratchet.py       scripts/
+cp spec-authoring-kit/scripts/spectral-rule-coverage.py scripts/
+```
+
+Put them in `scripts/`, **not** `scripts/specfuse/`. An upgrade will not delete
+a file it never wrote — it keeps it and says so on every run:
+
+```
+kept scripts/specfuse/spectral-ratchet.py: not shipped by this kit and not
+written by a prior init/upgrade — delete it manually if it is stale.
+```
+
+— but `scripts/specfuse/` is the kit's namespace, and a copy sitting in it is
+one kit release away from being silently replaced by a file of the same name.
+`scripts/` is yours and nothing in an upgrade reads or writes it.
+
+`spectral-overlay-diff.py` is the one exception on this page: it *is* kit-owned
+and delivered, and its in-project path is
+`scripts/specfuse/spectral-overlay-diff.py`.
+
 ```bash
 # seed a baseline from where you are today
 scripts/spectral-ratchet.py --ruleset <ruleset> --baseline .spectral-baseline.json <targets> --update
@@ -454,16 +486,21 @@ and the natural reaction is to back the change out.
 
 That is the whole decision, and it is not visible by reading either file. Across
 the source project's own OpenAPI overlay it is 89 rules against 111, splitting
-four ways — and the split does not follow the naming. Do it with the script —
-a **reference implementation, not a supported kit tool**, on the same terms as
-the ratchet above:
+four ways — and the split does not follow the naming. Do it with the script,
+which the kit **ships into your project** at `scripts/specfuse/` and replaces on
+every upgrade:
 
 ```bash
-scripts/spectral-overlay-diff.py \
+python3 scripts/specfuse/spectral-overlay-diff.py \
   --kit-ruleset     .specfuse/authoring/schemas/spectral/specfuse-openapi.yaml \
   --project-ruleset api/spectral.myproject.yaml \
   --json overlay-classification.json
 ```
+
+It ships rather than staying a reference implementation because it is the one
+tool here you run *during* an upgrade — the moment at which "go and fetch a file
+from the kit repository first" is the least useful instruction the kit could
+give. It needs PyYAML (`pip install PyYAML`) and nothing else.
 
 Exit `0` nothing redundant, `1` redundant rules found, `2` could not run. Ids
 are matched through `rule-renames.yaml`, because a same-id comparison of a
@@ -504,8 +541,9 @@ an overlay or keep them as they are.
 
 ### The order, so the gate is never off
 
-1. **Classify, and read it.** Run the script. Fix the map or the file pairing
-   until the buckets make sense, before touching a ruleset.
+1. **Classify, and read it.** Run `scripts/specfuse/spectral-overlay-diff.py`.
+   Fix the map or the file pairing until the buckets make sense, before touching
+   a ruleset.
 2. **Rekey the baseline** — `spectral-ratchet.py --migrate-rule-ids --dry-run`,
    then for real. Do this *before* the ruleset changes, so the commit is a pure
    rename and the diff is readable.
@@ -530,7 +568,8 @@ The kit renamed all Spectral rule identifiers from the legacy `rm-*` prefix
 
 **The complete map is [`spectral/rule-renames.yaml`](spectral/rule-renames.yaml).**
 It is data rather than prose because two tools read it —
-`spectral-ratchet.py --migrate-rule-ids` and `spectral-overlay-diff.py` — and
+`spectral-ratchet.py --migrate-rule-ids` (kit repo) and
+`scripts/specfuse/spectral-overlay-diff.py` (delivered into your project) — and
 because a subset written out in prose is worse than nothing: it reads as
 complete. Per surface it records every rename, every legacy id with **no** kit
 counterpart (naming the shape-only kit rule it overlays, where there is one),

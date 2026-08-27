@@ -73,7 +73,7 @@ The map is per surface (`openapi` / `asyncapi` / `arazzo`) and records:
 | `retained` | legacy ids with **no** kit counterpart — the value-set overlays the kit deliberately does not own (see `schemas/README.md` §"What the project must provide"), plus project vendor extensions. 7 OpenAPI, 2 AsyncAPI, 2 Arazzo. |
 | `retired` | ids deleted with no successor. Empty today. |
 
-Two kit scripts read it: `scripts/spectral-ratchet.py --migrate-rule-ids` (rekeys a committed baseline) and `scripts/spectral-overlay-diff.py` (classifies a project ruleset that forked from the kit's). Both refuse to run against a stale map rather than misclassifying.
+Two kit scripts read it: `scripts/spectral-ratchet.py --migrate-rule-ids` (rekeys a committed baseline; a reference implementation that stays in this repo) and `spectral-overlay-diff.py` (classifies a project ruleset that forked from the kit's; kit-owned and **delivered into projects** at `scripts/specfuse/`, so it is on disk at the moment an upgrade needs it). Both refuse to run against a stale map rather than misclassifying.
 
 **Generator action:** rename the rule identifiers in the generator's bundled Spectral ruleset, driving the change from `rule-renames.yaml` rather than a regex — the two `non_mechanical` entries are exactly what a `s/^rm-/specfuse-/` gets wrong. The rule logic is otherwise unchanged; only the identifier strings differ. Suggest accepting both forms for one transitional release, then deprecating `rm-*`.
 
