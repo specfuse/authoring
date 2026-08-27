@@ -1005,12 +1005,27 @@ rules:
                     properties:
                       # ProtectionDefinition$AtRest. Matched case-insensitively
                       # by the generator (`toLowerCase` before `fromString`);
-                      # the kit pins the lower-case spelling the handbooks use.
-                      # `neverPersist` is NOT accepted — the separator is an
-                      # underscore.
+                      # BOTH separators are accepted for never-persist. The
+                      # generator lower-cases and normalises before matching, so
+                      # `never_persist` and `never-persist` reach it as the same
+                      # value — measured against 0.7.0, same result on a value
+                      # object and on an entity property. `extensions`, the
+                      # command the kit tells consumers to derive a ruleset
+                      # from, prints the HYPHEN form, so pinning the underscore
+                      # made the kit reject the spelling its own published
+                      # vocabulary advertises.
+                      #
+                      # `neverPersist` (camelCase) is still NOT accepted: the
+                      # generator's normalisation collapses separators, not
+                      # case boundaries.
+                      #
+                      # Widening this enum alone opens a hole — see
+                      # specfuse-xprotection-never-persist-not-mapped, whose
+                      # guard has to match both spellings or it silently stops
+                      # covering one of them. The two changes belong together.
                       atRest:
                         type: string
-                        enum: [none, encrypted, hashed, never_persist]
+                        enum: [none, encrypted, hashed, never_persist, never-persist]
                       # ProtectionDefinition$Mode. `deterministic` parses and is
                       # then refused by PROTECTION_MODE_UNSUPPORTED ("declared
                       # but unsupported in v1"), so it is accepted here and
@@ -2110,18 +2125,25 @@ rules:
 
   specfuse-xprotection-never-persist-not-mapped:
     description: >-
-      x-protection.atRest 'never_persist' must not appear on an x-entity property.
+      x-protection.atRest never-persist must not appear on an x-entity property.
     # Mirrors PROTECTION_NEVER_PERSIST_MAPPED (error). Same construction as
     # above: declaring never-persist on a column that is persisted by definition
     # is a contradiction the generator refuses to resolve silently.
-    message: "x-protection.atRest is 'never_persist', but x-entity properties are mapped to a persisted column by construction. Move it to a request DTO."
+    #
+    # BOTH separators, and the guard has to say so explicitly. The enum above
+    # accepts `never_persist` and `never-persist` because the generator
+    # normalises them to one value; a `notMatch` anchored on the underscore
+    # alone would therefore let the hyphen spelling through — a rule reporting
+    # clean while covering nothing, on a "this must never be persisted" check.
+    # Verified in both directions by the classification fixture.
+    message: "x-protection.atRest is never-persist, but x-entity properties are mapped to a persisted column by construction. Move it to a request DTO."
     severity: error
     given: $.components.schemas[?(@ && @["x-entity"])].properties[*]["x-protection"]
     then:
       field: atRest
       function: pattern
       functionOptions:
-        notMatch: "^never_persist$"
+        notMatch: "^never[_-]persist$"
 
   specfuse-classification-encrypted-superseded:
     description: >-

@@ -981,7 +981,7 @@ email:
 
 | Key | Type | Notes |
 |---|---|---|
-| `atRest` | `none` \| `encrypted` \| `hashed` \| `never_persist` | **Required on every classified property.** Note the underscore — `neverPersist` is not accepted. |
+| `atRest` | `none` \| `encrypted` \| `hashed` \| `never_persist` (or `never-persist`) | **Required on every classified property.** Either separator works — the generator normalises them to one value, and `specfuse-generator extensions` prints the hyphen form. `neverPersist` (camelCase) is not accepted: the normalisation collapses separators, not case boundaries. |
 | `mode` | `randomized` \| `deterministic` | `deterministic` parses and is then refused: `PROTECTION_MODE_UNSUPPORTED` ("declared but unsupported in v1"). Only `randomized` is implemented. |
 | `blindIndex` | `{ equality, prefix, normalization[], scope }` | `scope` is `tenant` \| `global`. How an encrypted value stays searchable. |
 | `masking` | `{ first, last }` | How many leading/trailing characters survive masking. |
@@ -996,7 +996,7 @@ email:
 - `credential` must be `writeOnly` — `PROTECTION_CREDENTIAL_REQUIRES_WRITE_ONLY`.
 - `sad` (PCI Sensitive Authentication Data) may not be an `x-entity` property at all — `PROTECTION_SAD_MAPPED` — because entity properties are persisted by construction and SAD may not be retained after authorisation. It belongs on a request DTO.
 
-Likewise `atRest: hashed` may not be response-bound (`PROTECTION_HASHED_RESPONSE_BOUND`) and `atRest: never_persist` may not be mapped to a persisted property (`PROTECTION_NEVER_PERSIST_MAPPED`).
+Likewise `atRest: hashed` may not be response-bound (`PROTECTION_HASHED_RESPONSE_BOUND`) and `atRest: never_persist` / `never-persist` may not be mapped to a persisted property (`PROTECTION_NEVER_PERSIST_MAPPED`) — the kit's mirror matches both separators, because a guard that covered only one would report clean on the other.
 
 All four are mirrored kit-side. "Response-bound" sounds like it needs the operation graph and does not: the generator's own test is exactly *"neither `writeOnly` nor `x-internal-only`"*, which is local to the property. "Persisted" is equally local — an `x-entity` property is mapped to a column by construction. Both remedies are modelling changes (mark it write-only, or move it to a request DTO), which is much cheaper to hear while authoring than at generate time.
 
@@ -1017,7 +1017,7 @@ The two sides split cleanly, and the split is the generator's own: `PiiClassific
 | 11 | `x-protection` sub-keys and values must come from the closed set in §"The two axes". | generator — `UNKNOWN_PROTECTION_SUBKEY` / `INVALID_EXTENSION_VALUE`; mirrored by kit `specfuse-xprotection-shape` (error) |
 | 12 | `x-protection.mode: deterministic` is declared but unsupported in v1. | generator — `PROTECTION_MODE_UNSUPPORTED` (error); mirrored by kit `specfuse-xprotection-mode-deterministic-unsupported` |
 | 13 | `credential`, and `atRest: hashed`, require `writeOnly` or `x-internal-only`. | generator — `PROTECTION_CREDENTIAL_REQUIRES_WRITE_ONLY` / `PROTECTION_HASHED_RESPONSE_BOUND`; mirrored by kit `specfuse-xprotection-credential-write-only` / `-hashed-not-response-bound` |
-| 14 | `sad`, and `atRest: never_persist`, MUST NOT appear on an `x-entity` property — those are persisted by construction. | generator — `PROTECTION_SAD_MAPPED` / `PROTECTION_NEVER_PERSIST_MAPPED`; mirrored by kit `specfuse-xprotection-sad-not-persisted` / `-never-persist-not-mapped` |
+| 14 | `sad`, and `atRest: never_persist` / `never-persist`, MUST NOT appear on an `x-entity` property — those are persisted by construction. | generator — `PROTECTION_SAD_MAPPED` / `PROTECTION_NEVER_PERSIST_MAPPED`; mirrored by kit `specfuse-xprotection-sad-not-persisted` / `-never-persist-not-mapped` |
 | 6 | A property carrying `x-classification: [exposed]` MUST carry a non-empty `description` justifying why exposure is safe. | kit — `specfuse-classification-exposed-needs-description` (error) |
 | 7 | A property the validator reads as PII MUST declare `x-classification` (see "Where it is required" above). | generator — `PII_FIELD_MISSING_CLASSIFICATION` (error); mirrored in the editor by kit `specfuse-classification-pii-required` |
 
