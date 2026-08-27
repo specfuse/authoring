@@ -1,0 +1,352 @@
+# Copyright 2026 Specfuse Contributors
+# Licensed under the Apache License, Version 2.0. See LICENSE.
+#
+# rule-renames.yaml — the complete `rm-*` -> `specfuse-*` Spectral rule-id map.
+#
+# WHY THIS IS DATA AND NOT PROSE
+#
+# The kit's rulesets were generalised from a source project by renaming every
+# rule identifier from the legacy `rm-*` prefix to `specfuse-*`. Rule ids are a
+# coupling surface: a committed Spectral baseline names them, so a rename turns
+# "rule not in the baseline" into a hard failure on every rule simultaneously —
+# and a project ruleset that forked from the same source names them too, so a
+# naive `extends:` of the kit double-reports every shared rule.
+#
+# `compatibility.md` §1 declared twelve of those renames canonical. The other
+# ~160 were applied mechanically and were recorded nowhere, which meant the only
+# way to migrate was to guess the swap and hope no rule was an exception. Two
+# are. This file is the whole map, machine-readable, and it is the source of
+# truth that §1 now points at.
+#
+# HOW IT WAS DERIVED
+#
+# By set-comparing the kit rulesets against the pre-rename ruleset they were
+# forked from (the source project's `api/spectral.restomanager*.yaml`), then
+# reconciling the residue against the kit's own git history — which is where the
+# two non-mechanical entries came from, since both post-date the fork.
+#
+# HOW TO READ IT
+#
+#   renames         legacy id -> kit id. A pure prefix swap. Mechanical.
+#   non_mechanical  legacy id -> kit id where the swap gets it WRONG. These are
+#                   the entries a sed script mangles, so they carry the reason.
+#                   They are ALSO listed in `renames`, so a consumer only has to
+#                   read one map; `non_mechanical` exists to be reported loudly.
+#   retained        legacy ids with NO kit counterpart. The kit does not own the
+#                   rule; the project keeps it. Most are value-set overlays of a
+#                   shape-only kit rule — see `overlay_for`, and the table in
+#                   `schemas/README.md` §"What the project must provide".
+#   retired         legacy ids with no successor at all — the rule was deleted.
+#                   Migrating a baseline DROPS these keys.
+#
+# Ids that never carried the `rm-` prefix are unchanged and are not listed:
+# upstream Spectral rules the kit re-declares (`operation-tag-defined`,
+# `duplicated-entry-in-enum`) and the `asyncapi-*` custom-function rules.
+#
+# CONSUMERS
+#
+#   scripts/spectral-ratchet.py --migrate-rule-ids   rekeys a committed baseline
+#   scripts/spectral-overlay-diff.py                 classifies a forked ruleset
+#
+# Both verify that every `to:` target still exists in the kit ruleset for its
+# surface, and refuse to run against a stale map rather than misclassifying.
+
+version: 1
+
+prefix:
+  legacy: "rm-"
+  canonical: "specfuse-"
+
+rulesets:
+
+  openapi:
+    kit: schemas/spectral/specfuse-openapi.yaml
+
+    # 79 pure prefix swaps + 2 non-mechanical = 81 mapped; 7 retained.
+    renames:
+      rm-400-predefined: specfuse-400-predefined
+      rm-400-required: specfuse-400-required
+      rm-401-predefined: specfuse-401-predefined
+      rm-401-required: specfuse-401-required
+      rm-401-www-authenticate: specfuse-401-www-authenticate
+      rm-403-predefined: specfuse-403-predefined
+      rm-403-required: specfuse-403-required
+      rm-404-predefined: specfuse-404-predefined
+      rm-404-required: specfuse-404-required
+      rm-405-allow: specfuse-405-allow
+      rm-406-when-alt-accept: specfuse-406-when-alt-accept
+      rm-409-on-delete: specfuse-409-on-delete
+      rm-409-on-put-patch: specfuse-409-on-put-patch
+      rm-415-when-request-body: specfuse-415-when-request-body
+      rm-428-on-write: specfuse-428-on-write
+      rm-api-version-header: specfuse-api-version-header
+      rm-auth-meta-present: specfuse-auth-meta-present
+      rm-auth-scopes-pattern: specfuse-auth-scopes-shape   # non-mechanical — see below
+      rm-belongsto-entity-validation: specfuse-belongsto-entity-validation
+      rm-belongsto-explicit-cardinality: specfuse-belongsto-explicit-cardinality
+      rm-change-description-headers: specfuse-change-description-headers
+      rm-child-collection-reconcile-id: specfuse-child-collection-reconcile-id
+      rm-conflict-response-details: specfuse-conflict-response-details
+      rm-delete-204: specfuse-delete-204
+      rm-delete-204-no-body: specfuse-delete-204-no-body
+      rm-deprecated-suffixes: specfuse-deprecated-suffixes
+      rm-emits-event-format: specfuse-emits-event-format
+      rm-emits-event-required: specfuse-emits-event-required
+      rm-emits-required-on-writes: specfuse-emits-required-on-writes
+      rm-enum-camel: specfuse-enum-camel
+      rm-etag-on-get: specfuse-etag-on-get
+      rm-fk-marker-exclusive: specfuse-fk-marker-exclusive
+      rm-global-bearer: specfuse-global-bearer
+      rm-idempotency-key-support: specfuse-idempotency-key-support
+      rm-ifmatch-on-write: specfuse-ifmatch-on-write
+      rm-list-response-requires-pagination-params: specfuse-list-response-requires-pagination-params
+      rm-main-resource-has-createdAt: specfuse-main-resource-has-createdAt
+      rm-main-resource-has-id: specfuse-main-resource-has-id
+      rm-main-resource-has-updatedAt: specfuse-main-resource-has-updatedAt
+      rm-new-resource-no-createdAt: specfuse-new-resource-no-createdAt
+      rm-new-resource-no-id: specfuse-new-resource-no-id
+      rm-new-resource-no-updatedAt: specfuse-new-resource-no-updatedAt
+      rm-no-duplicate-enum-entries: specfuse-no-duplicate-enum-entries
+      rm-no-embedded-objects: specfuse-no-inline-objects   # non-mechanical — see below
+      rm-no-expand-of-on-derivatives: specfuse-no-expand-of-on-derivatives
+      rm-no-inline-enums: specfuse-no-inline-enums
+      rm-no-inline-objects: specfuse-no-inline-objects
+      rm-no-projection-markers-on-derivatives: specfuse-no-projection-markers-on-derivatives
+      rm-no-q-param: specfuse-no-q-param
+      rm-no-sortby-sortorder: specfuse-no-sortby-sortorder
+      rm-opaque-reference-justified: specfuse-opaque-reference-justified
+      rm-path-casing: specfuse-path-casing
+      rm-post-201-location: specfuse-post-201-location
+      rm-prop-camel: specfuse-prop-camel
+      rm-protected-ops-require-security: specfuse-protected-ops-require-security
+      rm-put-patch-200-complete: specfuse-put-patch-200-complete
+      rm-put-patch-no-204: specfuse-put-patch-no-204
+      rm-ratelimit-headers: specfuse-ratelimit-headers
+      rm-resource-naming-convention: specfuse-resource-naming-convention
+      rm-retry-after-on-429-503: specfuse-retry-after-on-429-503
+      rm-schema-name-pascal: specfuse-schema-name-pascal
+      rm-single-tag: specfuse-single-tag
+      rm-validate-only-on-writes: specfuse-validate-only-on-writes
+      rm-x-fk-for-shape: specfuse-x-fk-for-shape
+      rm-x-references-shape: specfuse-x-references-shape
+      rm-x-sample-faker-path-format: specfuse-x-sample-faker-path-format
+      rm-x-sample-faker-requires-path: specfuse-x-sample-faker-requires-path
+      rm-x-sample-fixed-requires-format: specfuse-x-sample-fixed-requires-format
+      rm-x-sample-no-server-generated: specfuse-x-sample-no-server-generated
+      rm-x-sample-no-unknown-fields: specfuse-x-sample-no-unknown-fields
+      rm-x-sample-property-level-only: specfuse-x-sample-property-level-only
+      rm-x-sample-template-requires-format: specfuse-x-sample-template-requires-format
+      rm-x-sample-valid-provider: specfuse-x-sample-valid-provider
+      rm-xentity-concurrency-unprotected-needs-reason: specfuse-xentity-concurrency-unprotected-needs-reason
+      rm-xentity-main-only: specfuse-xentity-main-only
+      rm-xentity-shape: specfuse-xentity-shape
+      rm-xenumcase-on-enums-only: specfuse-xenumcase-on-enums-only
+      rm-xenumcase-shape: specfuse-xenumcase-shape
+      rm-xvalueobject-no-xentity: specfuse-xvalueobject-no-xentity
+      rm-xvalueobject-not-main-resource: specfuse-xvalueobject-not-main-resource
+      rm-xvalueobject-shape: specfuse-xvalueobject-shape
+
+    non_mechanical:
+      rm-auth-scopes-pattern:
+        to: specfuse-auth-scopes-shape
+        kind: split
+        also:
+          - specfuse-auth-scopes-registry
+          - specfuse-auth-scopes-all-on-operation
+        note: >-
+          The legacy rule was a warn-severity `pattern` over dotted camelCase
+          segments. The kit replaced it with a three-rule grammar (shape /
+          registry / all-on-operation) at error severity, keyed on
+          `<domain>[.Entity].<operation>`. `-pattern` -> `-shape` is not a
+          prefix swap, and the semantics are strictly tighter: a baseline
+          count for the legacy rule DOES NOT carry over. Re-count against the
+          successor before trusting it.
+      rm-no-embedded-objects:
+        to: specfuse-no-inline-objects
+        kind: merged
+        note: >-
+          A byte-identical duplicate of `rm-no-inline-objects`, retired on
+          both sides. Kept in the map because baselines committed before the
+          dedup still name it. If BOTH legacy ids carry a count, the migration
+          refuses rather than guessing how to combine them.
+
+    retained:
+      rm-auth-roles-allowed:
+        overlay_for: specfuse-auth-roles-pascal
+        note: >-
+          Kit rule constrains the SHAPE (PascalCase). The closed role set is
+          the project's.
+      rm-x-expand-of-shape:
+        partially_superseded_by: specfuse-projection-coherence
+        note: >-
+          PARTIAL OVERLAP, not a rename. The kit rule checks the named twin is
+          a sibling identifier property; it does not assert camelCase, and it
+          only looks under `components.schemas`. Deleting this rule loses the
+          casing check.
+      rm-x-kiosk-session-shape:
+        note: >-
+          `x-kiosk-session` is a project vendor extension. The kit does not
+          define it.
+      rm-x-membership-gated-shape:
+        note: >-
+          `x-membership-gated` is a project vendor extension. The kit does not
+          define it.
+      rm-x-projection-shape:
+        partially_superseded_by: specfuse-projection-coherence
+        note: >-
+          PARTIAL OVERLAP, not a rename. The kit rule checks that an
+          `x-projection` property is a non-required array of `$ref` on an
+          `x-entity` schema; it does not assert the marker is the boolean
+          literal `true`, and it only looks under `components.schemas`.
+          Deleting this rule loses the value check. Fold it into an overlay or
+          keep it.
+      rm-x-self-scoped-shape:
+        note: >-
+          `x-self-scoped` is a project vendor extension. The kit does not
+          define it.
+      rm-x-test-seed-shape:
+        note: >-
+          `x-test-seed` values are C# expressions — language-specific, so
+          project-side.
+
+    # No rule has been deleted without a successor on this surface yet.
+    retired: []
+
+  asyncapi:
+    kit: schemas/spectral/specfuse-asyncapi.yaml
+
+    # 72 pure prefix swaps + 0 non-mechanical = 72 mapped; 2 retained.
+    renames:
+      rm-async-ai-entities-shape: specfuse-async-ai-entities-shape
+      rm-async-ai-fallback-values: specfuse-async-ai-fallback-values
+      rm-async-ai-must-have-enabled: specfuse-async-ai-must-have-enabled
+      rm-async-ai-must-have-entities: specfuse-async-ai-must-have-entities
+      rm-async-ai-must-have-task: specfuse-async-ai-must-have-task
+      rm-async-ai-task-values: specfuse-async-ai-task-values
+      rm-async-auditable-event-envelope-shape: specfuse-async-auditable-event-envelope-shape
+      rm-async-channel-address-format: specfuse-async-channel-address-format
+      rm-async-channel-address-required: specfuse-async-channel-address-required
+      rm-async-channel-domain-kebab: specfuse-async-channel-domain-kebab
+      rm-async-channel-must-have-description: specfuse-async-channel-must-have-description
+      rm-async-channel-must-have-domain: specfuse-async-channel-must-have-domain
+      rm-async-channel-must-have-messages: specfuse-async-channel-must-have-messages
+      rm-async-channel-must-have-type: specfuse-async-channel-must-have-type
+      rm-async-channel-no-x-saga: specfuse-async-channel-no-x-saga
+      rm-async-channel-type-values: specfuse-async-channel-type-values
+      rm-async-context-coherence: specfuse-async-context-coherence
+      rm-async-delivery-backoff-values: specfuse-async-delivery-backoff-values
+      rm-async-delivery-guarantee-values: specfuse-async-delivery-guarantee-values
+      rm-async-event-name-action-class: specfuse-async-event-name-action-class
+      rm-async-first-appearance-uses-created: specfuse-async-first-appearance-uses-created
+      rm-async-job-must-have-cron: specfuse-async-job-must-have-cron
+      rm-async-job-overlap-values: specfuse-async-job-overlap-values
+      rm-async-job-scope-values: specfuse-async-job-scope-values
+      rm-async-label-action-pascal: specfuse-async-label-action-pascal
+      rm-async-label-entity-pascal: specfuse-async-label-entity-pascal
+      rm-async-label-must-have-action: specfuse-async-label-must-have-action
+      rm-async-label-must-have-entity: specfuse-async-label-must-have-entity
+      rm-async-message-category-values: specfuse-async-message-category-values
+      rm-async-message-content-type: specfuse-async-message-content-type
+      rm-async-message-must-have-category: specfuse-async-message-must-have-category
+      rm-async-message-must-have-label: specfuse-async-message-must-have-label
+      rm-async-message-must-have-name: specfuse-async-message-must-have-name
+      rm-async-message-must-have-payload: specfuse-async-message-must-have-payload
+      rm-async-message-must-have-summary: specfuse-async-message-must-have-summary
+      rm-async-message-name-pascal: specfuse-async-message-name-pascal
+      rm-async-message-no-x-action-class: specfuse-async-message-no-x-action-class
+      rm-async-message-no-x-command: specfuse-async-message-no-x-command
+      rm-async-message-no-x-event: specfuse-async-message-no-x-event
+      rm-async-message-no-x-snapshot: specfuse-async-message-no-x-snapshot
+      rm-async-message-no-x-source-aggregate: specfuse-async-message-no-x-source-aggregate
+      rm-async-message-no-x-target-aggregate: specfuse-async-message-no-x-target-aggregate
+      rm-async-message-no-x-tenancy: specfuse-async-message-no-x-tenancy
+      rm-async-message-no-x-trigger: specfuse-async-message-no-x-trigger
+      rm-async-message-should-have-version: specfuse-async-message-should-have-version
+      rm-async-observability-criticality-values: specfuse-async-observability-criticality-values
+      rm-async-observability-must-have-criticality: specfuse-async-observability-must-have-criticality
+      rm-async-observability-should-exist: specfuse-async-observability-should-exist
+      rm-async-observability-tracing-values: specfuse-async-observability-tracing-values
+      rm-async-operation-action-values: specfuse-async-operation-action-values
+      rm-async-operation-must-have-action: specfuse-async-operation-must-have-action
+      rm-async-operation-must-have-channel: specfuse-async-operation-must-have-channel
+      rm-async-operation-must-have-summary: specfuse-async-operation-must-have-summary
+      rm-async-operation-must-have-tags: specfuse-async-operation-must-have-tags
+      rm-async-operation-no-x-dispatches: specfuse-async-operation-no-x-dispatches
+      rm-async-partition-key-must-have-property: specfuse-async-partition-key-must-have-property
+      rm-async-partition-key-property-camel: specfuse-async-partition-key-property-camel
+      rm-async-partition-key-scope-values: specfuse-async-partition-key-scope-values
+      rm-async-payload-camel-case-props: specfuse-async-payload-camel-case-props
+      rm-async-snapshot-guardrails: specfuse-async-snapshot-guardrails
+      rm-async-subscription-must-have-name: specfuse-async-subscription-must-have-name
+      rm-async-subscription-name-kebab: specfuse-async-subscription-name-kebab
+      rm-async-subscription-scoping-mode: specfuse-async-subscription-scoping-mode
+      rm-async-subscription-trigger-mode-values: specfuse-async-subscription-trigger-mode-values
+      rm-async-trigger-when-coherence: specfuse-async-trigger-when-coherence
+      rm-async-version-must-have-current: specfuse-async-version-must-have-current
+      rm-async-version-must-have-status: specfuse-async-version-must-have-status
+      rm-async-version-status-values: specfuse-async-version-status-values
+      rm-async-worker-inbox-dedup-coherence: specfuse-async-worker-inbox-dedup-coherence
+      rm-async-worker-no-handler-name: specfuse-async-worker-no-handler-name
+      rm-async-worker-no-namespace: specfuse-async-worker-no-namespace
+      rm-async-worker-no-type: specfuse-async-worker-no-type
+
+    non_mechanical: {}
+
+    retained:
+      rm-async-event-topic-must-be-shared:
+        overlay_for: specfuse-async-channel-address-format
+        note: >-
+          Kit rule constrains the address SHAPE. The literal topic name is the
+          project's.
+      rm-async-operation-tag-name-canonical:
+        overlay_for: specfuse-async-operation-tag-pascal
+        note: >-
+          Kit rule constrains the tag SHAPE (PascalCase). The closed
+          domain-tag set is the project's.
+
+    # No rule has been deleted without a successor on this surface yet.
+    retired: []
+
+  arazzo:
+    kit: schemas/spectral/specfuse-arazzo.yaml
+
+    # 22 pure prefix swaps + 0 non-mechanical = 22 mapped; 2 retained.
+    renames:
+      rm-arazzo-as-actor-exists: specfuse-arazzo-as-actor-exists
+      rm-arazzo-as-format: specfuse-arazzo-as-format
+      rm-arazzo-async-event-format: specfuse-arazzo-async-event-format
+      rm-arazzo-async-poll-interval-format: specfuse-arazzo-async-poll-interval-format
+      rm-arazzo-async-timeout-format: specfuse-arazzo-async-timeout-format
+      rm-arazzo-domain-required: specfuse-arazzo-domain-required
+      rm-arazzo-emits-forbidden: specfuse-arazzo-emits-forbidden
+      rm-arazzo-file-homogeneity: specfuse-arazzo-file-homogeneity
+      rm-arazzo-mcp-exposed-required: specfuse-arazzo-mcp-exposed-required
+      rm-arazzo-mcp-fields-when-exposed: specfuse-arazzo-mcp-fields-when-exposed
+      rm-arazzo-mcp-toolname-format: specfuse-arazzo-mcp-toolname-format
+      rm-arazzo-recipe-purpose-enum: specfuse-arazzo-recipe-purpose-enum
+      rm-arazzo-recipe-scenario-exclusion: specfuse-arazzo-recipe-scenario-exclusion
+      rm-arazzo-recipe-scope-enum: specfuse-arazzo-recipe-scope-enum
+      rm-arazzo-setup-forbidden-in-recipes: specfuse-arazzo-setup-forbidden-in-recipes
+      rm-arazzo-setup-recipe-required: specfuse-arazzo-setup-recipe-required
+      rm-arazzo-ui-platform-enum: specfuse-arazzo-ui-platform-enum
+      rm-arazzo-ui-selector-binding: specfuse-arazzo-ui-selector-binding
+      rm-arazzo-version-deprecation-metadata: specfuse-arazzo-version-deprecation-metadata
+      rm-arazzo-version-deprecation-removal-date: specfuse-arazzo-version-deprecation-removal-date
+      rm-arazzo-version-required: specfuse-arazzo-version-required
+      rm-arazzo-version-status: specfuse-arazzo-version-status
+
+    non_mechanical: {}
+
+    retained:
+      rm-arazzo-actors-role-enum:
+        overlay_for: specfuse-arazzo-actors-role-shape
+        note: >-
+          Kit rule constrains the SHAPE. The closed role set is the project's.
+      rm-arazzo-domain-enum:
+        overlay_for: specfuse-arazzo-domain-shape
+        note: >-
+          Kit rule constrains the SHAPE (kebab-case). The active-domain list
+          is the project's.
+
+    # No rule has been deleted without a successor on this surface yet.
+    retired: []

@@ -293,6 +293,245 @@ jobs:
           [ $fail -eq 0 ] || exit 1
           echo "==> ratchet verified: it fires on regressions and refuses to lock in silence."
 
+      # The rename map is the input to two migrations, so a stale entry in it
+      # is not a typo — it silently rekeys a baseline onto a rule that can
+      # never fire again, and every downstream report stays green about it.
+      # Both consumers refuse a stale map; this asserts the shipped one is not.
+      - name: Spectral rename map is complete and live
+        run: |
+          set +e
+          set -uo pipefail
+          python3 - <<'PY'
+          import sys, yaml
+          from pathlib import Path
+          doc = yaml.safe_load(Path("schemas/spectral/rule-renames.yaml").read_text())
+          fail = 0
+          seen = {}
+          for surface, body in doc["rulesets"].items():
+              kit = Path(body["kit"])
+              if not kit.exists():
+                  print(f"::error::{surface}: kit ruleset {kit} does not exist"); fail = 1; continue
+              rules = yaml.safe_load(kit.read_text()).get("rules") or {}
+              renames = body.get("renames") or {}
+              retained = body.get("retained") or {}
+              non_mech = body.get("non_mechanical") or {}
+
+              # A rename target that no longer exists is the stale case.
+              for legacy, canonical in renames.items():
+                  if canonical not in rules:
+                      print(f"::error::{surface}: {legacy} -> {canonical}, which {kit.name} does not define")
+                      fail = 1
+                  if legacy in seen and seen[legacy] != canonical:
+                      print(f"::error::{legacy} maps to two ids: {seen[legacy]} and {canonical}")
+                      fail = 1
+                  seen[legacy] = canonical
+
+              # `retained` means "no counterpart". An id in both sections is a
+              # contradiction, and the two consumers would disagree about it.
+              overlap = sorted(set(renames) & set(retained))
+              if overlap:
+                  print(f"::error::{surface}: {overlap} are both renamed and retained")
+                  fail = 1
+
+              # Every non-mechanical entry must also be in `renames` — that is
+              # what lets a consumer read one map and still be warned.
+              for legacy, entry in non_mech.items():
+                  if renames.get(legacy) != entry.get("to"):
+                      print(f"::error::{surface}: non_mechanical {legacy} disagrees with renames")
+                      fail = 1
+                  if not (entry.get("note") or "").strip():
+                      print(f"::error::{surface}: non_mechanical {legacy} carries no reason")
+                      fail = 1
+
+              # A `retained` entry that names a kit rule it overlays must name a
+              # real one, or the guidance points at nothing.
+              for legacy, entry in (retained or {}).items():
+                  for key in ("overlay_for", "partially_superseded_by"):
+                      ref = (entry or {}).get(key)
+                      if ref and ref not in rules:
+                          print(f"::error::{surface}: {legacy}.{key} -> {ref}, not defined by {kit.name}")
+                          fail = 1
+              print(f"    {surface}: {len(renames)} renames, {len(non_mech)} non-mechanical, "
+                    f"{len(retained)} retained, against {len(rules)} kit rules")
+          if not seen:
+              print("::error::the rename map declares no renames at all — it cannot be read as complete")
+              fail = 1
+          sys.exit(fail)
+          PY
+          [ $? -eq 0 ] || exit 1
+          echo "==> rename map verified against the shipped rulesets."
+
+      # --migrate-rule-ids rewrites a committed baseline, which is the one
+      # artefact a ratchet cannot recover from. Asserted in both directions for
+      # the same reason as the ratchet itself: a migration that quietly does
+      # nothing, or quietly empties the file, reads exactly like one that worked.
+      - name: Spectral baseline migration (both directions)
+        run: |
+          set +e
+          set -uo pipefail
+          WORK="${RUNNER_TEMP}/migrate"; mkdir -p "$WORK"
+          R=schemas/spectral/specfuse-openapi.yaml
+          S=scripts/spectral-ratchet.py
+          fail=0
+
+          echo "--- a legacy id is rekeyed through the shipped map"
+          echo '{"rm-delete-204": 4, "rm-x-kiosk-session-shape": 2}' > "$WORK/b.json"
+          python3 "$S" --ruleset "$R" --baseline "$WORK/b.json" --migrate-rule-ids >"$WORK/out.txt" 2>&1 \
+            || { echo "::error::migration failed on a normal baseline" >&2; cat "$WORK/out.txt"; fail=1; }
+          grep -q '"specfuse-delete-204": 4' "$WORK/b.json" \
+            || { echo "::error::the renamed rule did not carry its count" >&2; fail=1; }
+          grep -q '"rm-x-kiosk-session-shape": 2' "$WORK/b.json" \
+            || { echo "::error::a project-specific rule was not kept as-is" >&2; fail=1; }
+          grep -q 'no baseline entry' "$WORK/out.txt" \
+            || { echo "::error::migration did not report the kit rules with no baseline" >&2; fail=1; }
+
+          echo "--- a non-mechanical rename is flagged, not silently swapped"
+          echo '{"rm-auth-scopes-pattern": 3}' > "$WORK/nm.json"
+          python3 "$S" --ruleset "$R" --baseline "$WORK/nm.json" --migrate-rule-ids >"$WORK/nm.txt" 2>&1
+          grep -q 'NOT a prefix swap' "$WORK/nm.txt" \
+            || { echo "::error::a non-mechanical rename migrated without a warning" >&2; fail=1; }
+          grep -q '"specfuse-auth-scopes-shape": 3' "$WORK/nm.json" \
+            || { echo "::error::the non-mechanical rename did not reach its successor" >&2; fail=1; }
+
+          echo "--- two legacy ids colliding on one successor are refused"
+          echo '{"rm-no-embedded-objects": 3, "rm-no-inline-objects": 5}' > "$WORK/col.json"
+          BEFORE=$(cat "$WORK/col.json")
+          python3 "$S" --ruleset "$R" --baseline "$WORK/col.json" --migrate-rule-ids >/dev/null 2>&1
+          [ $? -eq 2 ] || { echo "::error::migration guessed how to merge two counts" >&2; fail=1; }
+          [ "$BEFORE" = "$(cat "$WORK/col.json")" ] \
+            || { echo "::error::migration wrote the baseline while refusing" >&2; fail=1; }
+
+          echo "--- a migration that would empty the baseline is refused"
+          cat > "$WORK/retire-map.yaml" <<'MAP'
+          version: 1
+          prefix: { legacy: "rm-", canonical: "specfuse-" }
+          rulesets:
+            openapi:
+              kit: schemas/spectral/specfuse-openapi.yaml
+              renames: { rm-delete-204: specfuse-delete-204 }
+              retired: [rm-gone-one, rm-gone-two]
+          MAP
+          echo '{"rm-gone-one": 3, "rm-gone-two": 9}' > "$WORK/empty.json"
+          BEFORE=$(cat "$WORK/empty.json")
+          python3 "$S" --ruleset "$R" --baseline "$WORK/empty.json" \
+            --rule-renames "$WORK/retire-map.yaml" --migrate-rule-ids >/dev/null 2>&1
+          [ $? -eq 2 ] || { echo "::error::migration emptied the baseline and called it success" >&2; fail=1; }
+          [ "$BEFORE" = "$(cat "$WORK/empty.json")" ] \
+            || { echo "::error::migration wrote an emptied baseline while refusing" >&2; fail=1; }
+
+          echo "--- a stale map is refused rather than migrated through"
+          cat > "$WORK/stale-map.yaml" <<'MAP'
+          version: 1
+          prefix: { legacy: "rm-", canonical: "specfuse-" }
+          rulesets:
+            openapi:
+              kit: schemas/spectral/specfuse-openapi.yaml
+              renames: { rm-delete-204: specfuse-delete-204, rm-ghost: specfuse-ghost }
+          MAP
+          echo '{"rm-delete-204": 4}' > "$WORK/s.json"
+          python3 "$S" --ruleset "$R" --baseline "$WORK/s.json" \
+            --rule-renames "$WORK/stale-map.yaml" --migrate-rule-ids >/dev/null 2>&1
+          [ $? -eq 2 ] || { echo "::error::migration accepted a map naming a dropped rule" >&2; fail=1; }
+
+          echo "--- an empty baseline is not a starting point"
+          echo '{}' > "$WORK/nothing.json"
+          python3 "$S" --ruleset "$R" --baseline "$WORK/nothing.json" --migrate-rule-ids >/dev/null 2>&1
+          [ $? -eq 2 ] || { echo "::error::migration accepted an empty baseline" >&2; fail=1; }
+
+          [ $fail -eq 0 ] || exit 1
+          echo "==> baseline migration verified: it rekeys, it flags, and it refuses."
+
+      # The overlay classifier decides which of a project's rules get DELETED,
+      # so "nothing is redundant" has to be earned rather than defaulted to.
+      # Its worst failure is the vacuous one — wrong file pair, unreadable
+      # ruleset, stale map — because every one of those reports a clean bill of
+      # health for a comparison that never happened.
+      - name: Spectral overlay classifier (both directions)
+        run: |
+          set +e
+          set -uo pipefail
+          WORK="${RUNNER_TEMP}/overlay"; mkdir -p "$WORK"
+          K=schemas/spectral/specfuse-openapi.yaml
+          D=scripts/spectral-overlay-diff.py
+          fail=0
+
+          # A fork of the kit under legacy ids: one exact duplicate, one that
+          # has drifted, one that is genuinely the project's.
+          cat > "$WORK/fork.yaml" <<'YML'
+          extends: spectral:oas
+          rules:
+            rm-delete-204:
+              description: "DELETE must define a 204 response."
+              severity: error
+              given: $.paths[*].delete.responses
+              then: { field: "204", function: truthy }
+            rm-no-inline-enums:
+              description: "drifted copy — the kit's runs unresolved"
+              severity: error
+              given: $.components.schemas[*].properties[?(@ && @.enum)]
+              then: { function: falsy }
+            myproject-roles-enum:
+              severity: error
+              given: $.paths[*][*]["x-roles"][*]
+              then: { function: enumeration, functionOptions: { values: [Admin] } }
+          YML
+          python3 "$D" --kit-ruleset "$K" --project-ruleset "$WORK/fork.yaml" \
+            --json "$WORK/cls.json" >"$WORK/out.txt" 2>&1
+          [ $? -eq 1 ] || { echo "::error::classifier did not flag a forked overlay" >&2; cat "$WORK/out.txt"; fail=1; }
+          python3 - "$WORK/cls.json" <<'PY' || fail=1
+          import json, sys
+          c = json.load(open(sys.argv[1]))
+          ok = True
+          if [r["project"] for r in c["redundant"]] != ["rm-delete-204"]:
+              print(f"::error::redundant bucket wrong: {c['redundant']}"); ok = False
+          if [r["project"] for r in c["diverged"]] != ["rm-no-inline-enums"]:
+              print(f"::error::diverged bucket wrong: {c['diverged']}"); ok = False
+          if [r["rule"] for r in c["project_specific"]] != ["myproject-roles-enum"]:
+              print(f"::error::project-specific bucket wrong: {c['project_specific']}"); ok = False
+          if not c["kit_only_new"]:
+              print("::error::classifier found no new kit coverage against a 3-rule fork"); ok = False
+          sys.exit(0 if ok else 1)
+          PY
+
+          echo "--- a reduced overlay passes"
+          cat > "$WORK/reduced.yaml" <<YML
+          extends:
+            - $(pwd)/schemas/spectral/specfuse-openapi.yaml
+          rules:
+            myproject-roles-enum:
+              severity: error
+              given: \$.paths[*][*]["x-roles"][*]
+              then: { function: enumeration, functionOptions: { values: [Admin] } }
+          YML
+          python3 "$D" --kit-ruleset "$K" --project-ruleset "$WORK/reduced.yaml" >/dev/null 2>&1
+          [ $? -eq 0 ] || { echo "::error::classifier failed a correctly reduced overlay" >&2; fail=1; }
+
+          echo "--- the wrong pair of files is a crash, not a clean report"
+          python3 "$D" --kit-ruleset "$K" \
+            --project-ruleset schemas/spectral/specfuse-arazzo.yaml >/dev/null 2>&1
+          [ $? -eq 2 ] || { echo "::error::classifier gave a clean report for an unrelated pair" >&2; fail=1; }
+
+          echo "--- a ruleset with no rules is a crash, not a clean report"
+          printf 'rules: {}\n' > "$WORK/empty.yaml"
+          python3 "$D" --kit-ruleset "$WORK/empty.yaml" --project-ruleset "$WORK/fork.yaml" >/dev/null 2>&1
+          [ $? -eq 2 ] || { echo "::error::classifier compared against a ruleset with no rules" >&2; fail=1; }
+
+          echo "--- a stale rename map is a crash, not a clean report"
+          cat > "$WORK/stale.yaml" <<'MAP'
+          version: 1
+          prefix: { legacy: "rm-", canonical: "specfuse-" }
+          rulesets:
+            openapi:
+              kit: schemas/spectral/specfuse-openapi.yaml
+              renames: { rm-ghost: specfuse-ghost }
+          MAP
+          python3 "$D" --kit-ruleset "$K" --project-ruleset "$WORK/fork.yaml" \
+            --rule-renames "$WORK/stale.yaml" >/dev/null 2>&1
+          [ $? -eq 2 ] || { echo "::error::classifier ran against a stale rename map" >&2; fail=1; }
+
+          [ $fail -eq 0 ] || exit 1
+          echo "==> overlay classifier verified: it separates the buckets and refuses to be vacuous."
+
       # AsyncAPI_Handbook.md §2.3 promises three snapshot guardrails; none
       # existed in any ruleset (#37). The two that compare a snapshot to its
       # source entity stay generator-side — the entity is in the OpenAPI

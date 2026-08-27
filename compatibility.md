@@ -60,24 +60,22 @@ The kit accepts both forms in its prose (notes the alias where one exists), so t
 
 **Status:** kit canonical (Phase 2, 4 commits)
 
-The kit renamed all Spectral rule identifiers from the legacy `rm-*` prefix (inherited from the source project) to `specfuse-*` to match the kit's neutral identity. Rules touched:
+The kit renamed all Spectral rule identifiers from the legacy `rm-*` prefix (inherited from the source project) to `specfuse-*` to match the kit's neutral identity.
 
-| Legacy name | Kit canonical name |
+**Source of truth: [`schemas/spectral/rule-renames.yaml`](schemas/spectral/rule-renames.yaml).** This section used to list twelve entries — eleven rules plus an `rm-arazzo-*` wildcard — which was the subset declared canonical at the time. The remaining ~160 renames were applied mechanically and were recorded nowhere, so the only way to migrate was to guess the prefix swap and hope no rule was an exception. Two are. A partial list reads as a complete one, so it has been replaced by the map rather than kept alongside it.
+
+The map is per surface (`openapi` / `asyncapi` / `arazzo`) and records:
+
+| Section | Contents |
 |---|---|
-| `rm-validate-only-on-writes` | `specfuse-validate-only-on-writes` |
-| `rm-change-description-headers` | `specfuse-change-description-headers` |
-| `rm-batch-operation-structure` | `specfuse-batch-operation-structure` |
-| `rm-conflict-response-details` | `specfuse-conflict-response-details` |
-| `rm-idempotency-key-support` | `specfuse-idempotency-key-support` |
-| `rm-async-snapshot-version-coexistence` | `specfuse-async-snapshot-version-coexistence` |
-| `rm-async-trigger-when-coherence` | `specfuse-async-trigger-when-coherence` |
-| `rm-async-worker-inbox-dedup-coherence` | `specfuse-async-worker-inbox-dedup-coherence` |
-| `rm-async-subscription-name-mismatch` | `specfuse-async-subscription-name-mismatch` |
-| `rm-async-event-name-action-class` | `specfuse-async-event-name-action-class` |
-| `rm-async-first-appearance-uses-created` | `specfuse-async-first-appearance-uses-created` |
-| `rm-arazzo-*` (all Arazzo Spectral rules) | `specfuse-arazzo-*` |
+| `renames` | every `rm-*` → `specfuse-*` pair. 81 OpenAPI, 72 AsyncAPI, 22 Arazzo. |
+| `non_mechanical` | the renames a prefix swap gets **wrong** — currently `rm-auth-scopes-pattern` → `specfuse-auth-scopes-shape` (split into three rules, semantics tightened) and `rm-no-embedded-objects` → `specfuse-no-inline-objects` (merged duplicate). Each carries the reason. |
+| `retained` | legacy ids with **no** kit counterpart — the value-set overlays the kit deliberately does not own (see `schemas/README.md` §"What the project must provide"), plus project vendor extensions. 7 OpenAPI, 2 AsyncAPI, 2 Arazzo. |
+| `retired` | ids deleted with no successor. Empty today. |
 
-**Generator action:** rename the rule identifiers in the generator's bundled Spectral ruleset. The rule logic is unchanged; only the identifier strings differ. Suggest accepting both forms for one transitional release, then deprecating `rm-*`.
+Two kit scripts read it: `scripts/spectral-ratchet.py --migrate-rule-ids` (rekeys a committed baseline) and `scripts/spectral-overlay-diff.py` (classifies a project ruleset that forked from the kit's). Both refuse to run against a stale map rather than misclassifying.
+
+**Generator action:** rename the rule identifiers in the generator's bundled Spectral ruleset, driving the change from `rule-renames.yaml` rather than a regex — the two `non_mechanical` entries are exactly what a `s/^rm-/specfuse-/` gets wrong. The rule logic is otherwise unchanged; only the identifier strings differ. Suggest accepting both forms for one transitional release, then deprecating `rm-*`.
 
 **Severity:** additive — non-breaking if both forms are accepted during transition. Breaking if only the new form is accepted.
 
