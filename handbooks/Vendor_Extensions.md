@@ -52,8 +52,9 @@ x-entity:
   searchableProperties: string[] # Optional: Fields available for free-text search
   requiresPagination: boolean    # Optional: Whether lists require pagination (default: true for aggregates)
   mutability: string             # Optional: "mutable" | "immutable" | "appendOnly" (default: "mutable")
-  concurrency: string | object   # Required, NO default: "optimistic" | "none", or { mode, reason }
-  delete: string | object        # Optional: "hard" | "soft", or { mode, retention } (default: "hard")
+  concurrency: string | object   # Required, NO default: "optimistic" | "none", or { mode, reason } / { mode: delegated, to }
+  delete: string | object        # Optional: "hard" | "soft", or { mode, retention, reason, archiveVisibility } (default: "hard")
+  uniqueBy: object[]             # Optional: uniqueness constraints, each { name?, properties[] }
   valueObjects: object           # Optional: Value object storage configuration
   aiAccess: object               # Optional: AI agent access policy (see 1.1.1). Absent = no AI access.
 ```
@@ -144,6 +145,7 @@ delete: soft                # shorthand — stamp deletedAt, keep the row
 delete:                     # long form
   mode: soft
   retention: P30D           # ISO-8601 duration, or `none` = keep forever
+  archiveVisibility: operational   # generator 0.8.0 — see below
 ```
 
 | Value | Meaning |
@@ -151,6 +153,7 @@ delete:                     # long form
 | `hard` | The row is removed. The default; omitting the property means this. |
 | `soft` | The row is retained and stamped `deletedAt`; reads exclude it by default. |
 | `retention` | How long a soft-deleted row is kept before it may be destroyed. `none` means forever. Only meaningful with `mode: soft`. |
+| `archiveVisibility` | Whether an archived row is still readable. `operational` \| `restricted`. Only meaningful with `mode: soft`. |
 
 Absent `delete` resolves to `hard`, which is the pre-FEAT-2026-0080 generator
 behaviour — adding this key to the vocabulary changes the meaning of no existing
@@ -186,6 +189,42 @@ deletedAt:
 `deletedByUserId` is optional. When present, the generated service stamps it
 from the caller context, and it is legal only on a soft-delete entity.
 
+### `delete.archiveVisibility` — is an archived row still readable (generator 0.8.0)
+
+`soft` keeps the row. It does not say whether anyone may still see it, and those
+are separate decisions: a cancelled order that support staff must still be able
+to open is not the same as a deleted account that must disappear from every
+read.
+
+```yaml
+delete:
+  mode: soft
+  archiveVisibility: operational
+```
+
+| Value | Meaning |
+|---|---|
+| `operational` | Archived rows stay readable. The row is withdrawn from normal use but remains part of the operational record. |
+| `restricted` | Archived rows are filtered out of the generated read surface. |
+
+**Absent resolves to `restricted`, which is fail-closed** — so adding the key to
+the vocabulary changes the meaning of no existing entity, and getting it wrong
+by omission hides data rather than leaking it. Because the safe default is also
+the silent one, the generator nudges every soft-delete entity that has not
+decided: `ARCHIVE_VISIBILITY_UNDECLARED` (WARNING) asks you to declare
+`operational` or to confirm today's `restricted` explicitly.
+
+Like everything else in delete gate 1, the key is **validated and not yet
+enforced**: no read filtering is generated today, whichever value you declare.
+Declaring it now is what makes the decision auditable and what makes gate 2 a
+behaviour change you chose rather than one you discover.
+
+The key is legal only where there is an archive to govern. On `mode: hard` —
+declared, shorthand, or defaulted — the row is destroyed and there is nothing to
+make visible, so `ARCHIVE_VISIBILITY_ON_HARD_DELETE` (ERROR) rejects it.
+`specfuse-xentity-shape` mirrors that for the long form, which is the only form
+that can carry the key at all.
+
 **What consumes it today:** `specfuse-xentity-shape` validates the shape — the
 closed value sets, the long-form sub-keys, and that `retention` is `none` or an
 ISO-8601 duration with at least one component. Generator-side, gate 1 of
@@ -204,8 +243,10 @@ FEAT-2026-0080 adds six ERROR and two WARNING coherence rules:
 | `DELETE_REASON_INVALID` | ERROR | `reason` outside the closed set |
 | `DELETE_REASON_REQUIRES_HARD` | ERROR | `reason` alongside `mode: soft` |
 | `DELETE_REASON_TEXT_REQUIRED` | ERROR | `reason: other` without `reasonText`, **or** `reasonText` beside any other reason |
-| `DELETE_REASON_CONTRADICTED` | ERROR | the declared reason is refuted by the spec — e.g. `no-delete-surface` on an entity that *is* a DELETE target, or `patch-reconciled` where no parent `Update{Parent}` DTO carries a collection of it. The `patch-reconciled` arm over-fires on the canonical shape in `0.7.0` — see the warning under `delete.reason` |
-| `DELETE_REASON_MISSING` | — | reserved; not raised by default in `0.6.0` |
+| `DELETE_REASON_CONTRADICTED` | ERROR | the declared reason is refuted by the spec — e.g. `no-delete-surface` on an entity that *is* a DELETE target, or `patch-reconciled` where no parent `Update{Parent}` DTO carries a collection of it. The `patch-reconciled` arm over-fired on the canonical shape through `0.7.0`; fixed in `0.8.0` |
+| `DELETE_REASON_MISSING` | WARNING | `delete` resolves to `hard` and declares no `reason`. This row read "reserved; not raised by default" — measured against both the `0.7.0` and `0.8.0` jars it fires, so the entry was stale rather than the behaviour new |
+| `ARCHIVE_VISIBILITY_ON_HARD_DELETE` | ERROR | `archiveVisibility` where `delete` resolves to `hard` — a destroyed row is never archived (generator 0.8.0) |
+| `ARCHIVE_VISIBILITY_UNDECLARED` | WARNING | `mode: soft` with no `archiveVisibility`; it resolves to the fail-closed `restricted` (generator 0.8.0) |
 
 ### `delete.reason` — why an entity is `hard` (generator 0.6.0)
 
@@ -222,7 +263,7 @@ x-entity:
 |---|---|
 | `no-delete-surface` | Nothing can delete this entity through the API; the `hard` default is never exercised. |
 | `reordered-rows` | Rows are removed and re-added as a normal flow (ordered collections). |
-| `patch-reconciled` | The collection is reconciled inside a parent's `PATCH` body, so children are removed there rather than through a DELETE route. **Not usable against generator `0.7.0` — see the warning below.** |
+| `patch-reconciled` | The collection is reconciled inside a parent's `PATCH` body, so children are removed there rather than through a DELETE route. **Usable from generator `0.8.0` — see the note below.** |
 | `other` | Anything else. **Requires `reasonText`.** |
 
 Three constraints, all enforced in both directions:
@@ -231,26 +272,26 @@ Three constraints, all enforced in both directions:
 - `reason` is meaningful only on `mode: hard`. On `soft` it is an error.
 - `patch-reconciled` is checked against the spec, not taken on trust: the generator looks for a parent `Update{Parent}` DTO carrying a collection of the entity, and errors if there is none.
 
-> **Do not declare `patch-reconciled` yet — generator `0.7.0` rejects the shape
-> that earns it.** The check resolves the parent's collection `items.$ref` only
-> to the entity itself, but the PATCH-reconcile pattern this contract mandates
-> puts the child's `Update{Child}` DTO there instead. So a spec that follows the
-> pattern correctly is exactly the spec the check refuses:
+> **`patch-reconciled` is usable from generator `0.8.0`.** Through `0.7.0` the
+> check resolved the parent's collection `items.$ref` only to the entity itself,
+> while the PATCH-reconcile pattern this contract mandates puts the child's
+> `Update{Child}` DTO there instead — so a spec that followed the pattern
+> correctly was exactly the spec the check refused (`clabonte/generator#1219`).
+>
+> `0.8.0` resolves the indirection. Re-probed against
+> `specfuse-generator-0.8.0.jar` on the same probe whose only variable is what
+> the parent's collection names: `Update{Child}`, the child entity itself, and
+> the `Basic{Child}` read DTO all satisfy the check now, and an entity with no
+> parent collection at all still draws the ERROR the rule exists for:
 >
 > ```
-> [ERROR] DELETE_REASON_CONTRADICTED: Schema 'ComplianceTemplateItem' declares
+> [ERROR] DELETE_REASON_CONTRADICTED: Schema 'Tenant' declares
 > `x-entity.delete.reason: patch-reconciled`, but no parent Update{Parent} DTO
-> carries a collection of 'ComplianceTemplateItem'.
+> carries a collection of 'Tenant'.
 > ```
 >
-> Reproduced against `specfuse-generator-0.7.0.jar` (the pinned jar) on a probe
-> whose only variable is what the parent's collection names: point it at
-> `UpdateComplianceTemplateItem` and this fires; point it at
-> `ComplianceTemplateItem` and it does not. Tracked as `clabonte/generator#1219`.
->
-> **Until it lands, declare `reason: other` with a `reasonText` naming the real
-> reason and the blocking issue** — the member is unreachable, not unused, so a
-> clean validation run says nothing about it:
+> **If you worked around this with `reason: other`, you can migrate.** The
+> workaround was:
 >
 > ```yaml
 > x-entity:
@@ -262,8 +303,10 @@ Three constraints, all enforced in both directions:
 >       Should be `patch-reconciled`; blocked by clabonte/generator#1219.
 > ```
 >
-> The token stays in the kit's guard because it is legal and matches the jar —
-> what is blocked is the shape that justifies it, not the spelling.
+> Replace both keys with `reason: patch-reconciled` — `reasonText` is forbidden
+> beside any reason but `other`, so it has to go in the same edit. Nothing
+> forces the migration: `other` with a `reasonText` stays valid, it just stops
+> being the truth about why the entity is `hard`.
 
 **The key is optional in the kit, deliberately.** Whether a project *requires* a reason on every `hard` is a project convention, not a universal contract — a soft-delete-only project wants it mandatory; a project where `delete` is rarely declared does not. This is the same split `concurrency` already has. Projects that want it required add an overlay rule; see `schemas/README.md` §"What the project must provide".
 
@@ -308,13 +351,19 @@ concurrency: optimistic     # protected — writes require If-Match
 concurrency:                # deliberately unprotected — owes a justification
   mode: none
   reason: reference-data
+
+concurrency:                # protected by an ancestor's version (generator 0.8.0)
+  mode: delegated
+  to: Order
 ```
 
 | Value | Meaning |
 |---|---|
 | `optimistic` | Reads return an `ETag`; unsafe writes require `If-Match` and a stale one is rejected with `412`. See `API_Handbook.md` §"Concurrency Control". |
 | `none` | No lost-update protection. A second writer silently overwrites the first. |
+| `delegated` | The entity has no version of its own; its rows are only ever written under an ancestor's `If-Match`, and that ancestor's version is the guarantee. |
 | `reason` | Why `none` is safe for this entity. Required when the entity declares `none` *and* exposes an unsafe write (`PUT`/`PATCH`/`DELETE`); omitted otherwise. |
+| `to` | The ancestor whose version protects this entity. Required by `delegated`, and legal on nothing else. |
 
 **Absent is not `none`.** This key has no default, and that is the whole point
 of it. An entity that declares nothing is **undeclared** — a third state, and
@@ -382,6 +431,47 @@ x-entity:
     reasonText: "Written only by the nightly reconciliation job."
 ```
 
+### `concurrency: delegated` — the guarantee comes from the parent (generator 0.8.0)
+
+An aggregate-internal child is usually not written on its own: it is written as
+part of a `PATCH` of its parent, under the parent's `If-Match`. Before `0.8.0`
+the only honest declaration for such a child was `none` with a `reason`, which
+says *"unprotected, and here is why that is survivable"* — while the row is in
+fact protected, just not by a version of its own. `delegated` says the true
+thing:
+
+```yaml
+x-entity:
+  domain: orders
+  type: entity
+  belongsTo:
+    allOf: [Order]
+  concurrency:
+    mode: delegated
+    to: Order
+```
+
+Three constraints, each an ERROR in the generator and mirrored by
+`specfuse-xentity-shape`:
+
+- **`delegated` has no shorthand.** `concurrency: delegated` as a bare string is
+  refused — there is nowhere to put `to`, and a delegation that does not name
+  its target is not a claim about anything.
+- **`to` is required by `delegated` and legal on nothing else.** On `optimistic`
+  or `none` it is `x-entity.concurrency.to is only valid when mode: delegated`.
+- **`reason` and `reasonText` do not ride with it.** The delegation *is* the
+  justification; the generator says so in the error.
+
+Two further checks are generator-side, because neither is visible from inside
+one `x-entity` block:
+
+| Rule | Severity | Fires when |
+|---|---|---|
+| `DELEGATION_TO_UNRESOLVABLE` | ERROR | `to` names no schema in the document carrying `x-entity` — an unfalsifiable delegation |
+| `TO_NOT_IN_BELONGS_TO` | WARNING | `to` does not appear in this entity's `belongsTo`. A cross-check, not a source of truth: delegation up a chain the aggregate does not declare is usually one of the two keys being wrong |
+
+Declare `belongsTo` and `to` consistently and both stay quiet.
+
 **Do not try to derive this from `mutability`.** `appendOnly` looks like it
 implies `concurrency: none, reason: append-only`, and it does not carry enough
 population to be a source: in the same 86-entity audit, `mutability` was
@@ -404,12 +494,13 @@ Generator-side, FEAT-2026-0088 ships in **0.5.7**:
 
 | Rule | Severity | Fires when |
 |---|---|---|
-| `ENTITY_CONCURRENCY_INVALID` | ERROR | a value outside `{ optimistic, none }`, a malformed object form, or a sub-key that reads as a misspelling of `concurrency` |
+| `ENTITY_CONCURRENCY_INVALID` | ERROR | a value outside `{ optimistic, none, delegated }`, a malformed object form, or a sub-key that reads as a misspelling of `concurrency` |
 | `ENTITY_CONCURRENCY_UNDECLARED` | WARNING | an `x-entity` schema declares no `concurrency` at all |
 | `ENTITY_CONCURRENCY_REASON_REQUIRED` | WARNING | `mode: none` on an entity that exposes an unsafe write (`PATCH`/`PUT`/`DELETE`), with no `reason` |
 | *(ETag obtainability)* | WARNING | `concurrency: optimistic` and an unsafe write, but **no safe operation returns the entity** — the client cannot read the validator it must echo |
 | `ENTITY_CONCURRENCY_WRITER_ROLE_UNREADABLE` | WARNING | the entity's unsafe-write roles are not a subset of the roles that can read it from a safe operation |
-| `ENTITY_CONCURRENCY_CENSUS` | SUGGESTION | always — reports `optimistic` / `none` / undeclared counts with a `reason` breakdown, in one `validate` run |
+| `ENTITY_CONCURRENCY_CENSUS` | SUGGESTION | always — reports `optimistic` / `none` / `delegated` / undeclared counts with a `reason` breakdown, in one `validate` run |
+| `CONCURRENCY_PRECONDITION_CENSUS` | SUGGESTION | always (generator 0.8.0) — counts the operations declaring a required `If-Match` or a `412`, how many get a generated gate, and how many delegate their guarantee |
 
 The two role/read rules are the ones adoption trips over, because neither is
 about this key's syntax. **Pair every `concurrency: optimistic` with a
@@ -540,6 +631,51 @@ Customer:
         storage: 'flatten'
         propertyPrefix: 'emergency_'
 ```
+
+### `uniqueBy` — uniqueness constraints on the entity's rows (generator 0.8.0)
+
+Which combinations of properties may not repeat. A **list**, because an entity
+can carry several, and each constraint names a **tuple**, because most real
+constraints are composite — the limitation that retired its predecessor
+`x-unique` (`FEAT-2026-0148`; the kit never documented that key, so there is
+nothing to migrate).
+
+```yaml
+x-entity:
+  domain: orders
+  type: aggregate
+  uniqueBy:
+    - properties: [tenantId, reference]     # composite: unique within a tenant
+    - name: uq_order_externalId             # named, so the index is greppable
+      properties: [externalId]
+```
+
+| Member | Meaning |
+|---|---|
+| `properties` | **Required, non-empty.** The tuple of property names that must be unique together. |
+| `name` | Optional index name. Must be unique across the entity's constraints. |
+
+**Each member must name a property of this schema, spelled exactly.** The
+generator resolves the tuple against the schema's own properties and raises
+`UNIQUE_BY_UNKNOWN_PROPERTY` otherwise. Dotted paths are **not** walked:
+`address.city` is reported as an unknown property, not resolved into the value
+object. This is the opposite of `filterableProperties` and `searchableProperties`,
+which do accept dotted paths — a difference worth knowing before you copy a line
+from one key to the other.
+
+| Rule | Severity | Fires when |
+|---|---|---|
+| `UNIQUE_BY_UNKNOWN_PROPERTY` | ERROR | a tuple names something that is not a property of the entity |
+| `UNIQUE_BY_DUPLICATE_INDEX_NAME` | ERROR | two constraints on one entity share a `name` |
+| `UNIQUE_BY_CENSUS` | SUGGESTION | always — how many entities declare constraints, and how many of those are composite |
+
+Malformed shapes are refused at parse time, before those rules run: a constraint
+with no `properties`, an empty `properties` list, a `properties` that is not a
+list, and a non-string `name` are each an `ENTITY_INVALID_CONFIG`.
+`specfuse-xentity-shape` catches the same four at lint, and additionally rejects
+a repeated member within one tuple and an unknown member on a constraint — both
+of which the jar takes silently. The key is new in `0.8.0`, so no spec predates
+that tightening.
 
 ### 1.1.1 aiAccess (within x-entity)
 

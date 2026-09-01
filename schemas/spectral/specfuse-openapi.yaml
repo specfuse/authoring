@@ -828,6 +828,34 @@ rules:
             # OTHER`). This guard accepts that shape too rather than tightening
             # past the jar — a guard must never reject what the generator
             # accepts. Reported upstream; tighten here once the jar does.
+            #
+            # `delegated` is the third mode, added in generator 0.8.0. It says
+            # the entity carries no version of its own because its guarantee
+            # comes from an ancestor's: the row is only ever written under that
+            # ancestor's `If-Match`, so a second version column would be a
+            # second thing to get wrong. `to` names the ancestor.
+            #
+            # Its constraints are all measured against the 0.8.0 jar, and each
+            # one is an ERROR there:
+            #   * `delegated` may NOT be authored as a bare string — the string
+            #     arm below stays `optimistic | none` for exactly that reason
+            #     ("delegated requires 'to' and cannot be authored as a bare
+            #     string").
+            #   * `to` is REQUIRED by `delegated` and FORBIDDEN by the other two
+            #     ("x-entity.concurrency.to is only valid when mode: delegated").
+            #   * `reason` and `reasonText` are FORBIDDEN alongside `delegated`
+            #     — "the delegation itself is the justification". This is why
+            #     the object arm splits in two below rather than adding one more
+            #     `if/then` to the existing list: the three keys are mutually
+            #     exclusive with `to`, and two arms say that once.
+            #
+            # Two generator checks are NOT mirrored here because neither is
+            # visible from inside this block: `DELEGATION_TO_UNRESOLVABLE`
+            # (ERROR — `to` names no schema carrying `x-entity`) needs the whole
+            # document, and `TO_NOT_IN_BELONGS_TO` (WARNING — `to` is not in
+            # this entity's `belongsTo`) needs the sibling key plus the same
+            # resolution. The guard checks the shape; the generator checks the
+            # target exists.
             concurrency:
               oneOf:
                 - type: string
@@ -853,6 +881,15 @@ rules:
                         properties:
                           reason: { not: { const: "other" } }
                       then: false
+                - type: object
+                  additionalProperties: false
+                  required: ["mode","to"]
+                  properties:
+                    mode: { type: string, const: "delegated" }
+                    # The ancestor whose version gates this entity's writes.
+                    # PascalCase schema name, same spelling every other
+                    # entity-naming key in this block uses.
+                    to: { type: string, pattern: "^[A-Z][A-Za-z0-9]*$" }
             # Delete semantics for the entity's OWN row (generator
             # FEAT-2026-0080, Vendor_Extensions.md §1.1). Absent resolves to
             # `hard`, the pre-FEAT-2026-0080 generator behaviour, so no
@@ -910,7 +947,40 @@ rules:
                       type: string
                       enum: ["no-delete-surface", "reordered-rows", "patch-reconciled", "other"]
                     reasonText: { type: string, minLength: 1 }
+                    # Whether an archived (soft-deleted) row is still readable
+                    # through the generated read surface. Added in generator
+                    # 0.8.0.
+                    #
+                    # Absent resolves to `restricted`, which is fail-closed:
+                    # archived rows stay invisible. That default is why the key
+                    # can be added without changing what any existing spec
+                    # means, and why the generator nudges rather than errors on
+                    # its absence (`ARCHIVE_VISIBILITY_UNDECLARED`, WARNING, on
+                    # every soft entity that does not declare it).
+                    #
+                    #   operational  archived rows remain readable — the row is
+                    #                withdrawn from normal use but still part of
+                    #                the operational record
+                    #   restricted   archived rows are filtered out of reads
+                    #
+                    # Only meaningful on `soft`: a hard-deleted row is never
+                    # archived, so there is nothing for the key to govern. The
+                    # generator makes that an ERROR
+                    # (`ARCHIVE_VISIBILITY_ON_HARD_DELETE`) and the `if/then`
+                    # below mirrors it — for the long form. The shorthand
+                    # `delete: hard` and an absent `delete` also resolve to
+                    # hard, but neither can carry the key in the first place, so
+                    # the guard has nothing to check there.
+                    archiveVisibility:
+                      type: string
+                      enum: ["operational", "restricted"]
                   allOf:
+                    # `archiveVisibility` governs archived rows, which only
+                    # `soft` produces. Mirrors ARCHIVE_VISIBILITY_ON_HARD_DELETE.
+                    - if:
+                        required: ["archiveVisibility"]
+                      then:
+                        properties: { mode: { const: "soft" } }
                     # `reasonText` is required by `other` and FORBIDDEN by every
                     # other value — both directions, mirroring
                     # DELETE_REASON_TEXT_REQUIRED, which fires on each. Same
@@ -1142,6 +1212,64 @@ rules:
               type: array
               uniqueItems: true
               items: { type: string, pattern: "^[a-z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)*$" }
+            # Uniqueness constraints on the entity's rows, added in generator
+            # 0.8.0 (FEAT-2026-0148). It replaces the deprecated `x-unique`,
+            # which the kit never documented and which could not express a
+            # composite key — the shape most real constraints turn out to have.
+            #
+            # A LIST of constraint objects, so an entity can carry several. Both
+            # shapes below are measured against the 0.8.0 jar:
+            #
+            #   uniqueBy:
+            #     - properties: [tenantId, code]      # composite
+            #     - name: uq_customer_email           # named single-column
+            #       properties: [email]
+            #
+            # `properties` is required and must not be empty ("element is
+            # missing the required 'properties' key" / "'properties' list must
+            # not be empty" — both ERRORs at parse time). `name` is optional but
+            # must be a non-empty string when present.
+            #
+            # Each member must name a property of THIS schema, matched exactly:
+            # the generator resolves the tuple and raises
+            # `UNIQUE_BY_UNKNOWN_PROPERTY` otherwise. Dotted paths do not
+            # resolve — `address.city` is reported as unknown, not walked — so
+            # the pattern here is a single property name, unlike the dotted
+            # `filterableProperties` above. That difference is the jar's, not a
+            # transcription slip.
+            #
+            # NOT checked here, because neither is visible from one value:
+            # `UNIQUE_BY_UNKNOWN_PROPERTY` needs the schema's property map, and
+            # `UNIQUE_BY_DUPLICATE_INDEX_NAME` (ERROR — two constraints on one
+            # entity sharing a `name`) needs a cross-element comparison JSON
+            # Schema cannot express.
+            #
+            # `uniqueItems` on both levels is the house tightening every other
+            # list in this block gets: the jar accepts a repeated member and
+            # counts the tuple composite, which is a duplicated column in an
+            # index rather than an intent anyone can state. An empty outer list
+            # is accepted — it declares nothing, and the jar takes it silently.
+            #
+            # The constraint object is closed for the same reason. The jar
+            # ignores an unknown member without a word, so closing it here is a
+            # tightening — but the usual objection does not apply: the key is
+            # new in 0.8.0, so no spec can already carry the shape this would
+            # start rejecting, and a typo'd member on a constraint is otherwise
+            # silent in both tools.
+            uniqueBy:
+              type: array
+              uniqueItems: true
+              items:
+                type: object
+                additionalProperties: false
+                required: ["properties"]
+                properties:
+                  name: { type: string, minLength: 1 }
+                  properties:
+                    type: array
+                    minItems: 1
+                    uniqueItems: true
+                    items: { type: string, pattern: "^[a-z][A-Za-z0-9]*$" }
             aiAccess:
               type: object
               additionalProperties: false

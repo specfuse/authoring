@@ -163,6 +163,8 @@ jobs:
                       DeleteReasonPlain DeleteReasonOtherWithText \
                       BareConcurrencyNone UnprotectedNoReason \
                       ConcurrencyOtherWithText ConcurrencyTextNoReason \
+                      ConcurrencyDelegated ArchiveVisibilityOperational \
+                      UniqueBySingleAndComposite UniqueByEmptyList \
                       DeprecatedSchemaKey; do
             if grep "specfuse-xentity-shape" "$REPORT" | grep -q "$good"; then
               echo "::error::$good uses only documented x-entity keys but was flagged." >&2
@@ -178,7 +180,12 @@ jobs:
                      BadConcurrencyMode ConcurrencyUnknownKey TypoKey \
                      RetiredEncryptedProperties \
                      ConcurrencyFreeTextReason ConcurrencyOtherNoText \
-                     ConcurrencyTextWithoutOther; do
+                     ConcurrencyTextWithoutOther \
+                     DelegatedBareString DelegatedWithoutTo \
+                     DelegatedWithReason ToOnOptimistic \
+                     ArchiveVisibilityOnHard BadArchiveVisibility \
+                     UniqueByNoProperties UniqueByEmptyProperties \
+                     UniqueByUnknownMember UniqueByBadPropertyName; do
             if ! grep "specfuse-xentity-shape" "$REPORT" | grep -q "$bad"; then
               echo "::error::specfuse-xentity-shape did not flag $bad." >&2
               fail=1
@@ -689,6 +696,53 @@ jobs:
             exit 1
           fi
           grep -q "warpFactor" /tmp/drift.out
+
+          # The synthetic jars above cannot answer `extensions --format json`,
+          # so they exercise only the constant-pool fallback — and the two
+          # things that path cannot see are exactly what generator 0.8.0 added:
+          # a MEMBER key (`delete.archiveVisibility`) and a new VALUE in an
+          # existing closed set (`concurrency: delegated`). Both walked past the
+          # guard once. These assertions drive the published-document readers
+          # directly so they cannot walk past it again.
+          echo "--- vocabulary check: member keys and closed value sets"
+          python3 - <<'PY'
+          import importlib.util, itertools, pathlib
+          spec = importlib.util.spec_from_file_location(
+              "vocab", "scripts/specfuse/check-extension-vocabulary.py")
+          v = importlib.util.module_from_spec(spec); spec.loader.exec_module(v)
+
+          doc = {"x-entity": [
+              {"key": "concurrency", "values": ["optimistic", "none", "delegated"]},
+              {"key": "delete", "values": ["hard", "soft"],
+               "members": [{"key": "archiveVisibility",
+                            "values": ["operational", "restricted"]}]},
+          ]}
+          keys = v.published_vocabulary(doc)["x-entity"]
+          assert "archiveVisibility" in keys, "member keys must reach the key comparison"
+          values = v.published_values(doc)["x-entity"]
+          assert values[("delete", "archiveVisibility")] == {"operational", "restricted"}, values
+
+          # A guard whose enum has fallen behind must read as rejecting the value.
+          stale = {"additionalProperties": False,
+                   "properties": {"concurrency": {"enum": ["optimistic", "none"]}}}
+          accepted = v._accepted_values(v._descend([stale], "concurrency"))
+          assert accepted == {"optimistic", "none"}, accepted
+          assert "delegated" not in accepted
+
+          # And the shipped ruleset must actually accept everything the jar publishes.
+          delivered = sorted(itertools.chain.from_iterable(
+              v.ROOT.glob(pattern) for pattern in v.RULESET_GLOBS))
+          assert delivered, "no ruleset was delivered into the scaffolded project"
+          guards = [g for g in v.closed_guards(delivered) if g["surface"] == "x-entity"]
+          assert guards, "no x-entity guard found in the delivered ruleset"
+          for g in guards:
+              live = v._accepted_values(v._descend([g["schema"]], "concurrency"))
+              assert live and {"optimistic", "none", "delegated"} <= live, live
+              av = v._accepted_values(
+                  v._descend(v._descend([g["schema"]], "delete"), "archiveVisibility"))
+              assert av == {"operational", "restricted"}, av
+          print("ok")
+          PY
 
           echo "--- vocabulary check: missing jar is a loud skip, fatal only with --require-jar"
           SPECFUSE_HOME=/tmp/no-such-home python3 scripts/specfuse/check-extension-vocabulary.py

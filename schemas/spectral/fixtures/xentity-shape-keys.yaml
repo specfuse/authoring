@@ -34,6 +34,25 @@
 #   ConcurrencyTextWithoutOther flagged: reasonText rides with `other` and nothing else
 #   TypoKey            flagged: unknown x-entity key (the additionalProperties guard)
 #
+# Generator 0.8.0 added three things to the vocabulary. Each is pinned in both
+# directions here, because each was a key the closed guard would otherwise have
+# rejected on a spec that generates fine:
+#
+#   ConcurrencyDelegated  no finding — `{ mode: delegated, to: <Ancestor> }`
+#   DelegatedBareString   flagged: `delegated` has nowhere to put `to`
+#   DelegatedWithoutTo    flagged: `to` is required by `delegated`
+#   DelegatedWithReason   flagged: reason/reasonText do not ride with `delegated`
+#   ToOnOptimistic        flagged: `to` is only valid on `delegated`
+#   ArchiveVisibilityOperational  no finding — soft delete, archived rows readable
+#   ArchiveVisibilityOnHard       flagged: nothing to govern on a hard delete
+#   BadArchiveVisibility          flagged: value outside the closed set
+#   UniqueBySingleAndComposite    no finding — a named single and a composite
+#   UniqueByEmptyList             no finding — declares nothing, as the jar reads it
+#   UniqueByNoProperties          flagged: `properties` is required
+#   UniqueByEmptyProperties       flagged: a constraint over no properties
+#   UniqueByUnknownMember         flagged: unknown key inside a constraint object
+#   UniqueByBadPropertyName       flagged: property names are camelCase
+#
 # And, by `specfuse-xentity-concurrency-unprotected-needs-reason` only — these
 # two must NOT appear in any specfuse-xentity-shape finding:
 #
@@ -106,6 +125,9 @@ components:
         delete:
           mode: soft
           retention: P30D
+          archiveVisibility: operational
+        uniqueBy:
+          - properties: [reference]
         cascadeDelete: soft
         children: [OrderLine, Payment]
         valueObjects:
@@ -434,3 +456,174 @@ components:
         searchablePropertys: [name]     # typo — must not be silently accepted
       properties:
         id: { type: string, format: uuid }
+
+    # ---- `concurrency: delegated`, generator 0.8.0. ------------------------
+    # A third mode: the entity keeps no version of its own because its writes
+    # are only ever made under an ancestor's `If-Match`. `to` names that
+    # ancestor. Clean case first.
+    ConcurrencyDelegated:
+      type: object
+      x-entity:
+        domain: orders
+        type: entity
+        belongsTo: { allOf: [Order] }
+        concurrency:
+          mode: delegated
+          to: Order
+      properties:
+        id: { type: string, format: uuid }
+
+    # The four ways to get `delegated` wrong, each an ERROR in the jar too.
+    DelegatedBareString:
+      type: object
+      x-entity:
+        domain: orders
+        type: entity
+        concurrency: delegated          # cannot be authored as a bare string:
+                                        # there is nowhere to put `to`
+      properties:
+        id: { type: string, format: uuid }
+
+    DelegatedWithoutTo:
+      type: object
+      x-entity:
+        domain: orders
+        type: entity
+        concurrency:
+          mode: delegated               # `to` is required by this mode
+      properties:
+        id: { type: string, format: uuid }
+
+    DelegatedWithReason:
+      type: object
+      x-entity:
+        domain: orders
+        type: entity
+        concurrency:
+          mode: delegated
+          to: Order
+          reason: single-writer         # the delegation IS the justification
+      properties:
+        id: { type: string, format: uuid }
+
+    ToOnOptimistic:
+      type: object
+      x-entity:
+        domain: orders
+        type: entity
+        concurrency:
+          mode: optimistic
+          to: Order                     # `to` is only valid on `delegated`
+      properties:
+        id: { type: string, format: uuid }
+
+    # ---- `delete.archiveVisibility`, generator 0.8.0. ----------------------
+    # Whether a soft-deleted row stays readable. Absent resolves to the
+    # fail-closed `restricted`, so adding the key changes no existing meaning.
+    ArchiveVisibilityOperational:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        delete:
+          mode: soft
+          archiveVisibility: operational
+      properties:
+        id: { type: string, format: uuid }
+        deletedAt: { type: string, format: date-time, nullable: true }
+
+    ArchiveVisibilityOnHard:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        delete:
+          mode: hard
+          archiveVisibility: operational  # a hard-deleted row is never archived
+      properties:
+        id: { type: string, format: uuid }
+
+    BadArchiveVisibility:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        delete:
+          mode: soft
+          archiveVisibility: hidden       # outside the closed set
+      properties:
+        id: { type: string, format: uuid }
+        deletedAt: { type: string, format: date-time, nullable: true }
+
+    # ---- `uniqueBy`, generator 0.8.0. --------------------------------------
+    # A list of constraint objects, so an entity can carry several, and each
+    # can be composite — the thing the deprecated `x-unique` could not express.
+    UniqueBySingleAndComposite:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        uniqueBy:
+          - properties: [tenantId, reference]
+          - name: uq_order_externalId
+            properties: [externalId]
+      properties:
+        id: { type: string, format: uuid }
+        tenantId: { type: string, format: uuid }
+        reference: { type: string }
+        externalId: { type: string }
+
+    # An empty list declares nothing; the jar takes it silently, so the guard
+    # must not invent a minimum here.
+    UniqueByEmptyList:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        uniqueBy: []
+      properties:
+        id: { type: string, format: uuid }
+
+    # The four ways to get `uniqueBy` wrong.
+    UniqueByNoProperties:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        uniqueBy:
+          - name: uq_order_reference      # `properties` is required
+      properties:
+        id: { type: string, format: uuid }
+
+    UniqueByEmptyProperties:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        uniqueBy:
+          - properties: []                # a constraint over nothing
+      properties:
+        id: { type: string, format: uuid }
+
+    UniqueByUnknownMember:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        uniqueBy:
+          - properties: [reference]
+            nullsDistinct: true           # not a documented constraint member
+      properties:
+        id: { type: string, format: uuid }
+        reference: { type: string }
+
+    UniqueByBadPropertyName:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        uniqueBy:
+          - properties: [Reference]       # property names are camelCase
+      properties:
+        id: { type: string, format: uuid }
+        reference: { type: string }
