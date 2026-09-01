@@ -491,6 +491,8 @@ Every entity declares whether its writes are protected, via `x-entity.concurrenc
 
 `concurrency: none` is a legitimate declaration for a genuinely single-writer or append-only resource, and it owes a `reason` whenever the entity also exposes an unsafe write.
 
+An aggregate-internal child written only through its parent's `PATCH` declares neither: `{ mode: delegated, to: <Parent> }` (generator 0.8.0) says the row is protected by the parent's version rather than one of its own. Use it instead of `none` where it is true — `none` claims the row is unprotected, and that claim is what the audits go looking for.
+
 > **Two writers is not only an AI-vs-human question.** The rest of this section is written around agents because that is the case where the race is easiest to picture, but any two callers of the same row contend: an employee cancelling a request a manager is approving, two managers editing one roster, a retry racing its own original. Scoping ETags to the AI-reachable surface under-protects everything else — see `Vendor_Extensions.md` §1.1 for how to choose the mode.
 
 #### Why This Matters
@@ -711,6 +713,8 @@ An entity that declares `delete: soft` is marked as deleted rather than removed 
 - `deletedByUserId` recorded when the entity declares it
 - Returns `204 No Content`
 - Resource no longer appears in list/search results by default
+
+> **Whether an archived row stays readable is its own declaration**, made by `x-entity.delete.archiveVisibility` (generator 0.8.0): `operational` keeps archived rows readable, `restricted` filters them out, and an entity that says nothing resolves to `restricted`. The `deletedAt ne null` queries below therefore describe an `operational` entity. Like the rest of delete gate 1 the key is validated and not yet enforced — nothing filters reads today — so declare it now and expect the behaviour when gate 2 lands.
 
 > **Do not also carry a `deleted` member in the entity's status enum.** It is a second, independent write of one fact: the two can disagree, and because `deleted` overwrites whatever status preceded it, restoring the record cannot recover the prior state. The generator flags the overlap as `DELETE_SOFT_STATUS_ENUM_OVERLAP` (WARNING). Filter on `deletedAt` instead. Removing an already-published `deleted` member is a breaking change for any client filtering on it — migrate deliberately.
 

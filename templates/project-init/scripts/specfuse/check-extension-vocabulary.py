@@ -24,6 +24,21 @@
 #   generator knows a key the ruleset does not  -> FAIL (blocks adoption)
 #   ruleset accepts a key the generator does not -> report, never fail
 #
+# A key is not the only thing a closed guard closes. Two more comparisons run
+# wherever the jar publishes them, because generator 0.8.0 shipped one of each
+# and the key-only check saw neither:
+#
+#   MEMBER keys      `delete.archiveVisibility` — the guards close nested
+#                    objects too, so an unlisted member blocks adoption exactly
+#                    as an unlisted top-level key does.
+#   closed VALUES    `concurrency: delegated` — the key was listed and its enum
+#                    was stale, so the spec fails lint on the value instead. The
+#                    author reads it as "the handbook documents a member my lint
+#                    rejects", which is the same wall one step further in.
+#
+# Of the three additions in 0.8.0 the original check caught one. That is the
+# measurement this fix comes from, and CI now pins both new directions.
+#
 # The asymmetry is deliberate: only the first direction can block a spec author.
 # The second is still worth reporting — a key the ruleset accepts and codegen
 # ignores is metadata documenting intent nothing enforces, which can silently
@@ -177,7 +192,7 @@ def class_constants(data: bytes):
         slot += 1
 
 
-def published_vocabulary(jar: Path) -> dict[str, set[str]] | None:
+def extensions_document(jar: Path) -> dict | None:
     """Ask the jar what it recognises, via `extensions --format json`.
 
     Authoritative where the constant-pool scan below is a heuristic: the
@@ -188,6 +203,9 @@ def published_vocabulary(jar: Path) -> dict[str, set[str]] | None:
     Returns None when the jar predates the subcommand, so the caller falls back
     rather than silently reporting an empty vocabulary — an empty result would
     read as "the generator knows nothing", which passes every comparison.
+
+    One JVM start, two readings: `published_vocabulary` takes the keys and
+    `published_values` the closed value sets.
     """
     try:
         proc = subprocess.run(
@@ -204,16 +222,182 @@ def published_vocabulary(jar: Path) -> dict[str, set[str]] | None:
         return None
     if not isinstance(doc, dict) or not doc:
         return None
+    return doc
+
+
+def published_vocabulary(doc: dict) -> dict[str, set[str]] | None:
+    """Every key the jar's own vocabulary document names, members included."""
     out: dict[str, set[str]] = {}
     for surface, entries in doc.items():
         if not isinstance(entries, list):
             return None
-        keys = {e["key"] for e in entries
-                if isinstance(e, dict) and isinstance(e.get("key"), str)}
+        keys: set[str] = set()
+        for entry in entries:
+            if not isinstance(entry, dict) or not isinstance(entry.get("key"), str):
+                continue
+            keys.add(entry["key"])
+            # Member keys count too, and leaving them out is how generator
+            # 0.8.0's `delete.archiveVisibility` walked past this check: the
+            # guards close every nested object with `additionalProperties:
+            # false`, so a member the ruleset does not list blocks adoption
+            # exactly as a top-level key does. `schema_keys` already collects
+            # the ruleset side at any depth, so the two sides now meet.
+            for member in entry.get("members") or []:
+                if isinstance(member, dict) and isinstance(member.get("key"), str):
+                    keys.add(member["key"])
         if not keys:
             return None
         out[surface] = keys
     return out or None
+
+
+def published_values(doc: dict) -> dict[str, dict[tuple[str, ...], set[str]]]:
+    """The CLOSED VALUE vocabularies the jar publishes, keyed by member path.
+
+    A key the ruleset lists but constrains to a stale `enum` is the same
+    adoption block as a key it omits, and it is the one this check used to miss
+    entirely: generator 0.8.0 added `delegated` to `x-entity.concurrency`, whose
+    guard enum still read `optimistic | none`, and the key-only comparison saw
+    nothing wrong because `concurrency` was listed.
+
+    Paths are tuples so `delete.reason` and `concurrency.reason` — two closed
+    sets, same member name, different vocabularies — stay apart.
+    """
+    out: dict[str, dict[tuple[str, ...], set[str]]] = {}
+    for surface, entries in doc.items():
+        if not isinstance(entries, list):
+            continue
+        found: dict[tuple[str, ...], set[str]] = {}
+
+        def record(path: tuple[str, ...], node: dict) -> None:
+            values = node.get("values")
+            if isinstance(values, list):
+                vals = {v for v in values if isinstance(v, str)}
+                if vals:
+                    found[path] = vals
+            for member in node.get("members") or []:
+                if isinstance(member, dict) and isinstance(member.get("key"), str):
+                    record(path + (member["key"],), member)
+
+        for entry in entries:
+            if isinstance(entry, dict) and isinstance(entry.get("key"), str):
+                record((entry["key"],), entry)
+        if found:
+            out[surface] = found
+    return out
+
+
+# Containers a value can hide behind without changing which property it belongs
+# to. `if` is deliberately absent: an `if` clause is a condition on a sibling,
+# and reading its `const` as an accepted value would invent members no author
+# may write.
+_CONTAINERS = ("items", "additionalProperties", "patternProperties",
+               "oneOf", "anyOf", "allOf", "then", "else")
+
+
+def _descend(nodes: list, key: str) -> list:
+    """The subschemas reached by property `key` from any of `nodes`.
+
+    One property level only — containers and combinators are looked through,
+    other properties are not. Without that limit `reason` would match inside
+    `concurrency` and `delete` alike and the two closed sets would merge.
+    """
+    out: list = []
+    stack = list(nodes)
+    seen: set[int] = set()
+    while stack:
+        node = stack.pop()
+        if isinstance(node, list):
+            stack.extend(node)
+            continue
+        if not isinstance(node, dict) or id(node) in seen:
+            continue
+        seen.add(id(node))
+        props = node.get("properties")
+        if isinstance(props, dict) and key in props:
+            out.append(props[key])
+        for branch in _CONTAINERS:
+            child = node.get(branch)
+            if isinstance(child, (dict, list)):
+                stack.append(child)
+    return out
+
+
+def _accepted_values(nodes: list) -> set[str] | None:
+    """The value set these subschemas close over, or None if they close over none.
+
+    `mode` is followed because that is how a long form spells its own value:
+    the kit writes `concurrency: optimistic` and `{ mode: optimistic }` as two
+    arms of one `oneOf`, while the jar publishes one vocabulary for the key.
+    None means "not closed here" — an open string, or a value the guard spells
+    under some other child — and the caller stays quiet rather than guessing.
+    """
+    def collect(follow_mode: bool) -> tuple[set[str], bool]:
+        values: set[str] = set()
+        closed = False
+        stack = list(nodes)
+        seen: set[int] = set()
+        while stack:
+            node = stack.pop()
+            if isinstance(node, list):
+                stack.extend(node)
+                continue
+            if not isinstance(node, dict) or id(node) in seen:
+                continue
+            seen.add(id(node))
+            enum = node.get("enum")
+            if isinstance(enum, list):
+                values.update(v for v in enum if isinstance(v, str))
+                closed = True
+            const = node.get("const")
+            if isinstance(const, str):
+                values.add(const)
+                closed = True
+            for branch in _CONTAINERS:
+                child = node.get(branch)
+                if isinstance(child, (dict, list)):
+                    stack.append(child)
+            if follow_mode:
+                props = node.get("properties")
+                if isinstance(props, dict) and isinstance(props.get("mode"), dict):
+                    stack.append(props["mode"])
+        return values, closed
+
+    # `mode` is followed only once the key has already proved to be a value —
+    # i.e. some arm closes over strings directly. Following it unconditionally
+    # reads `x-protection.mode` (randomized | deterministic) as the vocabulary
+    # of `valueObjects.<prop>.protection`, whose published values are the
+    # `atRest` set, and reports every one of them as rejected. An object key
+    # that merely happens to own a property called `mode` is not a value.
+    scalar, closed = collect(follow_mode=False)
+    if not closed:
+        return None
+    with_mode, _ = collect(follow_mode=True)
+    return scalar | with_mode
+
+
+def _spelled_elsewhere(nodes: list, wanted: set[str]) -> bool:
+    """Does some immediate child property of `nodes` carry the whole vocabulary?
+
+    `x-entity.valueObjects.<prop>.protection` is the case: the jar flattens its
+    child `atRest`'s values onto the `protection` key (compatibility.md
+    follow-up 33, generator-side ask 1), and the kit spells them one level down
+    as `protection.atRest`. Covered there is covered — reporting it would be
+    noise, and noise is what trains a reader past the real finding. This cannot
+    verify the mapping, only that nothing is missing, which is the honest
+    answer while the jar publishes a nested shape as a scalar.
+    """
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        props = node.get("properties")
+        if not isinstance(props, dict):
+            continue
+        for child in props.values():
+            accepted = _accepted_values([child])
+            if accepted is not None and wanted <= accepted:
+                return True
+    return False
 
 
 def generator_keys(jar: Path, prefixes: set[str]) -> dict[str, set[str]]:
@@ -300,6 +484,7 @@ def closed_guards(paths: list[Path]) -> list[dict]:
                     "surface": surface,
                     "keys": set(props),
                     "all_keys": schema_keys(schema),
+                    "schema": schema,
                 })
     return guards
 
@@ -476,7 +661,9 @@ def main(argv: list[str] | None = None) -> int:
     # for jars older than the subcommand, and its heuristic nature is exactly
     # why the ruleset-only direction is only fatal against a published source:
     # a key the scan fails to see looks ruleset-only when it is not.
-    published = published_vocabulary(jar) or {}
+    doc = extensions_document(jar)
+    published = (published_vocabulary(doc) if doc else None) or {}
+    value_sets = published_values(doc) if doc else {}
     surfaces = {g["surface"] for g in guards}
     scanned = generator_keys(jar, surfaces)
     # Authority is PER SURFACE, not per jar. `extensions` publishes the surfaces
@@ -534,6 +721,45 @@ def main(argv: list[str] | None = None) -> int:
             )
         else:
             print(f"✅ {label}: {len(declared)} key(s), no generator key missing")
+
+        # The value direction. A listed key whose enum has fallen behind blocks
+        # adoption exactly as an omitted key does, and reads worse at the point
+        # of failure: the spec names a member the handbook documents and lint
+        # rejects the value, not the key.
+        for path, wanted in sorted(value_sets.get(surface, {}).items()):
+            nodes: list = [guard["schema"]]
+            for step in path:
+                nodes = _descend(nodes, step)
+                if not nodes:
+                    break
+            if not nodes:
+                continue                       # key absent — the check above owns that
+            accepted = _accepted_values(nodes)
+            dotted = ".".join(path)
+            if accepted is None:
+                # Open here, or spelled under a child this walk does not follow.
+                if not _spelled_elsewhere(nodes, wanted):
+                    print(f"   ℹ️  {dotted}: the generator closes this over "
+                          f"{len(wanted)} value(s); the guard does not close it "
+                          f"here, so the two were not compared.")
+                continue
+            stale = sorted(wanted - accepted)
+            if stale:
+                failures.append(
+                    f"❌ {label}\n"
+                    f"   generator accepts, ruleset's enum rejects: "
+                    f"{dotted} = {', '.join(stale)}\n"
+                    f"   A spec declaring one of these fails lint on the VALUE,\n"
+                    f"   not the key — the member is documented and unusable.\n"
+                    f"   Fix: widen the enum to the generator's set, and check\n"
+                    f"   whether any rule anchored on the old spelling needs the\n"
+                    f"   same widening."
+                )
+            ahead = sorted(accepted - wanted)
+            if ahead:
+                print(f"   ⚠️  {dotted}: ruleset accepts {', '.join(ahead)}, "
+                      f"which the generator's published set does not — a value "
+                      f"the jar refuses at parse time passes lint.")
         if extra and surface not in authoritative_surfaces:
             print(f"   ℹ️  ruleset-only (informational — this surface is not in "
                   f"`extensions`, so the fallback scan is a heuristic and may "
