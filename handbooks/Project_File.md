@@ -977,9 +977,38 @@ The composable pair mirrors the Dart provider pair (`dartQueryProvider` / `dartM
 
 ### 11.5 Markdown artifacts
 
-**Snapshot date:** 2026-05-26. **Live source:** `templates --language markdown`.
+**Snapshot date:** 2026-09-02. **Live source:** `templates --language markdown`.
 
-`scenarioDocument`, `scenarioIndex`, `recipeDocumentation`, `entityDiagram`, `eventCatalog`, `channelTopology`, `docsIndex`.
+`scenarioDocument`, `scenarioIndex`, `recipeDocumentation`, `entityDiagram`, `eventCatalog`, `channelTopology`, `docsIndex`, `dataProtectionAudit`.
+
+#### `dataProtectionAudit` (generator 0.9.0)
+
+Emits `data-protection-audit.md` plus a machine-readable companion `data-protection-audit.json` carrying the same record. It reads the `x-classification` and `x-protection` declarations already in the specifications and turns them into the compliance deliverable those declarations exist to support, in six sections:
+
+| Section | What it states |
+|---|---|
+| 1. Data inventory | every classified field, its classification, at-rest handling, and whether it is persisted |
+| 2. Protection matrix | per field: at-rest, mode, blind index, masking, `unbounded`, reviewer, review date, review status |
+| 3. Exceptions register | classified fields neither encrypted nor hashed, with the rationale and sign-off — the encryption programme's burndown list |
+| 4. Key management | declared counts per control |
+| 5. Egress map | every route by which a classified field leaves the datastore: entity snapshots, event payloads, AI readability under `aiAccess`, and the API operations that return it |
+| 6. Erasure capability | per field, the erasure this system can perform **today**, and why |
+
+**Register it or it does not exist.** The artifact is not emitted unless `dataProtectionAudit` appears in a group's `artifacts[]`, and nothing warns you at generation time that a compliance document you believe in is not being produced. `reachability` (§ the generator's `reachability` subcommand) is what audits a project file for unregistered guarantee-bearing artifacts — the generator's own words are that unregistered, *"the declared-protection evidence is never emitted and the compliance deliverable silently reverts to a hand-maintained spreadsheet nothing checks."*
+
+```json
+{
+  "language": "Markdown",
+  "name": "Compliance",
+  "basePackage": "docs",
+  "destination": "./docs/compliance/",
+  "artifacts": ["dataProtectionAudit"]
+}
+```
+
+**What it is and is not.** Every row is a declaration the specifications carry, not an observation of a running system — which is the property that makes it useful: it is diffable, so `git blame` answers *"when did this field start being encrypted, and who approved it"* with a commit. It says so itself, in the document. Three findings are reported and **none fails the build**: declarations reviewed more than 18 months ago, classified fields reaching a snapshot without a `x-snapshot-pii-acknowledged` entry, and fields made AI-readable by an explicit `aiAccess.readableProperties` listing that the implicit expansion would have withheld. The stale-review finding is deliberately non-fatal, and the generator explains why in the document: a build that fails on a calendar date guarantees somebody rubber-stamps a date bump to go green.
+
+Key custody, rotation cadence, split knowledge and dual control are runtime properties of the key provider and appear nowhere — the document states that silence explicitly rather than letting an empty section read as a pass.
 
 ---
 
