@@ -201,7 +201,7 @@ def severity_of(body: object) -> str:
     return str((body or {}).get("severity", "warn")) if isinstance(body, dict) else "?"
 
 
-def load_rename_map(path: Path, kit: Path) -> tuple[dict, dict, dict, str | None]:
+def load_rename_map(path: Path, kit: Path) -> tuple[dict, dict, dict, dict, str | None]:
     doc = load_yaml(path, "rename map")
     surfaces = doc.get("rulesets")
     if not isinstance(surfaces, dict) or not surfaces:
@@ -210,6 +210,7 @@ def load_rename_map(path: Path, kit: Path) -> tuple[dict, dict, dict, str | None
     renames: dict[str, str] = {}
     non_mechanical: dict[str, dict] = {}
     retained: dict[str, dict] = {}
+    retired: dict[str, dict] = {}
     surface: str | None = None
     for name, body in surfaces.items():
         if not isinstance(body, dict):
@@ -217,6 +218,11 @@ def load_rename_map(path: Path, kit: Path) -> tuple[dict, dict, dict, str | None
         renames.update(body.get("renames") or {})
         non_mechanical.update(body.get("non_mechanical") or {})
         retained.update(body.get("retained") or {})
+        # `retired` accepts a bare list of ids or a mapping id -> {note}.
+        gone = body.get("retired") or {}
+        if isinstance(gone, list):
+            gone = {rule: {} for rule in gone}
+        retired.update(gone)
         if Path(str(body.get("kit", ""))).name == kit.name:
             surface = name
 
@@ -235,7 +241,7 @@ def load_rename_map(path: Path, kit: Path) -> tuple[dict, dict, dict, str | None
                 "direction — rules reported as project-specific because their",
                 "counterpart was looked up under a dead name. Fix the map first.",
             )
-    return renames, non_mechanical, retained, surface
+    return renames, non_mechanical, retained, retired, surface
 
 
 def wrap(text: str, indent: str = "      ") -> str:
@@ -275,15 +281,24 @@ def main() -> int:
             "no overlay left to diff.")
 
     map_path = args.rule_renames or (args.kit_ruleset.parent / RENAME_MAP_NAME)
-    renames, non_mechanical, retained, surface = load_rename_map(map_path, args.kit_ruleset)
+    renames, non_mechanical, retained, retired, surface = load_rename_map(
+        map_path, args.kit_ruleset)
 
     already_extends = args.kit_ruleset.resolve() in extends_paths(
         proj_doc, args.project_ruleset.resolve())
 
-    redundant, diverged, specific = [], [], []
+    redundant, diverged, specific, gone = [], [], [], []
     matched_kit: set[str] = set()
 
     for name, body in sorted(proj_rules.items()):
+        # A retired id has no counterpart to compare against, but "no
+        # counterpart" is NOT the same answer as "project-specific, keep it".
+        # The kit dropped or inverted the rule deliberately, and an inverted one
+        # requires what the kit now forbids — advising KEEP there is the worst
+        # thing this tool can say.
+        if name in retired:
+            gone.append((name, retired[name] or {}))
+            continue
         counterpart = name if name in kit_rules else renames.get(name)
         if counterpart not in kit_rules:
             entry = retained.get(name) or {}
@@ -343,6 +358,18 @@ def main() -> int:
             print(wrap("NON-MECHANICAL RENAME. " +
                        (non_mechanical[name].get("note") or ""), indent="       "))
 
+    print(f"\n--- RETIRED BY THE KIT ({len(gone)}) — READ THE NOTE BEFORE KEEPING")
+    for name, entry in gone:
+        print(f"  ⊘  {name}")
+        if entry.get("note"):
+            print(wrap(entry["note"], indent="       "))
+    if gone:
+        print(wrap("The kit no longer defines these, and not because it never did. "
+                   "Some were deleted; some were INVERTED, and a rule that requires "
+                   "what the kit now forbids will fail against the pinned generator "
+                   "whether or not you extend the kit. Any baseline count for them "
+                   "does not carry across."))
+
     print(f"\n--- PROJECT-SPECIFIC ({len(specific)}) — no kit counterpart; KEEP")
     for name, entry in specific:
         if entry.get("overlay_for"):
@@ -383,12 +410,14 @@ def main() -> int:
                 {"project": n, "kit": k, "project_severity": ps, "kit_severity": ks}
                 for n, k, ps, ks in diverged],
             "project_specific": [dict(rule=n, **e) for n, e in specific],
+            "retired_by_kit": [dict(rule=n, **e) for n, e in gone],
             "kit_only_new": kit_only,
         }, indent=2) + "\n")
         print(f"\n==> classification written to {args.json}")
 
     print(f"\n==> {len(redundant)} redundant, {len(diverged)} diverged, "
-          f"{len(specific)} project-specific, {len(kit_only)} "
+          f"{len(specific)} project-specific, {len(gone)} retired by the kit, "
+          f"{len(kit_only)} "
           f"{'inherited from' if already_extends else 'new from'} the kit.")
 
     if redundant and not args.report_only:

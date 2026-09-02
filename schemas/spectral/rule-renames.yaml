@@ -62,7 +62,7 @@ rulesets:
   openapi:
     kit: schemas/spectral/specfuse-openapi.yaml
 
-    # 79 pure prefix swaps + 2 non-mechanical = 81 mapped; 7 retained.
+    # 78 pure prefix swaps + 2 non-mechanical = 80 mapped; 7 retained; 1 retired.
     renames:
       rm-400-predefined: specfuse-400-predefined
       rm-400-required: specfuse-400-required
@@ -78,7 +78,6 @@ rulesets:
       rm-409-on-delete: specfuse-409-on-delete
       rm-409-on-put-patch: specfuse-409-on-put-patch
       rm-415-when-request-body: specfuse-415-when-request-body
-      rm-428-on-write: specfuse-428-on-write
       rm-api-version-header: specfuse-api-version-header
       rm-auth-meta-present: specfuse-auth-meta-present
       rm-auth-scopes-pattern: specfuse-auth-scopes-shape   # non-mechanical — see below
@@ -209,8 +208,26 @@ rulesets:
           `x-test-seed` values are C# expressions — language-specific, so
           project-side.
 
-    # No rule has been deleted without a successor on this surface yet.
-    retired: []
+    # `retired` also covers an INVERTED rule: a successor exists, but it counts
+    # the complement of what the legacy rule counted, so the number cannot move
+    # across. Dropping the key and letting the successors surface as new
+    # coverage is the only safe migration.
+    retired:
+      rm-428-on-write:
+        note: >-
+          INVERTED, not renamed, and not merely deleted. The legacy rule
+          REQUIRED a `428` on every write; the kit now FORBIDS one
+          (`specfuse-no-428`, plus `specfuse-no-428-in-prose` for the sentence
+          that motivated the declarations). `If-Match` is `required: true`, so
+          an absent header is a `400` from model validation before any
+          concurrency gate runs, and the generator emits no `428` under any
+          entity configuration — since 0.9.0 it reports each declaration as a
+          hard ERROR (`PRECONDITION_REQUIRED_DECLARED_UNEMITTED`). The legacy
+          baseline count is the number of operations MISSING a `428`; the
+          successors' population is the operations HAVING one. Complements, so
+          carrying the count across would seed a ceiling that means nothing
+          and could grant free passes. The key is dropped; seed the two
+          successors deliberately. See `compatibility.md` §34.
 
   asyncapi:
     kit: schemas/spectral/specfuse-asyncapi.yaml

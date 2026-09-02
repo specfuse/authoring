@@ -1,0 +1,115 @@
+# =============================================================================
+# Regression fixture: 428 Precondition Required is unauthorable
+# =============================================================================
+# `If-Match` is `required: true` on every write (`specfuse-ifmatch-on-write`,
+# and the generator's own AI_IFMATCH_NOT_REQUIRED). A required header that is
+# absent is rejected by model validation with a `400` before the action method
+# runs, so no generated path reaches a `428`. The generator emits no
+# `PreconditionRequiredException` and carries no `428` in any template; since
+# 0.9.0 it reports each declaration as a hard ERROR
+# (`PRECONDITION_REQUIRED_DECLARED_UNEMITTED`).
+#
+# The kit used to require the opposite (`specfuse-428-on-write`). Two rules
+# replace it, and this fixture pins BOTH in BOTH directions:
+#
+#   specfuse-no-428            the declaration
+#   specfuse-no-428-in-prose   the sentence that motivated the declaration
+#
+# The second rule exists because the first one cannot see prose. A consumer
+# that clears its `responses.428` blocks goes green while still shipping
+# descriptions promising a status the API cannot emit — and that text reaches
+# every reader of the published spec.
+#
+# Expected findings (asserted by .github/workflows/example-regen.yml):
+#
+#   /declared           {patch,delete}   specfuse-no-428           declares 428
+#   /prose              patch            specfuse-no-428-in-prose  operation description
+#   /proseInResponse    patch            specfuse-no-428-in-prose  response description
+#   /clean              patch            NEITHER rule fires
+#   /bigNumber          patch            NEITHER rule fires  <- the false-positive guard
+#
+# `/bigNumber` is the load-bearing case. `\b428\b` must not match `428` inside
+# a longer number: a `52428800` byte limit (50 MB) is the shape that a naive
+# substring match flags, and a rule that cries wolf on file-size prose is a rule
+# a consumer turns off. `/clean` is the other silent direction — a compliant
+# write must trip neither rule, or "the count went down" stops meaning anything.
+#
+# See `compatibility.md` §34. Not a Specfuse-conformant example — do not copy.
+# =============================================================================
+openapi: 3.0.3
+info:
+  title: no-428 fixture
+  version: "1.0.0"
+paths:
+
+  # VIOLATION (specfuse-no-428, twice): both writes declare the response.
+  /declared:
+    patch:
+      summary: Update with a declared 428
+      description: Updates the thing.
+      responses:
+        '200': { description: OK }
+        '400': { description: Bad Request }
+        '412': { description: Precondition Failed }
+        '428': { description: Precondition Required }
+    delete:
+      summary: Delete with a declared 428
+      description: Deletes the thing.
+      responses:
+        '204': { description: No Content }
+        '412': { description: Precondition Failed }
+        '428': { description: Precondition Required }
+
+  # VIOLATION (specfuse-no-428-in-prose): no declaration, but the operation
+  # description still promises the status. This is exactly the state a consumer
+  # lands in after clearing declarations alone.
+  /prose:
+    patch:
+      summary: Update
+      description: >-
+        Updates the thing. `If-Match` is required; mismatch -> 412,
+        missing -> 428.
+      responses:
+        '200': { description: OK }
+        '412': { description: Precondition Failed }
+
+  # VIOLATION (specfuse-no-428-in-prose): the promise is in a response
+  # description rather than the operation's own. `..description` reaches it;
+  # a rule anchored to `.description` would not.
+  /proseInResponse:
+    patch:
+      summary: Update
+      description: Updates the thing.
+      responses:
+        '200': { description: OK }
+        '412':
+          description: >-
+            Precondition Failed. A missing header returns 428 instead.
+
+  # CLEAN: declares 412, says so in prose, mentions no 428 anywhere.
+  /clean:
+    patch:
+      summary: Update
+      description: >-
+        Updates the thing. `If-Match` is required; a stale ETag returns 412.
+        A missing header is rejected by model validation with a 400.
+      responses:
+        '200': { description: OK }
+        '400': { description: Bad Request }
+        '412': { description: Precondition Failed }
+
+  # CLEAN: `52428800` contains the digits 428 and must NOT fire. Neither must
+  # `1428` or `4280` — the boundary is tested on both sides.
+  /bigNumber:
+    patch:
+      summary: Upload
+      description: >-
+        Accepts an attachment up to 52428800 bytes (50 MB). Rows older than
+        1428 days are pruned; the batch ceiling is 4280 items.
+      responses:
+        '200': { description: OK }
+        '413':
+          description: Payload larger than 52428800 bytes.
+
+components:
+  schemas: {}
