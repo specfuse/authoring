@@ -5,6 +5,22 @@ post:
   description: Lifecycle action — transitions a draft order to `placed`. Emits `Order.Placed`.
   x-roles: [Admin, Manager, Customer]
   x-scopes: [order.Order.write]
+  # REQUIRED here, and not decoration. Without x-operation the generator
+  # categorises automatically (Vendor_Extensions.md §5.1), and a POST with no
+  # request body resolves to `Create` — which then demands a body of type
+  # Entity/ApiModel and aborts generation for the whole `Orders` tag:
+  #
+  #   OperationResolutionException: Operation 'PlaceOrder' is a Create but has
+  #   no form parameters or body parameter of type Entity/ApiModel
+  #
+  # `coordination` is the category for an action that drives a transition
+  # rather than creating a row. `target` names the entity the action addresses,
+  # which the path (/v1/orders/{orderId}/place) does not spell as a schema name.
+  # See authoring #97 — `validate` is silent on this, so the only thing that
+  # catches it is running `generate`.
+  x-operation:
+    category: coordination
+    target: Order
   x-emits:
     - event: Order.Placed
       description: Emitted on the draft → placed state transition

@@ -1,0 +1,237 @@
+{
+  "findings": [
+    {
+      "severity": "SUGGESTION",
+      "code": "AI_409_RESPONSE_MISSING",
+      "message": "POST operation createOrder should define 409 response to report business rule conflicts",
+      "location": "paths./v1/customers/{customerId}/orders.post.responses",
+      "category": "AI Integration",
+      "suggestedFix": "Add 409 response:\n  '409':\n    description: Conflict - Business rule prevents operation from completing\n    content:\n      application/json:\n        schema:\n          $ref: '#/components/schemas/ConflictError'"
+    },
+    {
+      "severity": "SUGGESTION",
+      "code": "AI_409_RESPONSE_MISSING",
+      "message": "POST operation createCustomer should define 409 response to report business rule conflicts",
+      "location": "paths./v1/tenants/{tenantId}/customers.post.responses",
+      "category": "AI Integration",
+      "suggestedFix": "Add 409 response:\n  '409':\n    description: Conflict - Business rule prevents operation from completing\n    content:\n      application/json:\n        schema:\n          $ref: '#/components/schemas/ConflictError'"
+    },
+    {
+      "severity": "SUGGESTION",
+      "code": "CLOSED_SCHEMA_NOT_ENFORCED_CENSUS",
+      "message": "closed-schema census: 2 schemas declare `additionalProperties: false`, which the generated code does not enforce — an undeclared field in a request payload is silently dropped, not rejected. Enforcement lives in serializer configuration the generator does not emit. UpdateCustomer, UpdateOrder.",
+      "location": "components.schemas",
+      "category": "Contract",
+      "suggestedFix": "Either accept that the constraint is documentation-only, or configure your JSON stack to reject unknown members (Newtonsoft: MissingMemberHandling.Error; System.Text.Json: JsonUnmappedMemberHandling.Disallow)."
+    },
+    {
+      "severity": "SUGGESTION",
+      "code": "CONCURRENCY_PRECONDITION_CENSUS",
+      "message": "Optimistic-concurrency precondition census: 2 operation(s) declare a required If-Match or a 412 response, 2 of them get a generated gate, 0 of them delegate their guarantee to another aggregate root (CONCURRENCY_PRECONDITION_DELEGATED, reported separately and not counted as gated), 0 do not. The gated half counts both call sites since FEAT-2026-0107: the generated domain-service write, and the delegated operation wrapped by {Tag}ApplicationServiceBase. A delegated operation whose token no read publishes is counted as NOT gated — the wrapper exists, but no client can satisfy it.",
+      "location": "paths",
+      "category": "DDD"
+    },
+    {
+      "severity": "SUGGESTION",
+      "code": "DELETE_SEMANTICS_CENSUS",
+      "message": "x-entity.delete census: soft 0 / hard 0 / undeclared 4 (of 4 x-entity schemas).",
+      "location": "components.schemas",
+      "category": "DDD"
+    },
+    {
+      "severity": "SUGGESTION",
+      "code": "ENTITY_CONCURRENCY_CENSUS",
+      "message": "x-entity.concurrency census: optimistic 2 / none 2 / delegated 0 / undeclared 0 (of 4 x-entity schemas). 2 unprotected: 1 single-writer, 1 reference-data.",
+      "location": "components.schemas",
+      "category": "DDD"
+    },
+    {
+      "severity": "SUGGESTION",
+      "code": "ENTITY_TAG_CENSUS",
+      "message": "ETag declaration census: 2 operation(s) declare an ETag response header, 0 of them on a single-instance response resolving to an entity that does not declare x-entity.concurrency: optimistic (ENTITY_TAG_DECLARED_UNGATED), 0 of them on a collection response (ENTITY_TAG_DECLARED_COLLECTION), and 0 gated entity(ies)' safe read declares no ETag at all (ENTITY_TAG_UNDECLARED_GATED). The three populations converge independently on distinct spec edits, so gate 2's severity flip reads this line, not a warning count.",
+      "location": "paths",
+      "category": "DDD"
+    },
+    {
+      "severity": "SUGGESTION",
+      "code": "PRECONDITION_REQUIRED_CENSUS",
+      "message": "428 declaration census: 0 operation(s) declare a '428' response the generator never emits (PRECONDITION_REQUIRED_DECLARED_UNEMITTED).",
+      "location": "paths",
+      "category": "DDD"
+    },
+    {
+      "severity": "SUGGESTION",
+      "code": "SOFT_PARENT_HARD_CHILD_CENSUS",
+      "message": "soft-parent/hard-child edge census: 0 owning edges where a soft-delete parent owns a hard-delete child (belongsTo/x-fk-for only, x-references excluded).",
+      "location": "components.schemas",
+      "category": "DDD"
+    },
+    {
+      "severity": "WARNING",
+      "code": "AI_409_RESPONSE_MISSING",
+      "message": "PATCH operation updateCustomer should define 409 response to report business rule conflicts",
+      "location": "paths./v1/customers/{customerId}.patch.responses",
+      "category": "AI Integration",
+      "suggestedFix": "Add 409 response:\n  '409':\n    description: Conflict - Business rule prevents operation from completing\n    content:\n      application/json:\n        schema:\n          $ref: '#/components/schemas/ConflictError'"
+    },
+    {
+      "severity": "WARNING",
+      "code": "AI_409_RESPONSE_MISSING",
+      "message": "PATCH operation updateOrder should define 409 response to report business rule conflicts",
+      "location": "paths./v1/orders/{orderId}.patch.responses",
+      "category": "AI Integration",
+      "suggestedFix": "Add 409 response:\n  '409':\n    description: Conflict - Business rule prevents operation from completing\n    content:\n      application/json:\n        schema:\n          $ref: '#/components/schemas/ConflictError'"
+    },
+    {
+      "severity": "WARNING",
+      "code": "AI_AGENT_ID_MISSING",
+      "message": "X-Agent-Id header should be added to operation updateCustomer for AI agent tracking",
+      "location": "paths./v1/customers/{customerId}.patch",
+      "category": "AI Integration",
+      "suggestedFix": "Add X-Agent-Id header:\n  - name: X-Agent-Id\n    in: header\n    required: false\n    schema:\n      type: string"
+    },
+    {
+      "severity": "WARNING",
+      "code": "AI_AGENT_ID_MISSING",
+      "message": "X-Agent-Id header should be added to operation createOrder for AI agent tracking",
+      "location": "paths./v1/customers/{customerId}/orders.post",
+      "category": "AI Integration",
+      "suggestedFix": "Add X-Agent-Id header:\n  - name: X-Agent-Id\n    in: header\n    required: false\n    schema:\n      type: string"
+    },
+    {
+      "severity": "WARNING",
+      "code": "AI_AGENT_ID_MISSING",
+      "message": "X-Agent-Id header should be added to operation updateOrder for AI agent tracking",
+      "location": "paths./v1/orders/{orderId}.patch",
+      "category": "AI Integration",
+      "suggestedFix": "Add X-Agent-Id header:\n  - name: X-Agent-Id\n    in: header\n    required: false\n    schema:\n      type: string"
+    },
+    {
+      "severity": "WARNING",
+      "code": "AI_AGENT_ID_MISSING",
+      "message": "X-Agent-Id header should be added to operation addOrderLine for AI agent tracking",
+      "location": "paths./v1/orders/{orderId}/lines.post",
+      "category": "AI Integration",
+      "suggestedFix": "Add X-Agent-Id header:\n  - name: X-Agent-Id\n    in: header\n    required: false\n    schema:\n      type: string"
+    },
+    {
+      "severity": "WARNING",
+      "code": "AI_AGENT_ID_MISSING",
+      "message": "X-Agent-Id header should be added to operation placeOrder for AI agent tracking",
+      "location": "paths./v1/orders/{orderId}/place.post",
+      "category": "AI Integration",
+      "suggestedFix": "Add X-Agent-Id header:\n  - name: X-Agent-Id\n    in: header\n    required: false\n    schema:\n      type: string"
+    },
+    {
+      "severity": "WARNING",
+      "code": "AI_AGENT_ID_MISSING",
+      "message": "X-Agent-Id header should be added to operation createCustomer for AI agent tracking",
+      "location": "paths./v1/tenants/{tenantId}/customers.post",
+      "category": "AI Integration",
+      "suggestedFix": "Add X-Agent-Id header:\n  - name: X-Agent-Id\n    in: header\n    required: false\n    schema:\n      type: string"
+    },
+    {
+      "severity": "WARNING",
+      "code": "AI_CHANGE_REASON_MISSING",
+      "message": "X-Change-Reason header should be added to operation updateCustomer for audit trail",
+      "location": "paths./v1/customers/{customerId}.patch",
+      "category": "AI Integration",
+      "suggestedFix": "Add X-Change-Reason header:\n  - name: X-Change-Reason\n    in: header\n    required: false\n    schema:\n      type: string\n      maxLength: 500"
+    },
+    {
+      "severity": "WARNING",
+      "code": "AI_CHANGE_REASON_MISSING",
+      "message": "X-Change-Reason header should be added to operation createOrder for audit trail",
+      "location": "paths./v1/customers/{customerId}/orders.post",
+      "category": "AI Integration",
+      "suggestedFix": "Add X-Change-Reason header:\n  - name: X-Change-Reason\n    in: header\n    required: false\n    schema:\n      type: string\n      maxLength: 500"
+    },
+    {
+      "severity": "WARNING",
+      "code": "AI_CHANGE_REASON_MISSING",
+      "message": "X-Change-Reason header should be added to operation updateOrder for audit trail",
+      "location": "paths./v1/orders/{orderId}.patch",
+      "category": "AI Integration",
+      "suggestedFix": "Add X-Change-Reason header:\n  - name: X-Change-Reason\n    in: header\n    required: false\n    schema:\n      type: string\n      maxLength: 500"
+    },
+    {
+      "severity": "WARNING",
+      "code": "AI_CHANGE_REASON_MISSING",
+      "message": "X-Change-Reason header should be added to operation addOrderLine for audit trail",
+      "location": "paths./v1/orders/{orderId}/lines.post",
+      "category": "AI Integration",
+      "suggestedFix": "Add X-Change-Reason header:\n  - name: X-Change-Reason\n    in: header\n    required: false\n    schema:\n      type: string\n      maxLength: 500"
+    },
+    {
+      "severity": "WARNING",
+      "code": "AI_CHANGE_REASON_MISSING",
+      "message": "X-Change-Reason header should be added to operation placeOrder for audit trail",
+      "location": "paths./v1/orders/{orderId}/place.post",
+      "category": "AI Integration",
+      "suggestedFix": "Add X-Change-Reason header:\n  - name: X-Change-Reason\n    in: header\n    required: false\n    schema:\n      type: string\n      maxLength: 500"
+    },
+    {
+      "severity": "WARNING",
+      "code": "AI_CHANGE_REASON_MISSING",
+      "message": "X-Change-Reason header should be added to operation createCustomer for audit trail",
+      "location": "paths./v1/tenants/{tenantId}/customers.post",
+      "category": "AI Integration",
+      "suggestedFix": "Add X-Change-Reason header:\n  - name: X-Change-Reason\n    in: header\n    required: false\n    schema:\n      type: string\n      maxLength: 500"
+    },
+    {
+      "severity": "WARNING",
+      "code": "AI_IDEMPOTENCY_KEY_MISSING",
+      "message": "POST operation createOrder should support Idempotency-Key header for safe retries",
+      "location": "paths./v1/customers/{customerId}/orders.post",
+      "category": "AI Integration",
+      "suggestedFix": "Add Idempotency-Key header:\n  - name: Idempotency-Key\n    in: header\n    required: false\n    schema:\n      type: string\n      format: uuid\nOr reference: $ref: './common/parameters/ai-integration.yaml#/Idempotency-Key'"
+    },
+    {
+      "severity": "WARNING",
+      "code": "AI_IDEMPOTENCY_KEY_MISSING",
+      "message": "POST operation addOrderLine should support Idempotency-Key header for safe retries",
+      "location": "paths./v1/orders/{orderId}/lines.post",
+      "category": "AI Integration",
+      "suggestedFix": "Add Idempotency-Key header:\n  - name: Idempotency-Key\n    in: header\n    required: false\n    schema:\n      type: string\n      format: uuid\nOr reference: $ref: './common/parameters/ai-integration.yaml#/Idempotency-Key'"
+    },
+    {
+      "severity": "WARNING",
+      "code": "AI_IDEMPOTENCY_KEY_MISSING",
+      "message": "POST operation placeOrder should support Idempotency-Key header for safe retries",
+      "location": "paths./v1/orders/{orderId}/place.post",
+      "category": "AI Integration",
+      "suggestedFix": "Add Idempotency-Key header:\n  - name: Idempotency-Key\n    in: header\n    required: false\n    schema:\n      type: string\n      format: uuid\nOr reference: $ref: './common/parameters/ai-integration.yaml#/Idempotency-Key'"
+    },
+    {
+      "severity": "WARNING",
+      "code": "AI_IDEMPOTENCY_KEY_MISSING",
+      "message": "POST operation createCustomer should support Idempotency-Key header for safe retries",
+      "location": "paths./v1/tenants/{tenantId}/customers.post",
+      "category": "AI Integration",
+      "suggestedFix": "Add Idempotency-Key header:\n  - name: Idempotency-Key\n    in: header\n    required: false\n    schema:\n      type: string\n      format: uuid\nOr reference: $ref: './common/parameters/ai-integration.yaml#/Idempotency-Key'"
+    },
+    {
+      "severity": "WARNING",
+      "code": "OPERATION_ROLE_REGISTRY_MISSING",
+      "message": "no info.x-roles — role membership validation disabled",
+      "location": "info.x-roles",
+      "category": "DDD",
+      "suggestedFix": "Add info.x-roles: [role1, role2] to enable operation x-roles membership validation"
+    },
+    {
+      "severity": "WARNING",
+      "code": "SCHEMA_UNREFERENCED",
+      "message": "Schema 'Role' (enum) is generated but referenced by nothing — no entity property, context, snapshot, or event payload uses it. Consumers accrete dead code.",
+      "location": "components.schemas.Role",
+      "category": "DDD",
+      "suggestedFix": "Wire it into the model (reference it from an entity / context / snapshot / event) or remove it from the spec."
+    },
+    {
+      "severity": "WARNING",
+      "code": "SERVICE_REGISTRY_MISSING",
+      "message": "info.x-services is absent or empty; service ownership is not being validated (permissive fallback)",
+      "location": "info.x-services",
+      "category": "DDD"
+    }
+  ]
+}
