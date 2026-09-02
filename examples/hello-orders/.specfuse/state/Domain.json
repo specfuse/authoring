@@ -1,0 +1,386 @@
+{
+  "schemaVersion" : 3,
+  "group" : "Domain",
+  "language" : "C#",
+  "capturedAt" : "2026-09-02T14:02:02.584105Z",
+  "surface" : {
+    "builders" : { },
+    "fakes" : { },
+    "overrides" : [ ],
+    "fixtures" : { },
+    "errors" : { },
+    "production" : {
+      "BaseEntity" : [ "CreatedAt", "Id", "UpdatedAt" ],
+      "Customer" : [ "ConcurrencyToken", "Email", "FirstName", "LastName", "Orders", "Status", "Tenant", "TenantId", "Update" ],
+      "Order" : [ "ConcurrencyToken", "Currency", "Customer", "CustomerId", "Notes", "OrderLines", "PlacedAt", "Status", "Tenant", "TenantId", "Update" ],
+      "OrderLine" : [ "Description", "Order", "OrderId", "Quantity", "UnitPriceMinor" ],
+      "Tenant" : [ "Customers", "Name", "Orders", "Status" ],
+      "ImmutableValueObject" : [ "EnsureNotEmpty", "EnsureValid", "Equals", "GetHashCode", "Validate" ],
+      "StructuralComparer" : [ "Equals", "GetHashCode", "new" ],
+      "MutableValueObject" : [ "EnsureNotEmpty", "EnsureValid", "Equals", "Freeze", "GetHashCode", "ToString", "Validate" ]
+    },
+    "unparsedMemberCount" : 4,
+    "trackedCategories" : [ "builders", "errors", "fakes", "fixtures", "overrides", "production" ],
+    "signatures" : {
+      "production:BaseEntity:Id" : "h:7fd92483",
+      "production:BaseEntity:CreatedAt" : "h:0a3e5d76",
+      "production:BaseEntity:UpdatedAt" : "h:998cd469",
+      "production:Customer:ConcurrencyToken" : "h:395ceb89",
+      "production:Customer:FirstName" : "h:288bfc03",
+      "production:Customer:LastName" : "h:6bd5ae44",
+      "production:Customer:Email" : "h:d734eee6",
+      "production:Customer:Status" : "h:c2181a36",
+      "production:Customer:TenantId" : "h:8fafe539",
+      "production:Customer:Tenant" : "h:7d47ef82",
+      "production:Customer:Orders" : "h:9eaf8982",
+      "production:Customer:Update" : "h:b24d2de3",
+      "production:Order:ConcurrencyToken" : "h:395ceb89",
+      "production:Order:Status" : "h:be6e7691",
+      "production:Order:Currency" : "h:f6434ae2",
+      "production:Order:Notes" : "h:f80ef7a9",
+      "production:Order:PlacedAt" : "h:d3243dc1",
+      "production:Order:TenantId" : "h:8fafe539",
+      "production:Order:CustomerId" : "h:c1fb761f",
+      "production:Order:Tenant" : "h:7d47ef82",
+      "production:Order:Customer" : "h:e6cc1479",
+      "production:Order:OrderLines" : "h:e3e710a0",
+      "production:Order:Update" : "h:b24d2de3",
+      "production:OrderLine:Description" : "h:ec1bbab3",
+      "production:OrderLine:Quantity" : "h:19e6b0dd",
+      "production:OrderLine:UnitPriceMinor" : "h:fa32e8b5",
+      "production:OrderLine:OrderId" : "h:b53f4904",
+      "production:OrderLine:Order" : "h:90ecd0f4",
+      "production:Tenant:Name" : "h:4dd95349",
+      "production:Tenant:Status" : "h:8aeacf07",
+      "production:Tenant:Customers" : "h:e22be1cc",
+      "production:Tenant:Orders" : "h:9eaf8982",
+      "production:ImmutableValueObject:Equals" : "h:badf78fc",
+      "production:ImmutableValueObject:GetHashCode" : "h:e2e616ac",
+      "production:ImmutableValueObject:EnsureNotEmpty" : "h:aee0ca8c",
+      "production:ImmutableValueObject:Validate" : "h:76a2dbf0",
+      "production:ImmutableValueObject:EnsureValid" : "h:3de7416a",
+      "production:StructuralComparer:new" : "h:c53aba77",
+      "production:StructuralComparer:Equals" : "h:9855d79c",
+      "production:StructuralComparer:GetHashCode" : "h:e2e616ac",
+      "production:MutableValueObject:Freeze" : "h:df3bc5a6",
+      "production:MutableValueObject:Equals" : "h:badf78fc",
+      "production:MutableValueObject:GetHashCode" : "h:e2e616ac",
+      "production:MutableValueObject:EnsureNotEmpty" : "h:aee0ca8c",
+      "production:MutableValueObject:Validate" : "h:76a2dbf0",
+      "production:MutableValueObject:EnsureValid" : "h:3de7416a",
+      "production:MutableValueObject:ToString" : "h:1a406988"
+    },
+    "signatureDetails" : {
+      "production:BaseEntity:Id" : {
+        "params" : [ ],
+        "returnType" : "TId",
+        "modifiers" : [ ],
+        "rawParams" : null
+      },
+      "production:BaseEntity:CreatedAt" : {
+        "params" : [ ],
+        "returnType" : "DateTime?",
+        "modifiers" : [ ],
+        "rawParams" : null
+      },
+      "production:BaseEntity:UpdatedAt" : {
+        "params" : [ ],
+        "returnType" : "DateTime?",
+        "modifiers" : [ ],
+        "rawParams" : null
+      },
+      "production:Customer:ConcurrencyToken" : {
+        "params" : [ ],
+        "returnType" : "Guid",
+        "modifiers" : [ ],
+        "rawParams" : null
+      },
+      "production:Customer:FirstName" : {
+        "params" : [ ],
+        "returnType" : "string",
+        "modifiers" : [ ],
+        "rawParams" : null
+      },
+      "production:Customer:LastName" : {
+        "params" : [ ],
+        "returnType" : "string",
+        "modifiers" : [ ],
+        "rawParams" : null
+      },
+      "production:Customer:Email" : {
+        "params" : [ ],
+        "returnType" : "string?",
+        "modifiers" : [ ],
+        "rawParams" : null
+      },
+      "production:Customer:Status" : {
+        "params" : [ ],
+        "returnType" : "CustomerStatus",
+        "modifiers" : [ ],
+        "rawParams" : null
+      },
+      "production:Customer:TenantId" : {
+        "params" : [ ],
+        "returnType" : "Guid",
+        "modifiers" : [ ],
+        "rawParams" : null
+      },
+      "production:Customer:Tenant" : {
+        "params" : [ ],
+        "returnType" : "Tenant",
+        "modifiers" : [ "virtual" ],
+        "rawParams" : null
+      },
+      "production:Customer:Orders" : {
+        "params" : [ ],
+        "returnType" : "List<Order>",
+        "modifiers" : [ "virtual" ],
+        "rawParams" : null
+      },
+      "production:Customer:Update" : {
+        "params" : [ {
+          "name" : "dto",
+          "type" : "UpdateCustomer",
+          "defaultValue" : null
+        } ],
+        "returnType" : "void",
+        "modifiers" : [ ],
+        "rawParams" : "UpdateCustomer dto"
+      },
+      "production:Order:ConcurrencyToken" : {
+        "params" : [ ],
+        "returnType" : "Guid",
+        "modifiers" : [ ],
+        "rawParams" : null
+      },
+      "production:Order:Status" : {
+        "params" : [ ],
+        "returnType" : "OrderStatus",
+        "modifiers" : [ ],
+        "rawParams" : null
+      },
+      "production:Order:Currency" : {
+        "params" : [ ],
+        "returnType" : "string",
+        "modifiers" : [ ],
+        "rawParams" : null
+      },
+      "production:Order:Notes" : {
+        "params" : [ ],
+        "returnType" : "string?",
+        "modifiers" : [ ],
+        "rawParams" : null
+      },
+      "production:Order:PlacedAt" : {
+        "params" : [ ],
+        "returnType" : "DateTime?",
+        "modifiers" : [ ],
+        "rawParams" : null
+      },
+      "production:Order:TenantId" : {
+        "params" : [ ],
+        "returnType" : "Guid",
+        "modifiers" : [ ],
+        "rawParams" : null
+      },
+      "production:Order:CustomerId" : {
+        "params" : [ ],
+        "returnType" : "Guid",
+        "modifiers" : [ ],
+        "rawParams" : null
+      },
+      "production:Order:Tenant" : {
+        "params" : [ ],
+        "returnType" : "Tenant",
+        "modifiers" : [ "virtual" ],
+        "rawParams" : null
+      },
+      "production:Order:Customer" : {
+        "params" : [ ],
+        "returnType" : "Customer",
+        "modifiers" : [ "virtual" ],
+        "rawParams" : null
+      },
+      "production:Order:OrderLines" : {
+        "params" : [ ],
+        "returnType" : "List<OrderLine>",
+        "modifiers" : [ "virtual" ],
+        "rawParams" : null
+      },
+      "production:Order:Update" : {
+        "params" : [ {
+          "name" : "dto",
+          "type" : "UpdateOrder",
+          "defaultValue" : null
+        } ],
+        "returnType" : "void",
+        "modifiers" : [ ],
+        "rawParams" : "UpdateOrder dto"
+      },
+      "production:OrderLine:Description" : {
+        "params" : [ ],
+        "returnType" : "string",
+        "modifiers" : [ ],
+        "rawParams" : null
+      },
+      "production:OrderLine:Quantity" : {
+        "params" : [ ],
+        "returnType" : "int",
+        "modifiers" : [ ],
+        "rawParams" : null
+      },
+      "production:OrderLine:UnitPriceMinor" : {
+        "params" : [ ],
+        "returnType" : "int",
+        "modifiers" : [ ],
+        "rawParams" : null
+      },
+      "production:OrderLine:OrderId" : {
+        "params" : [ ],
+        "returnType" : "Guid",
+        "modifiers" : [ ],
+        "rawParams" : null
+      },
+      "production:OrderLine:Order" : {
+        "params" : [ ],
+        "returnType" : "Order",
+        "modifiers" : [ "virtual" ],
+        "rawParams" : null
+      },
+      "production:Tenant:Name" : {
+        "params" : [ ],
+        "returnType" : "string",
+        "modifiers" : [ ],
+        "rawParams" : null
+      },
+      "production:Tenant:Status" : {
+        "params" : [ ],
+        "returnType" : "TenantStatus",
+        "modifiers" : [ ],
+        "rawParams" : null
+      },
+      "production:Tenant:Customers" : {
+        "params" : [ ],
+        "returnType" : "List<Customer>",
+        "modifiers" : [ "virtual" ],
+        "rawParams" : null
+      },
+      "production:Tenant:Orders" : {
+        "params" : [ ],
+        "returnType" : "List<Order>",
+        "modifiers" : [ "virtual" ],
+        "rawParams" : null
+      },
+      "production:ImmutableValueObject:Equals" : {
+        "params" : [ {
+          "name" : "other",
+          "type" : "TSelf?",
+          "defaultValue" : null
+        } ],
+        "returnType" : "bool",
+        "modifiers" : [ "virtual" ],
+        "rawParams" : "TSelf? other"
+      },
+      "production:ImmutableValueObject:GetHashCode" : {
+        "params" : [ ],
+        "returnType" : "int",
+        "modifiers" : [ "override" ],
+        "rawParams" : ""
+      },
+      "production:ImmutableValueObject:EnsureNotEmpty" : {
+        "params" : [ ],
+        "returnType" : "void",
+        "modifiers" : [ ],
+        "rawParams" : ""
+      },
+      "production:ImmutableValueObject:Validate" : {
+        "params" : [ ],
+        "returnType" : "IEnumerable<ValidationResult>",
+        "modifiers" : [ "virtual" ],
+        "rawParams" : ""
+      },
+      "production:ImmutableValueObject:EnsureValid" : {
+        "params" : [ ],
+        "returnType" : "void",
+        "modifiers" : [ ],
+        "rawParams" : ""
+      },
+      "production:StructuralComparer:new" : {
+        "params" : [ ],
+        "returnType" : "StructuralComparer Instance =",
+        "modifiers" : [ "static", "readonly" ],
+        "rawParams" : ""
+      },
+      "production:StructuralComparer:Equals" : {
+        "params" : [ {
+          "name" : "x",
+          "type" : "object?",
+          "defaultValue" : null
+        }, {
+          "name" : "y",
+          "type" : "object?",
+          "defaultValue" : null
+        } ],
+        "returnType" : "new bool",
+        "modifiers" : [ ],
+        "rawParams" : "object? x, object? y"
+      },
+      "production:StructuralComparer:GetHashCode" : {
+        "params" : [ {
+          "name" : "obj",
+          "type" : "object?",
+          "defaultValue" : null
+        } ],
+        "returnType" : "int",
+        "modifiers" : [ ],
+        "rawParams" : "object? obj"
+      },
+      "production:MutableValueObject:Freeze" : {
+        "params" : [ ],
+        "returnType" : "void",
+        "modifiers" : [ ],
+        "rawParams" : ""
+      },
+      "production:MutableValueObject:Equals" : {
+        "params" : [ {
+          "name" : "obj",
+          "type" : "object?",
+          "defaultValue" : null
+        } ],
+        "returnType" : "bool",
+        "modifiers" : [ "override" ],
+        "rawParams" : "object? obj"
+      },
+      "production:MutableValueObject:GetHashCode" : {
+        "params" : [ ],
+        "returnType" : "int",
+        "modifiers" : [ "override" ],
+        "rawParams" : ""
+      },
+      "production:MutableValueObject:EnsureNotEmpty" : {
+        "params" : [ ],
+        "returnType" : "void",
+        "modifiers" : [ ],
+        "rawParams" : ""
+      },
+      "production:MutableValueObject:Validate" : {
+        "params" : [ ],
+        "returnType" : "IEnumerable<ValidationResult>",
+        "modifiers" : [ "virtual" ],
+        "rawParams" : ""
+      },
+      "production:MutableValueObject:EnsureValid" : {
+        "params" : [ ],
+        "returnType" : "void",
+        "modifiers" : [ ],
+        "rawParams" : ""
+      },
+      "production:MutableValueObject:ToString" : {
+        "params" : [ ],
+        "returnType" : "string",
+        "modifiers" : [ "override" ],
+        "rawParams" : ""
+      }
+    }
+  }
+}
