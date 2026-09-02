@@ -1123,7 +1123,21 @@ email:
 | `masking` | `{ first, last }` | How many leading/trailing characters survive masking. |
 | `unbounded` | boolean | The value has no length bound. |
 | `rationale` | string | **Required when `atRest: none`.** |
-| `reviewedOn` / `reviewedBy` | date / string | Who signed the decision off, and when. |
+| `reviewedOn` / `reviewedBy` | date / string | Who signed the decision off, and when. From generator 0.9.0 a `reviewedOn` older than **18 months** is reported as a stale review in the data-protection audit — a finding, never a build failure. |
+
+> **These declarations have a deliverable, from generator 0.9.0.** The
+> `dataProtectionAudit` markdown artifact (`Project_File.md` §11.5) renders
+> `x-classification` and `x-protection` into `data-protection-audit.md` and a
+> JSON companion: inventory, protection matrix, exceptions register, key
+> management, egress map, and erasure capability. It is the reason `rationale`,
+> `reviewedBy` and `reviewedOn` are worth filling in properly rather than
+> minimally — they are columns an assessor reads, and the document is diffable,
+> so `git blame` answers *"when did this field start being encrypted, and who
+> approved it"*.
+>
+> It is **not emitted unless registered** in a group's `artifacts[]`, and
+> nothing warns you at generation time. Register it, or the evidence quietly
+> does not exist.
 
 **`atRest: none` is a decision, not a default.** It is the only value that requires a `rationale`, because it is the only one that leaves a classified value in plaintext. An unreviewed escape hatch is how a classified field quietly ends up unprotected; the rationale is what makes it reviewable by the next person.
 

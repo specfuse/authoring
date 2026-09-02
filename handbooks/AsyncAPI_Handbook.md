@@ -856,6 +856,12 @@ x-snapshot-pii-acknowledged:
 
 Each entry must carry a justification ≥ 20 chars. The acknowledgement is reviewed at PR time; the justification surfaces in generated audit logs.
 
+**Use the map form. A bare list is not an acknowledgement.** `x-snapshot-pii-acknowledged: [email, phone]` records *that* a field was acknowledged and nothing about *why*, and the kit's `specfuse-async-snapshot-guardrails` reports it — at WARNING, so it does not block generation, but the justification is the point of the declaration.
+
+From generator 0.9.0 the difference shows up in a document somebody reads. The `dataProtectionAudit` artifact (`Project_File.md` §11.5) builds its *"why each acknowledged disclosure was accepted"* list from the map form only. A field acknowledged in list form appears in the egress table as acknowledged and is then **missing from the justification list** — which is the shape of a decision nobody wrote down. A classified field reaching a snapshot with no acknowledgement at all is reported as a finding in the same section.
+
+> **Two limits on what is checked, both measured against `0.9.0` rather than read off a message.** The jar's own diagnostic text says the list form *"is still accepted but states no reason"*, and this handbook does **not** repeat that as fact: a message is not behaviour (`compatibility.md` §32 is the entry that lesson comes from). What was measured is narrower and worth knowing — on `examples/hello-orders`, `validate` reports nothing about snapshot PII whether the acknowledgement is a map, a bare list, or **absent entirely**. So the generator-side check did not fire in that configuration at all, and a clean `validate` is not evidence that a snapshot's PII disclosures are acknowledged. The kit's Spectral rule is what covers this today; run it.
+
 ### 4.3 Operation Extensions
 
 #### `x-worker` (required on `receive` operations and `run-*` scheduled jobs)
