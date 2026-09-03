@@ -6,7 +6,7 @@
 # absent is rejected by model validation with a `400` before the action method
 # runs, so no generated path reaches a `428`. The generator emits no
 # `PreconditionRequiredException` and carries no `428` in any template; since
-# 0.9.0 it reports each declaration as a hard ERROR
+# 0.8.0 it reports each declaration as a hard ERROR
 # (`PRECONDITION_REQUIRED_DECLARED_UNEMITTED`).
 #
 # The kit used to require the opposite (`specfuse-428-on-write`). Two rules

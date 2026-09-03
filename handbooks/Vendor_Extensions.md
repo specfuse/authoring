@@ -240,6 +240,8 @@ FEAT-2026-0080 adds six ERROR and two WARNING coherence rules:
 | `DELETE_RETENTION_INVALID` | ERROR | `retention` is neither `none` nor a valid ISO-8601 duration |
 | `DELETE_SEMANTICS_UNDECLARED` | WARNING | the entity is the target of a DELETE operation and declares no `delete` |
 | `DELETE_SOFT_STATUS_ENUM_OVERLAP` | WARNING | a soft-delete entity whose status enum also carries a `deleted`/`archived` member |
+| `DELETE_SOFT_BOOLEAN_FLAG_OVERLAP` | WARNING | a soft-delete entity also carrying a boolean `isArchived` / `isDeleted` property (generator 0.7.0) |
+| `DELETE_SOFT_TIMESTAMP_OVERLAP` | WARNING | a soft-delete entity also carrying a date-time property named `leftAt`, `revokedAt` or `removedAt` (generator 0.8.0). **Read the caveat below before acting on this one** |
 | `DELETE_REASON_INVALID` | ERROR | `reason` outside the closed set |
 | `DELETE_REASON_REQUIRES_HARD` | ERROR | `reason` alongside `mode: soft` |
 | `DELETE_REASON_TEXT_REQUIRED` | ERROR | `reason: other` without `reasonText`, **or** `reasonText` beside any other reason |
@@ -247,6 +249,45 @@ FEAT-2026-0080 adds six ERROR and two WARNING coherence rules:
 | `DELETE_REASON_MISSING` | WARNING | `delete` resolves to `hard` and declares no `reason`. This row read "reserved; not raised by default" — measured against both the `0.7.0` and `0.8.0` jars it fires, so the entry was stale rather than the behaviour new |
 | `ARCHIVE_VISIBILITY_ON_HARD_DELETE` | ERROR | `archiveVisibility` where `delete` resolves to `hard` — a destroyed row is never archived (generator 0.8.0) |
 | `ARCHIVE_VISIBILITY_UNDECLARED` | WARNING | `mode: soft` with no `archiveVisibility`; it resolves to the fail-closed `restricted` (generator 0.8.0) |
+
+#### The three overlap rules, and why one of them needs judgement
+
+All three fire on the same shape: a soft-delete entity carrying a **second**
+record of deletion beside `deletedAt`. Two of them are reliable — a `deleted`
+status member and an `isDeleted` boolean really are duplicates, and the drift
+argument holds: they can disagree with `deletedAt`, and because each overwrites
+whatever preceded it, a restore cannot recover the prior state.
+
+`DELETE_SOFT_TIMESTAMP_OVERLAP` is different, and its fix text is wrong about
+half the time. **It matches on the property name and nothing else** — the literal
+set is `leftAt`, `revokedAt`, `removedAt`, compared case-insensitively. It does
+not ask whether anything else in the specification reads the field. Its fix text
+offers *"remove 'X' and rely on `deletedAt`, or — if it records something other
+than removal — rename it to say so"*, and following that on a true positive is
+right while following it on a false one deletes load-bearing behaviour.
+
+**The distinguishing question is not the field's name.** A field can be named
+`revokedAt` and be named accurately. It is whether **the row is still expected to
+be read after the event**:
+
+- **Yes → it is a domain fact, and `deletedAt` stays null.** `deletedAt` means
+  archived-and-invisible. A timestamp recording *"this ended, and the row stays
+  readable"* cannot be folded into it without losing the difference. A departed
+  channel member who keeps access to messages up to their removal time; a revoked
+  invitation that stays listable; a `revokedAt` that is a trigger predicate or the
+  filter of a partial unique index. Fold any of those into `deletedAt` and the
+  behaviour goes with it.
+- **No → it is a duplicate, and it should go.** The counter-example is a kiosk
+  whose `revokedAt` sits beside a `status: revoked` that already carries the
+  state, whose event triggers on `status`, and which nothing else reads. That one
+  is a true positive and removing it is correct.
+
+Reported by a consumer whose bundle ran the rule at 1-of-4 precision: one true
+positive, three fields the row is deliberately meant to outlive. A narrowing is
+filed as `clabonte/generator#1441` — check whether the timestamp is referenced
+anywhere else in the specification, since a field nothing else reads is a
+plausible duplicate while one other machinery depends on is not. Until that
+ships, this rule needs a human on every hit.
 
 ### `delete.reason` — why an entity is `hard` (generator 0.6.0)
 
@@ -462,13 +503,21 @@ Three constraints, each an ERROR in the generator and mirrored by
 - **`reason` and `reasonText` do not ride with it.** The delegation *is* the
   justification; the generator says so in the error.
 
-Two further checks are generator-side, because neither is visible from inside
-one `x-entity` block:
+**`delegated` is not only for children that carry an `If-Match` write of their
+own.** It is for any child whose write conflicts are governed by its root,
+including one reachable only through the parent aggregate's `PATCH` reconcile.
+Such a child draws no `CONCURRENCY_PRECONDITION_*` diagnostic either way, so
+nothing pushes you off `mode: none` — but `none` claims the row is unprotected,
+and that claim is what an audit goes looking for. `delegated` is the better
+declaration wherever it is true, not only where a warning made you look.
 
-| Rule | Severity | Fires when |
-|---|---|---|
-| `DELEGATION_TO_UNRESOLVABLE` | ERROR | `to` names no schema in the document carrying `x-entity` — an unfalsifiable delegation |
-| `TO_NOT_IN_BELONGS_TO` | WARNING | `to` does not appear in this entity's `belongsTo`. A cross-check, not a source of truth: delegation up a chain the aggregate does not declare is usually one of the two keys being wrong |
+Five further checks are generator-side, because none is visible from inside one
+`x-entity` block — `to` naming a real, non-self, `optimistic` root that exposes a
+single-instance read carrying an `ETag`, plus the `belongsTo` cross-check. All
+five are listed with their severities under §1.1's *Delegation validity* table.
+Three of them are ERRORs on purpose: the mode must not become a way to launder a
+warning, and in particular a delegation chain may not bottom out on an ungated
+root.
 
 Declare `belongsTo` and `to` consistently and both stay quiet.
 
@@ -490,17 +539,81 @@ anyway is never wrong. The generator's equivalent is narrower (see
 `ENTITY_CONCURRENCY_REASON_REQUIRED` below), so a read-only entity can draw this
 warning without a matching one from `validate`.
 
-Generator-side, FEAT-2026-0088 ships in **0.5.7**:
+Generator-side, this key is read by four rule families. Severities below were
+read off the **pinned** jar (`generator.lock`), not off a release note — the
+version column says which release each family first shipped in.
+
+**Entity-level shape and census** — FEAT-2026-0088, generator **0.5.7**:
 
 | Rule | Severity | Fires when |
 |---|---|---|
 | `ENTITY_CONCURRENCY_INVALID` | ERROR | a value outside `{ optimistic, none, delegated }`, a malformed object form, or a sub-key that reads as a misspelling of `concurrency` |
 | `ENTITY_CONCURRENCY_UNDECLARED` | WARNING | an `x-entity` schema declares no `concurrency` at all |
 | `ENTITY_CONCURRENCY_REASON_REQUIRED` | WARNING | `mode: none` on an entity that exposes an unsafe write (`PATCH`/`PUT`/`DELETE`), with no `reason` |
-| *(ETag obtainability)* | WARNING | `concurrency: optimistic` and an unsafe write, but **no safe operation returns the entity** — the client cannot read the validator it must echo |
 | `ENTITY_CONCURRENCY_WRITER_ROLE_UNREADABLE` | WARNING | the entity's unsafe-write roles are not a subset of the roles that can read it from a safe operation |
 | `ENTITY_CONCURRENCY_CENSUS` | SUGGESTION | always — reports `optimistic` / `none` / `delegated` / undeclared counts with a `reason` breakdown, in one `validate` run |
-| `CONCURRENCY_PRECONDITION_CENSUS` | SUGGESTION | always (generator 0.8.0) — counts the operations declaring a required `If-Match` or a `412`, how many get a generated gate, and how many delegate their guarantee |
+
+**Operation-level preconditions** — generator **0.7.0**, extended in **0.8.0**.
+These read the operation, not the entity, and they are what an adoption sweep
+actually spends its time on:
+
+| Rule | Severity | Fires when |
+|---|---|---|
+| `CONCURRENCY_PRECONDITION_UNENFORCED` | WARNING | an operation declares a required `If-Match` or a `412`, and no gate is generated for it |
+| `CONCURRENCY_PRECONDITION_UNENFORCEABLE` | WARNING | the write target declares `optimistic`, so a gate **is** generated, but **no safe operation returns that entity as its own 2xx body** — the ETag cannot be obtained and every call is a `412` wall |
+| `CONCURRENCY_PRECONDITION_DELEGATED` | SUGGESTION (0.8.0) | the write target declares `{mode: delegated, to: X}` — informational, and explicitly **not** counted as gated |
+| `CONCURRENCY_REASON_OTHER_NUDGE` | SUGGESTION (0.8.0) | `{mode: none, reason: other}` — `other` is unfalsifiable, which is why `reason` was closed to a vocabulary at all |
+| `CONCURRENCY_PRECONDITION_CENSUS` | SUGGESTION | always — counts operations declaring a required `If-Match` or a `412`, how many get a generated gate, and how many delegate |
+
+`CONCURRENCY_PRECONDITION_UNENFORCED` is one code covering four distinct causes,
+and the message names which. Worth knowing before reading a wall of them:
+
+1. **No addressed entity.** Neither `x-operation.target`, nor a `{xId}` key
+   segment, nor a collection segment in the path names a schema carrying
+   `x-entity`, so there is nothing to load a token from.
+2. **The entity is not `optimistic`.** *"The client is required to send a
+   validator that nothing checks: any value passes, including a stale one."*
+3. **`optimistic`, but no repository is generated.** The entity is neither
+   `x-entity.type: aggregate` nor declares `belongsTo`, so nothing reads the
+   current token. Opting the entity in was necessary and not sufficient.
+4. **`optimistic` and reachable, but no by-own-id read accessor.** No safe read
+   carries the entity's own `{xId}` key (or a declared `x-entity.hasOne`), so the
+   generated wrapper cannot resolve which repository method to call.
+
+**Delegation validity** — generator **0.8.0**, all reported under
+`CONCURRENCY_DELEGATION_INVALID` with a sub-reason. `delegated` cannot be used to
+launder a warning; three of these four fail `validate` outright:
+
+| Sub-reason | Severity | Fires when |
+|---|---|---|
+| `DELEGATION_TO_UNRESOLVABLE` | ERROR | `to:` names no known entity, or names the delegating entity itself |
+| `DELEGATION_ROOT_NOT_OPTIMISTIC` | ERROR | the named root does not itself declare `optimistic` — a delegation chain may not bottom out on an ungated root |
+| `DELEGATION_ROOT_NO_SINGLE_READ` | ERROR | the root exposes no single-instance safe read, so its token is unobtainable |
+| `DELEGATION_ROOT_ETAG_UNDECLARED` | ERROR | the root's read declares no `ETag` header |
+| `TO_NOT_IN_BELONGS_TO` | WARNING | `to:` is absent from the delegating entity's `belongsTo`. Soft on purpose — `belongsTo` is a cross-check, not a source |
+
+**ETag declaration** — generator **0.8.0**. This family is why the kit no longer
+ships `specfuse-etag-on-get`; see `compatibility.md` §35:
+
+| Rule | Severity | Fires when |
+|---|---|---|
+| `ENTITY_TAG_DECLARED_UNGATED` | **ERROR** | a single-instance 2xx response declares an `ETag` header but its entity does not declare `optimistic`. The generated controller never writes that header |
+| `ENTITY_TAG_UNDECLARED_GATED` | **ERROR** | the converse — an `optimistic` entity's safe read declares no `ETag`. *"Dart and TypeScript, which read the declaration rather than the runtime behaviour, emit no accessor for it at all"* |
+| `ENTITY_TAG_DECLARED_COLLECTION` | WARNING | an `ETag` on a collection response. No single row backs a list body, so no caller can echo it as an `If-Match` |
+| `ENTITY_TAG_CENSUS` | SUGGESTION | always — the three populations above, counted separately |
+
+**The rule this replaces, stated as prose:** the `ETag` header belongs on a safe
+read **if and only if** the response entity declares `concurrency: optimistic`.
+Not "if the resource is mutable" — that was true only while the two sets were the
+same, and `none` / `delegated` separated them.
+
+**Do not silence `ENTITY_TAG_DECLARED_UNGATED` by declaring `optimistic`.** The
+generator's own fix text says so, and nothing enforces it: *"Do NOT declare
+x-entity.concurrency: optimistic on 'X' to silence this — that would claim a
+per-row validator this entity does not have."* Since 0.8.0 the lie is no longer
+even cheaper — `CONCURRENCY_PRECONDITION_UNENFORCEABLE` fires on an `optimistic`
+entity no safe read returns, so the false declaration and the truthful
+`delegated` one now carry the same finding count.
 
 The two role/read rules are the ones adoption trips over, because neither is
 about this key's syntax. **Pair every `concurrency: optimistic` with a
@@ -508,6 +621,13 @@ single-resource `GET`** returning that entity, and check that whoever may `PATCH
 it may also read it — optimistic concurrency is a round trip, so a caller that
 can write but never read can never legally hold the validator its write is gated
 against.
+
+**Severity guidance for a first adoption sweep.** On a mature bundle these
+produce a large day-one population — a 102-entity consumer reported 289 warnings
+across three of these codes before touching anything. That is expected and is not
+a reason to promote or suppress: the census lines exist so a severity decision
+reads a population rather than a warning count, and `ENTITY_TAG_CENSUS` says so
+in its own text. Adopt entity by entity and watch the census move.
 
 `ENTITY_CONCURRENCY_UNDECLARED` is a WARNING on purpose: adopting the key across
 an existing project should not turn `validate` red mid-migration. The ERROR

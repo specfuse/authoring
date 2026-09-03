@@ -205,13 +205,41 @@ rules:
                 required: ["406"]
 
   # ===== Concurrency & ETags =====
-  specfuse-etag-on-get:
-    description: "GET of single mutable resources must document ETag response header (excludes list/collection endpoints)."
-    severity: warn
-    given: $.paths[?(@property.match("\\{[a-zA-Z]+\\}$") || @property.match("/current$") || @property.match("/settings$") || @property.match("/preferences$"))].get
-    then:
-      field: responses.200.headers.ETag
-      function: defined
+  #
+  # `specfuse-etag-on-get` USED TO LIVE HERE and is deliberately gone. Do not
+  # reinstate it, in this or any narrowed form. See `compatibility.md` §35.
+  #
+  # It keyed on PATH SHAPE alone — a segment ending in `{xId}`, or `/current`,
+  # `/settings`, `/preferences` — and demanded an `ETag` on the `200`. That was
+  # right while "mutable resource" and "concurrency-controlled resource" were the
+  # same set. Since `x-entity.concurrency` gained `none` and `{mode: delegated,
+  # to: <root>}` they are different sets: such an entity publishes no validator
+  # of its own, the generated controller never writes the header, and the pinned
+  # generator reports the declaration as `ENTITY_TAG_DECLARED_UNGATED` — an
+  # ERROR since 0.8.0, which is the jar `generator.lock` has pinned since kit
+  # 0.14.0. Measured on one two-entity probe against the pinned 0.9.0 jar:
+  #
+  #   ETag declared on the `none` entity's GET  ->  generator ERROR, Spectral clean
+  #   ETag dropped (the generator's own fix)    ->  generator clean, Spectral warn
+  #
+  # No authorable state satisfied both. A Spectral `given` cannot resolve a
+  # response `$ref` to the target entity's `x-entity.concurrency`, so the rule
+  # could not be narrowed into agreement without a custom resolver — and even
+  # with one, the kit would be re-implementing an ERROR-severity generator rule
+  # at `warn`, with its own resolution logic, free to drift.
+  #
+  # This is a check MIGRATING to the generator, not a check being dropped. The
+  # generator owns both directions and the case the path regex could only
+  # approximate:
+  #
+  #   ENTITY_TAG_DECLARED_UNGATED      ERROR       what the old rule contradicted
+  #   ENTITY_TAG_UNDECLARED_GATED      ERROR       what the old rule covered
+  #   ENTITY_TAG_DECLARED_COLLECTION   WARNING     a list body is not a row
+  #   ENTITY_TAG_CENSUS                SUGGESTION
+  #
+  # `Vendor_Extensions.md` §1.1 documents all four. `API_Handbook.md` section 2
+  # states the replacement rule in prose: the `ETag` header belongs on a safe
+  # read IF AND ONLY IF the response entity declares `concurrency: optimistic`.
 
   specfuse-ifmatch-on-write:
     description: "PUT/PATCH/DELETE must accept If-Match and define 412."
@@ -239,7 +267,7 @@ rules:
   #   is rejected by model validation with a `400` before any handler or
   #   concurrency gate runs, so no generated code path reaches a `428`. The
   #   generator emits no `PreconditionRequiredException` and carries no `428` in
-  #   any template, and since 0.9.0 it reports every declaration as a hard
+  #   any template, and since 0.8.0 it reports every declaration as a hard
   #   ERROR:
   #
   #     PRECONDITION_REQUIRED_DECLARED_UNEMITTED — "declares a '428'

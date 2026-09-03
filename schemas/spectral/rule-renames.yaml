@@ -62,7 +62,7 @@ rulesets:
   openapi:
     kit: schemas/spectral/specfuse-openapi.yaml
 
-    # 78 pure prefix swaps + 2 non-mechanical = 80 mapped; 7 retained; 1 retired.
+    # 77 pure prefix swaps + 2 non-mechanical = 79 mapped; 7 retained; 2 retired.
     renames:
       rm-400-predefined: specfuse-400-predefined
       rm-400-required: specfuse-400-required
@@ -93,7 +93,6 @@ rulesets:
       rm-emits-event-required: specfuse-emits-event-required
       rm-emits-required-on-writes: specfuse-emits-required-on-writes
       rm-enum-camel: specfuse-enum-camel
-      rm-etag-on-get: specfuse-etag-on-get
       rm-fk-marker-exclusive: specfuse-fk-marker-exclusive
       rm-global-bearer: specfuse-global-bearer
       rm-idempotency-key-support: specfuse-idempotency-key-support
@@ -221,13 +220,30 @@ rulesets:
           that motivated the declarations). `If-Match` is `required: true`, so
           an absent header is a `400` from model validation before any
           concurrency gate runs, and the generator emits no `428` under any
-          entity configuration — since 0.9.0 it reports each declaration as a
+          entity configuration — since 0.8.0 it reports each declaration as a
           hard ERROR (`PRECONDITION_REQUIRED_DECLARED_UNEMITTED`). The legacy
           baseline count is the number of operations MISSING a `428`; the
           successors' population is the operations HAVING one. Complements, so
           carrying the count across would seed a ceiling that means nothing
           and could grant free passes. The key is dropped; seed the two
           successors deliberately. See `compatibility.md` §34.
+      rm-etag-on-get:
+        note: >-
+          MIGRATED to the generator, not deleted. The rule keyed on PATH SHAPE
+          alone (a trailing `{xId}` segment, or `/current` / `/settings` /
+          `/preferences`) and demanded an `ETag` on the `200`. That held while
+          "mutable resource" and "concurrency-controlled resource" were one
+          set; `x-entity.concurrency: none` and `{mode: delegated, to: <root>}`
+          split them. Such an entity publishes no validator of its own and the
+          generated controller never writes the header, so the pinned generator
+          reports the declaration as `ENTITY_TAG_DECLARED_UNGATED` — an ERROR
+          since 0.8.0. Declaring the header and dropping it are BOTH findings,
+          from different tools, so no authorable state satisfied both. Coverage
+          did not shrink: `ENTITY_TAG_UNDECLARED_GATED` (ERROR) is the same
+          direction keyed on the entity instead of the path, and
+          `ENTITY_TAG_DECLARED_COLLECTION` (WARNING) is the case the path regex
+          could only approximate. A path-shape-keyed version must NOT be
+          reinstated — it cannot see the entity. See `compatibility.md` §35.
 
   asyncapi:
     kit: schemas/spectral/specfuse-asyncapi.yaml
