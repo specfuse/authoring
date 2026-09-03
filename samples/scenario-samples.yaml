@@ -153,7 +153,7 @@ x-mcp:
 # See handbook §4.6
 # ---------------------------------------------------------------------------
 # Declares the actors who perform steps. Each actor is bound to a role
-# from the project's closed role enum and optionally to a recipe-seeded entity.
+# registered in the project's info.x-roles registry, and optionally to a recipe-seeded entity.
 #
 # Roles are project-defined (see handbook §4.6) — the illustrative values
 # (Customer, SupportAgent, SupportManager) are examples. Replace with your

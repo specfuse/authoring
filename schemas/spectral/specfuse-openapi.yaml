@@ -5,8 +5,13 @@
 # Authoritative reference: handbooks/API_Handbook.md
 #
 # This ruleset validates the universal Specfuse conventions only. Value-set
-# constraints that are project-defined (the closed role enum, the project
+# constraints that are project-defined (the project's role set, the project
 # domain list, project-specific URL path patterns) are NOT baked in here.
+# For roles and domains that is not a gap: both are declared in-spec as
+# `info.x-roles` / `info.x-domains`, and the GENERATOR checks membership
+# against them (OPERATION_UNKNOWN_ROLE, ENTITY_DOMAIN_UNREGISTERED — both
+# ERROR). A project adding a Spectral overlay for role VALUES is duplicating
+# that check, not filling a hole.
 # Projects should extend this ruleset in their own .spectral.yaml and add the
 # project-specific overlays. See schemas/README.md.
 #

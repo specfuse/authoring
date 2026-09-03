@@ -44,9 +44,9 @@ Active domains:
 
 There is intentionally no `tenant` domain. `tenantId` is the ambient scope — it appears as a path parameter and on snapshots, but no Tenant entity is defined.
 
-### Role enum
+### Role registry
 
-Defined in [`api/specs/v1/common/enums.yaml#/Role`](api/specs/v1/common/enums.yaml).
+Declared in `info.x-roles` in [`api/specs/v1/openapi.yaml`](api/specs/v1/openapi.yaml) — that is the registry the generator validates every operation's `x-roles` against. A schema enum named `Role` is not a substitute and was removed: nothing read it, so it was `SCHEMA_UNREFERENCED` dead code while membership went unchecked.
 
 - `Admin` — full access
 - `Manager` — tenant-level manager
@@ -78,7 +78,6 @@ api/
     ├── openapi.yaml
     ├── asyncapi.yaml
     ├── common/                            # Shared OpenAPI components
-    │   ├── enums.yaml
     │   ├── parameters/{path,pagination}.yaml
     │   ├── responses/errors.yaml
     │   ├── headers/common.yaml

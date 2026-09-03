@@ -2,7 +2,8 @@
 # Authentication / authorization schemes.
 # =============================================================================
 # See API Handbook §5. Replace iss/aud with the project's actual identity
-# provider URIs. The role enum is defined in common/enums.yaml#/Role.
+# provider URIs. The closed role set is the info.x-roles registry in
+# ../../openapi.yaml — see Vendor_Extensions.md §3.1.
 
 bearerAuth:
   type: http
@@ -11,5 +12,5 @@ bearerAuth:
   description: |
     Bearer JWT (RS256) issued by the project's identity provider.
     The token's claims namespace is project-specific; map roles to the
-    Role enum (api/specs/v1/common/enums.yaml#/Role) at the gateway or
+    roles registered in info.x-roles at the gateway or
     auth middleware layer.

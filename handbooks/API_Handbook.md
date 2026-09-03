@@ -1180,7 +1180,7 @@ When including 409 in an operation spec, document the specific business rules th
 
 - Bearer JWT (RS256). `iss` and `aud` are project-specific (e.g., `iss=https://<tenant>.auth0.com/`, `aud=https://api.{project-host}/`).
 - Access token lifetime and rotating refresh window are project-defined (typical defaults: 60-minute access token, ≤ 30-day refresh).
-- **Roles**: The project defines its closed role enum (project-specific). Declare it in the project's OpenAPI common enums file (typically `common/enums.yaml`). All secured endpoints declare allowed roles via the `x-roles` vendor extension.
+- **Roles**: The project defines its closed role set (project-specific). Declare it in the **`info.x-roles`** registry — not a schema enum; the generator validates every `x-roles` member against it and reports a non-member as `OPERATION_UNKNOWN_ROLE` (ERROR). With no `info.x-roles` the check disables itself with a WARNING and a typo'd role passes silently. See `Vendor_Extensions.md` §3.1. All secured endpoints declare allowed roles via the `x-roles` vendor extension; anonymous ones declare `x-public` instead.
 - **Scopes**: Use `<domain>[.<Entity>].<operation>` — a kebab-case domain from `info.x-domains`, an optional PascalCase entity, and one of `read` / `write` / `delete` / `all` (e.g. `customer.Customer.read`, `order.read`). **Not keyed on the endpoint's tag**: tags are many-to-one against domains, so a tag-keyed scope cannot be resolved back to an owning domain. All secured endpoints declare required scopes via the `x-scopes` vendor extension. Full grammar and rules: `Vendor_Extensions.md` §3.2.
 - ABAC with a project-specific custom claim namespace (e.g., `https://{project-host}/claims`):
   - Enforce tenant context first; optionally also narrower scope context.
@@ -2674,10 +2674,10 @@ When in doubt, use this file as the **authoritative template** for new resources
 ## 14) Authorization metadata
 
 Every **secured** operation **must** declare:
-- `x-roles`: array of allowed role names drawn from the project's closed role enum.
+- `x-roles`: array of allowed role names, each registered in `info.x-roles`.
 - `x-scopes`: array of OAuth scopes matching `<domain>[.<Entity>].<operation>` (e.g. `customer.Customer.read`, `order.read`). See `Vendor_Extensions.md` §3.2.
 
-The role enum is project-defined; declare it in the project's OpenAPI common enums file (typically `common/enums.yaml`).
+The role set is project-defined; declare it in `info.x-roles` (see `Vendor_Extensions.md` §3.1). A schema enum named `Role` is not the registry — nothing validates `x-roles` against it.
 
 **Default policy templates (may be narrowed per endpoint):**
 - **Read ops** (GET list/search/get):

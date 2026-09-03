@@ -22,6 +22,15 @@ info:
     order:
       title: Orders
       description: Order capture and lifecycle.
+  # Role registry — the closed universe of this project's roles.
+  # Every operation `x-roles` member must appear here: the generator reports a
+  # non-member as OPERATION_UNKNOWN_ROLE (ERROR), and with this key ABSENT it
+  # disables the check entirely (OPERATION_ROLE_REGISTRY_MISSING, WARNING) so a
+  # typo passes silently. A schema enum named `Role` is not a substitute —
+  # nothing validates x-roles against one. See Vendor_Extensions.md §3.1.
+  # `Authenticated` is declared but unused here: it is the pre-business-role
+  # convention, and this example has no signup flow.
+  x-roles: [Admin, Manager, Customer, Authenticated]
 
 servers:
   - url: https://api.helloorders.example/v1
@@ -92,7 +101,6 @@ components:
 
   schemas:
     Error:           { $ref: './common/responses/errors.yaml#/Error' }
-    Role:            { $ref: './common/enums.yaml#/Role' }
     PaginationLinks: { $ref: './common/schemas/PaginationLinks.yaml' }
 
     Tenant:                 { $ref: './domains/tenant/models/Tenant.yaml' }
