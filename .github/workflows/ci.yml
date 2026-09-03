@@ -358,8 +358,26 @@ jobs:
                       if ref and ref not in rules:
                           print(f"::error::{surface}: {legacy}.{key} -> {ref}, not defined by {kit.name}")
                           fail = 1
+
+              # `retired` drops the count. An id that is ALSO renamed or
+              # retained is a contradiction the two consumers would resolve
+              # differently — the ratchet drops it, the classifier keeps it.
+              retired = body.get("retired") or {}
+              if isinstance(retired, list):
+                  retired = {rule: {} for rule in retired}
+              contradiction = sorted(set(retired) & (set(renames) | set(retained)))
+              if contradiction:
+                  print(f"::error::{surface}: {contradiction} are retired AND mapped")
+                  fail = 1
+              # A retirement that drops a real count needs its reason on the
+              # record, for the same purpose `non_mechanical` notes serve.
+              for legacy, entry in retired.items():
+                  if entry and not (entry.get("note") or "").strip():
+                      print(f"::error::{surface}: retired {legacy} carries an empty note")
+                      fail = 1
               print(f"    {surface}: {len(renames)} renames, {len(non_mech)} non-mechanical, "
-                    f"{len(retained)} retained, against {len(rules)} kit rules")
+                    f"{len(retained)} retained, {len(retired)} retired, "
+                    f"against {len(rules)} kit rules")
           if not seen:
               print("::error::the rename map declares no renames at all — it cannot be read as complete")
               fail = 1
@@ -497,6 +515,47 @@ jobs:
               print(f"::error::project-specific bucket wrong: {c['project_specific']}"); ok = False
           if not c["kit_only_new"]:
               print("::error::classifier found no new kit coverage against a 3-rule fork"); ok = False
+          sys.exit(0 if ok else 1)
+          PY
+
+          echo "--- a rule the kit RETIRED is not reported as project-specific"
+          # The worst thing this tool can say about an inverted rule is "KEEP":
+          # `rm-428-on-write` requires a 428 that the pinned generator errors
+          # on. Before the retired bucket existed it landed in project-specific
+          # with no note, which reads as approval.
+          # `rm-delete-204` is here so the comparison is a real one: an overlay
+          # that matches NOTHING is refused as vacuous, and rightly.
+          cat > "$WORK/retired.yaml" <<'YML'
+          extends: spectral:oas
+          rules:
+            rm-delete-204:
+              description: "DELETE must define a 204 response."
+              severity: error
+              given: $.paths[*].delete.responses
+              then: { field: "204", function: truthy }
+            rm-428-on-write:
+              description: "PUT/PATCH/DELETE must define 428."
+              severity: error
+              given: $.paths[*][put,patch,delete]
+              then: { field: responses.428, function: truthy }
+            myproject-roles-enum:
+              severity: error
+              given: $.paths[*][*]["x-roles"][*]
+              then: { function: enumeration, functionOptions: { values: [Admin] } }
+          YML
+          python3 "$D" --kit-ruleset "$K" --project-ruleset "$WORK/retired.yaml" \
+            --json "$WORK/ret.json" --report-only >"$WORK/ret.txt" 2>&1
+          python3 - "$WORK/ret.json" <<'PY' || fail=1
+          import json, sys
+          c = json.load(open(sys.argv[1]))
+          ok = True
+          if [r["rule"] for r in c.get("retired_by_kit", [])] != ["rm-428-on-write"]:
+              print(f"::error::retired bucket wrong: {c.get('retired_by_kit')}"); ok = False
+          if any(r["rule"] == "rm-428-on-write" for r in c["project_specific"]):
+              print("::error::a rule the kit retired was reported as project-specific, "
+                    "which reads as 'keep it'."); ok = False
+          if not any((r.get("note") or "").strip() for r in c.get("retired_by_kit", [])):
+              print("::error::the retired rule carried no reason"); ok = False
           sys.exit(0 if ok else 1)
           PY
 

@@ -231,13 +231,66 @@ rules:
       - field: responses.412
         function: truthy
 
-  specfuse-428-on-write:
-    description: "PUT/PATCH/DELETE must define 428 Precondition Required for missing If-Match."
+  # These two rules replace `specfuse-428-on-write`, which required the
+  # opposite. See `compatibility.md` §34 for the full account; the short form:
+  #
+  #   `If-Match` is `required: true` (specfuse-ifmatch-on-write, and the
+  #   generator's own AI_IFMATCH_NOT_REQUIRED). A required header that is absent
+  #   is rejected by model validation with a `400` before any handler or
+  #   concurrency gate runs, so no generated code path reaches a `428`. The
+  #   generator emits no `PreconditionRequiredException` and carries no `428` in
+  #   any template, and since 0.9.0 it reports every declaration as a hard
+  #   ERROR:
+  #
+  #     PRECONDITION_REQUIRED_DECLARED_UNEMITTED — "declares a '428'
+  #     (Precondition Required) response, but the generator never emits 428
+  #     under any entity configuration"
+  #
+  #   Keeping `required: true` is the deliberate trade: a forgotten `If-Match`
+  #   becomes a compile error in the generated typed clients, which is strictly
+  #   better than a runtime status telling you the same thing. A stale ETag is
+  #   still `412`.
+  #
+  # Both ship at `warn`. The pinned generator already fails a bundle carrying
+  # `428`, so Spectral severity only decides who tells you first — and a
+  # consumer upgrading into this kit has a full set of declarations to clear.
+  specfuse-no-428:
+    description: >-
+      Operations must NOT declare 428. If-Match is required:true, so an absent
+      header fails model validation with 400 before any concurrency gate runs,
+      and no generated code path emits 428. A present-but-stale ETag is 412.
+      See API Handbook section 2.
+    message: "{{path}} declares a 428 response the generator never emits. Remove it; keep If-Match required:true."
     severity: warn
-    given: $.paths[*][put,patch,delete]
+    given: $.paths[*][get,post,put,patch,delete]
     then:
       field: responses.428
-      function: truthy
+      function: undefined
+
+  # Inverting the declaration rule on its own is not enough: it checks
+  # `responses.428` and nothing else, so a consumer clears the declarations,
+  # goes green, and keeps shipping descriptions promising a status the API
+  # cannot emit. That prose reaches every reader of the published spec.
+  #
+  # Two scoping notes, both load-bearing:
+  #   * `given` is anchored under `paths`, so byte sizes and other numbers
+  #     elsewhere in the document are out of range.
+  #   * `\b` refuses to match `428` inside a longer number, which is what keeps
+  #     a `52428800` (50 MB) `maxFileSize` from firing. A naive substring match
+  #     produces false positives on any real bundle.
+  specfuse-no-428-in-prose:
+    description: >-
+      No description under an operation may promise 428. A missing If-Match is
+      400 — the header is required:true, so model validation rejects the request
+      before any concurrency gate runs — and a stale ETag is 412. Drop the
+      clause; keep the 412 half. See API Handbook section 2.
+    message: "{{path}} promises 428 in prose. A missing If-Match is 400, a stale ETag is 412 — the API emits no 428."
+    severity: warn
+    given: $.paths[*][get,post,put,patch,delete]..description
+    then:
+      function: pattern
+      functionOptions:
+        notMatch: "\\b428\\b"
 
   # ===== Predefined error responses (presence + correct $ref) =====
   specfuse-401-required:

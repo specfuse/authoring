@@ -896,3 +896,83 @@ jobs:
 
           [[ $fail -eq 0 ]] || exit 1
           echo "==> Phantom cascade keys warn, stay accepted, and do not over-match."
+
+      # Regression net for the 428 inversion. `specfuse-428-on-write` used to
+      # REQUIRE the response; `specfuse-no-428` forbids it, and
+      # `specfuse-no-428-in-prose` forbids the sentence that motivated it.
+      #
+      # Both silent directions are load-bearing here. A prose rule that fires on
+      # a `52428800` byte limit is a rule a consumer switches off, and a
+      # declaration rule that over-matches takes the prose rule down with it. So
+      # the fixture asserts four firings and two silences, not an error count.
+      - name: 428 is unauthorable, in declarations and in prose (regression)
+        run: |
+          # See the note on the earlier fixture steps: `bash -e` would abort on
+          # the fixture's expected error-severity findings.
+          set +e
+          set -uo pipefail
+          REPORT="${RUNNER_TEMP}/no-428.txt"
+
+          spectral lint \
+            --ruleset schemas/spectral/specfuse-openapi.yaml \
+            schemas/spectral/fixtures/no-428.yaml \
+            >"$REPORT" 2>&1
+          STATUS=$?
+          cat "$REPORT"
+
+          if [[ $STATUS -ge 2 ]]; then
+            echo "::error::Spectral crashed on the no-428 fixture (exit ${STATUS})." >&2
+            exit 1
+          fi
+
+          fail=0
+          fired() { grep "$1" "$REPORT" | grep -q "$2"; }
+
+          # The declaration rule, on both verbs that carry it.
+          for op in "paths./declared.patch" "paths./declared.delete"; do
+            if ! fired specfuse-no-428 "$op"; then
+              echo "::error::specfuse-no-428 did not fire on ${op}, which declares a 428." >&2
+              fail=1
+            fi
+          done
+
+          # The prose rule, in the operation's own description and in a nested
+          # response description. `..description` reaches both; an anchored
+          # `.description` would miss the second, which is the shape that
+          # survives a declaration-only sweep.
+          if ! fired specfuse-no-428-in-prose "paths./prose.patch.description"; then
+            echo "::error::specfuse-no-428-in-prose did not fire on an operation" >&2
+            echo "description promising 428." >&2
+            fail=1
+          fi
+          if ! fired specfuse-no-428-in-prose "paths./proseInResponse.patch.responses"; then
+            echo "::error::specfuse-no-428-in-prose did not reach a RESPONSE description" >&2
+            echo "promising 428. The given is no longer recursive." >&2
+            fail=1
+          fi
+
+          # Silence 1: a compliant write trips neither rule.
+          if grep -E "specfuse-no-428(-in-prose)?" "$REPORT" | grep -q "paths./clean"; then
+            echo "::error::A 428 rule fired on /clean, which declares no 428 and" >&2
+            echo "promises none. The rule is over-matching." >&2
+            fail=1
+          fi
+
+          # Silence 2: the false-positive guard. `\b` must refuse to match 428
+          # inside 52428800, 1428 or 4280.
+          if grep -E "specfuse-no-428(-in-prose)?" "$REPORT" | grep -q "paths./bigNumber"; then
+            echo "::error::specfuse-no-428-in-prose matched 428 inside a longer number" >&2
+            echo "(52428800 / 1428 / 4280). The \\b word boundaries are gone — this" >&2
+            echo "rule now cries wolf on every byte-size description." >&2
+            fail=1
+          fi
+
+          # The rule this pair replaced must not come back.
+          if grep -q "specfuse-428-on-write" "$REPORT"; then
+            echo "::error::specfuse-428-on-write fired. The inverted rule was" >&2
+            echo "reintroduced alongside its own replacement." >&2
+            fail=1
+          fi
+
+          [[ $fail -eq 0 ]] || exit 1
+          echo "==> 428 rules fire on declarations and prose, and stay silent on clean writes and byte sizes."

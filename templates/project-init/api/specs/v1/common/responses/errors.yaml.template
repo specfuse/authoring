@@ -100,13 +100,6 @@ ConflictError:
       schema:
         $ref: '#/Error'
 
-PreconditionRequiredError:
-  description: An `If-Match` header is required for this operation but was not provided
-  content:
-    application/json:
-      schema:
-        $ref: '#/Error'
-
 # The 412 body is a named schema rather than an inline one: the generator
 # rejects inline response schemas (INLINE_RESPONSE_SCHEMA), because a response
 # shape with no name cannot be generated into a typed DTO.

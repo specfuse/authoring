@@ -552,26 +552,45 @@ Location: /orders/123
 { "id": "123", "contactEmail": "new@example.com", ... }
 ```
 
-**Missing If-Match** → 428 Precondition Required
+**Missing If-Match** → 400 Bad Request, from model validation
 ```http
 PATCH /orders/123
 Content-Type: application/json
 
 { "contactEmail": "new@example.com" }
 
-Response: 428 Precondition Required
-Content-Type: application/json
+Response: 400 Bad Request
+Content-Type: application/problem+json
 
 {
-  "errors": [{
-    "code": "precondition_required",
-    "message": "If-Match header is required for update operations",
-    "field": null,
-    "retryable": true,
-    "retryStrategy": "fetch_current_etag"
-  }]
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+  "title": "One or more validation errors occurred.",
+  "status": 400,
+  "errors": {
+    "If-Match": ["The If-Match field is required."]
+  }
 }
 ```
+
+**Do not declare a `428` response.** `If-Match` is `required: true`, so an absent
+header is rejected by model validation — before the action method, before the
+concurrency gate, before any code you or the generator wrote gets to run. The
+body is `ValidationProblemDetails`, not the error envelope in section 5, because
+nothing in the pipeline had reached the point of producing one. There is no
+generated path that can return `428`: the generator emits no
+`PreconditionRequiredException` and carries no `428` in any template, and since
+generator 0.9.0 it reports every declaration as an ERROR
+(`PRECONDITION_REQUIRED_DECLARED_UNEMITTED`). `specfuse-no-428` and
+`specfuse-no-428-in-prose` catch both the declaration and the sentence.
+
+The alternative — optional `If-Match` plus a real `428` — is a coherent design,
+and it is the wrong trade here. With `required: true` the generated typed clients
+take the header as a required parameter, so a forgotten `If-Match` is a **compile
+error** rather than a runtime status. A `428` would buy a diagnostic for a failure
+the type system already prevents, at the cost of the property that prevents it. If
+your consumers hand-roll their clients instead of generating them from this spec,
+the trade reverses; make that choice deliberately, and know that the generator
+does not implement the other half.
 
 **Stale If-Match** → 412 Precondition Failed with recovery information
 ```http
@@ -857,7 +876,7 @@ GET /orders?filter=id eq '123' and deletedAt ne null
 **Error handling:**
 - `404 Not Found`: Resource deleted or never existed
 - `409 Conflict`: Business rules prevent deletion
-- `428 Precondition Required`: Missing If-Match header
+- `400 Bad Request`: Missing `If-Match` header — model validation rejects it before the handler runs (see section 2). Not `428`; nothing emits `428`.
 - `412 Precondition Failed`: Resource modified since last fetch
 
 ### Standard error responses (must be documented wherever applicable with predefined components)
@@ -915,7 +934,7 @@ Other errors still apply as per earlier guidance:
 - **405 Method Not Allowed** (include `Allow`)
 - **406 Not Acceptable**
 - **409 Conflict** (business/state conflict, not ETag) — see section 2.1 below
-- **412 Precondition Failed** (`If-Match` mismatch/missing)
+- **412 Precondition Failed** (`If-Match` mismatch — a *missing* `If-Match` is a `400`, see section 2)
 - **415 Unsupported Media Type**
 
 **Unknown fields in requests**: ignored at all nesting levels; on 2xx responses server may include `X-Ignored-Fields`/`X-Ignored-Params`.
@@ -1004,8 +1023,15 @@ responses:
   '404': { $ref: '#/components/responses/NotFoundError' }
   '409': { $ref: '#/components/responses/ConflictError' }
   '412': { $ref: '#/components/responses/PreconditionFailedError' }
-  '428': { $ref: '#/components/responses/PreconditionRequiredError' }
 ```
+
+Neither template declares a `428`, and neither should — see section 2. `DELETE`
+also declares no `400`, because it carries no request body: the only `400` it can
+produce is model validation rejecting an absent `If-Match`, which the framework
+returns whether or not the spec mentions it. Declare `'400'` on a `DELETE` if you
+want that documented for your clients; it is a choice, not a requirement, and
+`specfuse-400-required` scopes itself to operations with request bodies for the
+same reason.
 
 **PATCH/PUT operations**:
 ```yaml
@@ -1025,7 +1051,6 @@ responses:
   '404': { $ref: '#/components/responses/NotFoundError' }
   '409': { $ref: '#/components/responses/ConflictError' }
   '412': { $ref: '#/components/responses/PreconditionFailedError' }
-  '428': { $ref: '#/components/responses/PreconditionRequiredError' }
 ```
 
 **POST operations (with uniqueness constraints)**:
@@ -2431,7 +2456,6 @@ Error:
 | `forbidden` | 403 | No | Insufficient permissions |
 | `not_found` | 404 | No | Resource doesn't exist |
 | `conflict` | 409 | No | Business rule violation |
-| `precondition_required` | 428 | Yes | Missing required header (e.g., If-Match) |
 | `precondition_failed` | 412 | Yes | Resource modified, retry with new ETag |
 | `rate_limit_exceeded` | 429 | Yes | Too many requests |
 | `server_error` | 500 | Yes | Unexpected server error |

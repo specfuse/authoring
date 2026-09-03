@@ -88,7 +88,6 @@ components:
     NotFoundError:            { $ref: './common/responses/errors.yaml#/NotFoundError' }
     BadRequestError:          { $ref: './common/responses/errors.yaml#/BadRequestError' }
     ConflictError:            { $ref: './common/responses/errors.yaml#/ConflictError' }
-    PreconditionRequiredError: { $ref: './common/responses/errors.yaml#/PreconditionRequiredError' }
     PreconditionFailedError:  { $ref: './common/responses/errors.yaml#/PreconditionFailedError' }
 
   schemas:

@@ -839,6 +839,42 @@ The guard now matches `^never[_-]persist$`, and `fixtures/classification.yaml` p
 
 ---
 
+### 34. `428 Precondition Required` was required by the kit and is unemittable by the generator
+
+**Status:** kit-side **ADOPTED** (this change). No generator-side ask — the generator has already implemented the other half. Reported in the consumer handoff `precondition-required-428.md`.
+
+The kit told authors to declare `428` on every `PUT`/`PATCH`/`DELETE` (`specfuse-428-on-write`, plus six sites in `API_Handbook.md`) and to declare `If-Match` as `required: true` (`specfuse-ifmatch-on-write`, and the generator's own `AI_IFMATCH_NOT_REQUIRED`). Those two instructions are mutually exclusive at runtime. A required header that is absent is rejected by ASP.NET model validation with a `400` and a `ValidationProblemDetails` body, before the action method, before the concurrency gate, before any generated code runs. No path reaches a `428`.
+
+**The generator has never emitted one, and now rejects the declaration.** Measured against the pinned `specfuse-generator-0.9.0.jar` (sha256 matches `generator.lock`): zero occurrences of `428`, `PreconditionRequired` or `precondition_required` anywhere under `dev/specfuse/**` except one rule class, which exists to forbid it:
+
+```
+PRECONDITION_REQUIRED_DECLARED_UNEMITTED  ->  addError
+  "... declares a '428' (Precondition Required) response, but the generator never
+   emits 428 under any entity configuration — there is no PreconditionRequiredException
+   and no 428 in any template, so this response can never be produced."
+  Fix: "Remove the '428' response from this operation. Keep If-Match required: true —
+   that is what makes a forgotten header a compile error in the generated clients."
+PRECONDITION_REQUIRED_CENSUS              ->  addSuggestion
+```
+
+`addError`, not a warning. So the kit was shipping a ruleset that **required** what the pinned jar **fails the build on** — the `0.7.0` erratum with the roles reversed, and the exact failure mode follow-up 23 exists to prevent.
+
+**The evidence was already in this repo.** `examples/hello-orders/specfuse-findings.json` records `428 declaration census: 0`. The bundled example never followed the kit's own rule, so `specfuse-428-on-write` had no population here and nothing surfaced the contradiction. A rule the corpus cannot exercise is the shape follow-up 31 was written about; this is that shape with a live jar on the other side of it.
+
+**Why `required: true` stays, rather than dropping it to make `428` reachable.** The generated typed clients take the header as a required parameter, so a forgotten `If-Match` is a **compile error** — not a runtime status describing one. A `428` would buy a diagnostic for a failure the type system already prevents, at the cost of the property that prevents it. The consumer that reported this checked its three client codebases first: every `428` reference was generator output, zero hand-written call sites, over the entire life of the project. The status had been advertised the whole time and no client ever used it. For a consumer with hand-rolled or third-party clients the trade reverses, and the honest answer there is optional `If-Match` plus a real `428` — which the generator does not implement. The handbook now describes that as the alternative it is rather than forbidding it silently.
+
+**Two rules, because one does not cover it.** Inverting the declaration rule alone reproduces what happened downstream: a consumer clears its `responses.428` blocks, goes green, and keeps shipping operation `description`s promising the status. `specfuse-no-428` checks `responses.428` and nothing lints prose, so the sentence survives into every rendering of the published spec — Redocly, Swagger UI, the bundle handed to client teams. `specfuse-no-428-in-prose` closes it. The general form is worth stating, because it is not specific to `428`: **a lint rule that checks a declaration does not check the prose that motivated the declaration**, and the handbook sentence that taught the convention is what authors paste into descriptions. Any convention the kit retires by inverting a structural rule needs the same pairing.
+
+`fixtures/no-428.yaml` pins both rules in both directions. The silent direction is the one that matters: `428` must not match inside `52428800` (a 50 MB `maxFileSize`), or the rule cries wolf on every byte-size description and gets switched off.
+
+**Severity: both `warn`.** The pinned generator already errors, so Spectral severity only decides who tells a consumer first — and a consumer upgrading into this kit has a full set of declarations to clear plus a prose sweep with no mechanical fix, each description needing to be read. Promote to `error` once consumers report clear.
+
+**Migration.** `rm-428-on-write` moves to `retired` in `rule-renames.yaml` rather than mapping onto a successor. It is **inverted**, not renamed: the legacy count is the number of operations *missing* a `428`, the successors' population is the operations *having* one. Carrying that number across would seed a ceiling that means nothing and could grant free passes, so the key is dropped and both successors surface as new coverage to seed deliberately. `spectral-ratchet.py --migrate-rule-ids` prints the reason inline; `retired` entries now accept a `note:` for exactly this case.
+
+**Also removed:** the unreferenced `PreconditionRequiredError` response component from `examples/hello-orders/` and `templates/project-init/`. No operation referenced it in either place — it was scaffolding teaching a shape the generator rejects. Dropping `precondition_required` from the error-code table is safe for consumers on the generated stack: every spec-authored enum round-trips by string in all three languages (`[EnumMember]` + `EnumMemberJsonConverter` and `EnumValueConverter<TEnum> : ValueConverter<TEnum, string>` in C#, a string-const object in TypeScript, `@JsonValue` plus a `wireNames` map in Dart), so no ordinal is persisted. A consumer that has hand-rolled an ordinal-persisted copy should check before deleting the member.
+
+---
+
 ## Outstanding kit-side work
 
 These are gaps in the kit itself, separate from the generator-side follow-ups above. Each represents an enforcement promise the handbooks make that has no implementation today.

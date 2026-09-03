@@ -63,7 +63,11 @@
 #   renamed         the map names a successor; the count moves across
 #   unchanged       already canonical; kept as-is
 #   no counterpart  project-specific; the kit does not own it; kept as-is
-#   retired         deleted with no successor; the key is DROPPED
+#   retired         no successor the count can move to; the key is DROPPED.
+#                   Covers both a deleted rule and an INVERTED one, where a
+#                   successor exists but counts the complement — carrying the
+#                   old number across would seed a meaningless ceiling. An
+#                   entry may carry a `note:`, which is printed with it.
 #
 # plus, in the other direction, every rule the kit defines that the baseline has
 # no entry for. Those are new coverage: they will fail on the first run, and
@@ -249,7 +253,7 @@ def ruleset_rule_ids(path: Path, seen: set[Path] | None = None) -> set[str]:
     return ids
 
 
-def load_rename_map(path: Path, ruleset: Path) -> tuple[dict, dict, dict, set, str | None]:
+def load_rename_map(path: Path, ruleset: Path) -> tuple[dict, dict, dict, dict, str | None]:
     """Flatten the per-surface map, and say which surface `ruleset` is.
 
     Rule ids are globally unique across the three surfaces, so a baseline that
@@ -265,7 +269,7 @@ def load_rename_map(path: Path, ruleset: Path) -> tuple[dict, dict, dict, set, s
     renames: dict[str, str] = {}
     non_mechanical: dict[str, dict] = {}
     retained: dict[str, dict] = {}
-    retired: set[str] = set()
+    retired: dict[str, dict] = {}
     surface: str | None = None
 
     for name, body in surfaces.items():
@@ -281,7 +285,12 @@ def load_rename_map(path: Path, ruleset: Path) -> tuple[dict, dict, dict, set, s
             renames[legacy] = canonical
         non_mechanical.update(body.get("non_mechanical") or {})
         retained.update(body.get("retained") or {})
-        retired.update(body.get("retired") or [])
+        # `retired` accepts a bare list of ids or a mapping id -> {note}.
+        # The list form predates notes and stays valid.
+        entries = body.get("retired") or {}
+        if isinstance(entries, list):
+            entries = {rule: {} for rule in entries}
+        retired.update(entries)
         if Path(str(body.get("kit", ""))).name == ruleset.name:
             surface = name
 
@@ -341,7 +350,15 @@ def migrate_rule_ids(args) -> int:
     for rule, count in sorted(baseline.items()):
         if rule in retired:
             dropped.append((rule, count))
-            print(f"  🗑  RETIRED         {rule}: {count} — no successor; key dropped")
+            note = " ".join((retired[rule].get("note") or "").split())
+            # A retired rule with a note may still HAVE a successor — an
+            # inverted one, whose population is the complement. What is
+            # retired is the count, not necessarily the coverage.
+            why = "see note" if note else "no successor"
+            print(f"  🗑  RETIRED         {rule}: {count} — {why}; count dropped")
+            if note:
+                print(textwrap.fill(note, width=78, initial_indent="       ",
+                                    subsequent_indent="       "))
             continue
         target = renames.get(rule)
         if target is not None:
