@@ -519,15 +519,18 @@ Agent B updates with If-Match: "abc" → 412 Conflict (ETag changed to "def")
 
 - **Format**: Strong validator, quoted hash (e.g., `"a1b2c3d4"`)
 - **Generation**: Hash of resource state (implementation-specific: version number, timestamp hash, or content hash)
-- **Mandatory**: On an entity declaring `concurrency: optimistic`, all GET responses MUST include the `ETag` header
-- **Validation**: On the same entity, all PUT/PATCH requests MUST include the `If-Match` header
+- **Mandatory, and only then**: a safe read declares the `ETag` header **if and only if** its response entity declares `concurrency: optimistic`. Not "if the resource is mutable" — that was the same set only until `none` and `delegated` existed, and it is not the same set now
+- **Single rows only**: never on a collection response. No single row backs a list body, so no caller can echo the value as an `If-Match`
+- **Validation**: on an `optimistic` entity, all PUT/PATCH requests MUST include the `If-Match` header
 - **AI-Friendly**: Conflict responses include current state for intelligent merge
 
-An entity declaring `concurrency: none` emits no `ETag` and requires no `If-Match` — that is what the declaration means. Declare it deliberately, with its `reason`; do not arrive at it by leaving the key off.
+An entity declaring `concurrency: none` emits no `ETag` and requires no `If-Match` — that is what the declaration means. Declare it deliberately, with its `reason`; do not arrive at it by leaving the key off. An entity declaring `{ mode: delegated, to: <Root> }` likewise publishes no validator of its own: the token lives on the root, and callers send the root's `ETag`.
+
+**Both directions are generator ERRORs**, so this is not style advice. An `ETag` on an entity that is not `optimistic` is `ENTITY_TAG_DECLARED_UNGATED`; its absence on one that is, is `ENTITY_TAG_UNDECLARED_GATED`; on a collection it is `ENTITY_TAG_DECLARED_COLLECTION` (WARNING). See `Vendor_Extensions.md` §1.1. Do **not** clear the first by declaring `optimistic` — that claims a per-row validator the entity does not have, and `CONCURRENCY_PRECONDITION_UNENFORCEABLE` will say so.
 
 #### Behavior
 
-**GET** → Always returns `ETag` header
+**GET of an `optimistic` entity** → returns the `ETag` header
 ```http
 GET /orders/123
 Response: 200 OK
@@ -579,7 +582,7 @@ body is `ValidationProblemDetails`, not the error envelope in section 5, because
 nothing in the pipeline had reached the point of producing one. There is no
 generated path that can return `428`: the generator emits no
 `PreconditionRequiredException` and carries no `428` in any template, and since
-generator 0.9.0 it reports every declaration as an ERROR
+generator 0.8.0 it reports every declaration as an ERROR
 (`PRECONDITION_REQUIRED_DECLARED_UNEMITTED`). `specfuse-no-428` and
 `specfuse-no-428-in-prose` catch both the declaration and the sentence.
 
@@ -691,7 +694,7 @@ What counts as "unchanged" is decided by the change-detection rules in `AsyncAPI
 **For API Implementers:**
 - Generate ETags consistently (same resource state = same ETag)
 - Detect no-op writes before persisting; return the current ETag unchanged (see No-Op Writes)
-- Include ETag in all GET responses for mutable resources
+- Include the ETag in single-resource GET responses for entities declaring `concurrency: optimistic` — and only those; see "ETag Requirements" above
 - Validate If-Match before processing PUT/PATCH
 - Return current ETag in 412 responses
 - Consider including `currentResource` in 412 to reduce round-trips. Declare it
@@ -736,6 +739,12 @@ An entity that declares `delete: soft` is marked as deleted rather than removed 
 > **Whether an archived row stays readable is its own declaration**, made by `x-entity.delete.archiveVisibility` (generator 0.8.0): `operational` keeps archived rows readable, `restricted` filters them out, and an entity that says nothing resolves to `restricted`. The `deletedAt ne null` queries below therefore describe an `operational` entity. Like the rest of delete gate 1 the key is validated and not yet enforced — nothing filters reads today — so declare it now and expect the behaviour when gate 2 lands.
 
 > **Do not also carry a `deleted` member in the entity's status enum.** It is a second, independent write of one fact: the two can disagree, and because `deleted` overwrites whatever status preceded it, restoring the record cannot recover the prior state. The generator flags the overlap as `DELETE_SOFT_STATUS_ENUM_OVERLAP` (WARNING). Filter on `deletedAt` instead. Removing an already-published `deleted` member is a breaking change for any client filtering on it — migrate deliberately.
+
+> **The same applies to a boolean flag** — `isDeleted` / `isArchived` is `DELETE_SOFT_BOOLEAN_FLAG_OVERLAP` (WARNING, generator 0.7.0), for the same reason.
+
+> **A removal timestamp is a third case, and it is the one that needs judgement.** `DELETE_SOFT_TIMESTAMP_OVERLAP` (WARNING, generator 0.8.0) fires on a soft-delete entity carrying a date-time property named `leftAt`, `revokedAt` or `removedAt` — it **matches the name and nothing else**, and does not ask whether anything else in the specification reads the field. Its fix text tells you to delete or rename it, which is right on a duplicate and destructive on a domain fact.
+>
+> The test is not the field's name; a `revokedAt` can be named accurately. It is **whether the row is still expected to be read after the event**. If yes, the timestamp is a domain fact and `deletedAt` stays null — a departed member who keeps access to messages up to their removal time, a revoked invitation that stays listable, a `revokedAt` that is a trigger predicate or the filter of a partial unique index. If no, it is a duplicate: a `revokedAt` beside a `status: revoked` that already carries the state, whose event triggers on `status` and which nothing else reads, should go. `Vendor_Extensions.md` §1.1 carries the longer form and the filed narrowing.
 
 ```http
 DELETE /orders/123

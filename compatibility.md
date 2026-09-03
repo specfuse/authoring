@@ -859,6 +859,8 @@ PRECONDITION_REQUIRED_CENSUS              ->  addSuggestion
 
 `addError`, not a warning. So the kit was shipping a ruleset that **required** what the pinned jar **fails the build on** — the `0.7.0` erratum with the roles reversed, and the exact failure mode follow-up 23 exists to prevent.
 
+**The contradiction dates from kit `0.14.0`, not `0.15.0`.** `PreconditionRequiredDeclarationValidationRule` is absent from `0.7.0` and present in `0.8.0` at the same `addError` severity, so it went live with that pin bump and sat unnoticed through two kit releases. Corrected here after §35's version sweep; the rule comment, the rename-map note, the handbook and the fixture all say `0.8.0`.
+
 **The evidence was already in this repo.** `examples/hello-orders/specfuse-findings.json` records `428 declaration census: 0`. The bundled example never followed the kit's own rule, so `specfuse-428-on-write` had no population here and nothing surfaced the contradiction. A rule the corpus cannot exercise is the shape follow-up 31 was written about; this is that shape with a live jar on the other side of it.
 
 **Why `required: true` stays, rather than dropping it to make `428` reachable.** The generated typed clients take the header as a required parameter, so a forgotten `If-Match` is a **compile error** — not a runtime status describing one. A `428` would buy a diagnostic for a failure the type system already prevents, at the cost of the property that prevents it. The consumer that reported this checked its three client codebases first: every `428` reference was generator output, zero hand-written call sites, over the entire life of the project. The status had been advertised the whole time and no client ever used it. For a consumer with hand-rolled or third-party clients the trade reverses, and the honest answer there is optional `If-Match` plus a real `428` — which the generator does not implement. The handbook now describes that as the alternative it is rather than forbidding it silently.
@@ -872,6 +874,78 @@ PRECONDITION_REQUIRED_CENSUS              ->  addSuggestion
 **Migration.** `rm-428-on-write` moves to `retired` in `rule-renames.yaml` rather than mapping onto a successor. It is **inverted**, not renamed: the legacy count is the number of operations *missing* a `428`, the successors' population is the operations *having* one. Carrying that number across would seed a ceiling that means nothing and could grant free passes, so the key is dropped and both successors surface as new coverage to seed deliberately. `spectral-ratchet.py --migrate-rule-ids` prints the reason inline; `retired` entries now accept a `note:` for exactly this case.
 
 **Also removed:** the unreferenced `PreconditionRequiredError` response component from `examples/hello-orders/` and `templates/project-init/`. No operation referenced it in either place — it was scaffolding teaching a shape the generator rejects. Dropping `precondition_required` from the error-code table is safe for consumers on the generated stack: every spec-authored enum round-trips by string in all three languages (`[EnumMember]` + `EnumMemberJsonConverter` and `EnumValueConverter<TEnum> : ValueConverter<TEnum, string>` in C#, a string-const object in TypeScript, `@JsonValue` plus a `wireNames` map in Dart), so no ordinal is persisted. A consumer that has hand-rolled an ordinal-persisted copy should check before deleting the member.
+
+---
+
+### 35. `specfuse-etag-on-get` demanded a header the pinned generator errors on
+
+**Status:** kit-side **ADOPTED** (this change) — the rule is retired and its coverage migrates to the generator. No generator-side ask. Reported in the consumer handoff `concurrency-delegated-mode.md` §6; the same handoff's §1 and §3 landed in `0.14.0`.
+
+`specfuse-etag-on-get` keyed on **path shape** alone — a segment ending in `{xId}`, or `/current`, `/settings`, `/preferences` — and required an `ETag` on the `200`. That was correct while *"mutable resource"* and *"concurrency-controlled resource"* named the same set. `x-entity.concurrency: none` and `{ mode: delegated, to: <root> }` split them: such an entity publishes no validator of its own, the generated controller never writes the header, and the generator reports the declaration as `ENTITY_TAG_DECLARED_UNGATED`.
+
+**Reproduced on a two-entity probe against the pinned `0.9.0` jar**, one `optimistic` and one `{mode: none, reason: reference-data}`, each behind a `GET /xs/{xId}`:
+
+```
+ETag declared on the `none` entity's GET
+  generator  [ERROR] ENTITY_TAG_DECLARED_UNGATED: ... declares an ETag response header,
+             but its response resolves to 'UnprotectedThing', which does not declare
+             x-entity.concurrency: optimistic. The generated controller only writes the
+             ETag header for a concurrency-controlled entity, so this document promises
+             a header the generated code never sends.
+  spectral   clean
+
+Apply the generator's own fix — drop the header
+  generator  clean (errors 5 -> 4)
+  spectral   25:15 warning specfuse-etag-on-get  GET of single mutable resources must
+             document ETag response header
+```
+
+**No authorable state satisfied both.** That is the inverted-precedent failure again, in the same release window as §34 and for the same reason: a kit rule written before a generator vocabulary existed, never re-read against the jar after the pin moved.
+
+**Severity, corrected against the consumer's report.** The handoff measured `ENTITY_TAG_DECLARED_UNGATED` at WARNING with 173 hits and recommended the kit leave the family at WARNING. That was `0.7.1-SNAPSHOT`. The **released** `0.8.0` ships it — and `ENTITY_TAG_UNDECLARED_GATED` — at `addError`, and `0.9.0` is unchanged. So this has been a build failure, not a warning, since kit `0.14.0` moved the pin. The recommendation is stale rather than wrong; the reporter did not have the released jar.
+
+**Retired rather than narrowed, and this is a migration not a deletion.** A Spectral `given` cannot resolve a response `$ref` to the target entity's `x-entity.concurrency` without a custom resolver. Even with one, the kit would be re-implementing an ERROR-severity generator rule at `warn`, with independent resolution logic and nothing keeping the two in step — the drift this file exists to record. The generator owns both directions and the case the path regex could only approximate:
+
+| | keyed on | severity |
+|---|---|---|
+| `ENTITY_TAG_DECLARED_UNGATED` | the response entity | ERROR |
+| `ENTITY_TAG_UNDECLARED_GATED` | the response entity | ERROR |
+| `ENTITY_TAG_DECLARED_COLLECTION` | single row vs list body | WARNING |
+| `ENTITY_TAG_CENSUS` | — | SUGGESTION |
+
+The direction the retired rule covered is `ENTITY_TAG_UNDECLARED_GATED`, which is **stricter** than what was dropped: an ERROR keyed on the entity rather than a `warn` keyed on a path regex that missed every gated entity behind a path it did not recognise. `examples/hello-orders` reports `0` on all three populations.
+
+**Ten diagnostics the kit documented as one unnamed row or not at all.** `Vendor_Extensions.md` §1.1 carried a placeholder — *"(ETag obtainability) | WARNING"* — with no code name. It is `CONCURRENCY_PRECONDITION_UNENFORCEABLE`, and the handoff was right that the row overstated its scope on `0.7.1`: it fired only on the application-routed branch, so a `PUT`/`PATCH`/`DELETE` never reached it. That is fixed in the released jar, and the row is now named and correct. Added alongside it: `CONCURRENCY_PRECONDITION_UNENFORCED` (with its four distinct causes, which one code reports and only the message distinguishes), `CONCURRENCY_PRECONDITION_DELEGATED`, `CONCURRENCY_REASON_OTHER_NUDGE`, the five `CONCURRENCY_DELEGATION_INVALID` sub-reasons, and the four `ENTITY_TAG_*`. The `CONCURRENCY_PRECONDITION_CENSUS` row was attributed to `0.8.0`; it is in `0.7.0`.
+
+**One behaviour worth the handbook saying out loud.** Through `0.7.1` the false declaration was *cheaper* than the true one — declaring `optimistic` on an entity no read returns cleared more warnings than the truthful `delegated`, so an author clearing a backlog was pushed toward the lie. `CONCURRENCY_PRECONDITION_UNENFORCEABLE` on the unsafe-verb path closed that in the released jar. The handbook now states both the prohibition and the fact that it is enforced, since a prohibition the tooling does not back is one an author discovers is free.
+
+**Severity: strictly a removal.** Retiring a `warn` rule creates no finding. The Spectral surface gets quieter and the generator surface does not move — a consumer already sees these ERRORs on the current pin.
+
+---
+
+### 36. The two other soft-delete overlap rules, one of which needs a human
+
+**Status:** kit-side **ADOPTED** (this change). Generator-side narrowing already filed as `clabonte/generator#1441`. Reported in the consumer handoff `delete-soft-timestamp-overlap.md`.
+
+The kit documented `DELETE_SOFT_STATUS_ENUM_OVERLAP` and neither of its two siblings:
+
+| Code | Severity | In the jar since | Kit documented it |
+|---|---|---|---|
+| `DELETE_SOFT_STATUS_ENUM_OVERLAP` | WARNING | before `0.7.0` | yes |
+| `DELETE_SOFT_BOOLEAN_FLAG_OVERLAP` | WARNING | **`0.7.0`** | no |
+| `DELETE_SOFT_TIMESTAMP_OVERLAP` | WARNING | **`0.8.0`** | no |
+
+The boolean-flag rule has been live since the pin the kit carried at `0.12.0`, so this is not only a consequence of the recent pin bumps.
+
+**The timestamp rule matches on the property name and nothing else.** Extracted from the pinned jar's static initialiser, the whole matched set is `leftat`, `revokedat`, `removedat`, compared case-insensitively. It does not look at whether anything else in the specification reads the field. Its fix text offers *"remove 'X' and rely on `deletedAt`, or — if it records something other than removal — rename it to say so"*, which is correct on a duplicate and destructive on a domain fact.
+
+**Measured 1-of-4 precision on the reporting consumer's bundle.** One true positive (a kiosk `revokedAt` whose state was already carried by `status: revoked`, whose event triggered on `status`, and which nothing else read) against three fields the row is deliberately meant to outlive: a departed channel member's `leftAt` that is both the message-visibility boundary and the active-member predicate; a revoked invitation that stays listable; a `revokedAt` that is a trigger predicate *and* the filter of a partial unique index.
+
+**The generalisable half is the test, not the table.** `deletedAt` means archived-and-invisible. A timestamp recording *"this ended, and the row stays readable"* cannot be folded into it without losing the difference — and the distinguishing question is **not the field's name**, since all four of the reported fields were named accurately. It is whether the row is still expected to be read after the event. Stated in `API_Handbook.md` (the soft-delete block) and at length in `Vendor_Extensions.md` §1.1, with the kiosk counter-example, because a caveat with only false positives in it reads as "ignore this rule".
+
+**Not adopted:** the reporter's per-entity table. That is theirs and stays theirs.
+
+**If `#1441` ships, this guidance shrinks to a sentence.** The proposed narrowing is to check whether the timestamp is referenced anywhere else in the specification — a trigger predicate, a `filterableProperties` entry, a list projection. A field nothing else reads is a plausible duplicate; one other machinery depends on is not. The fix text in the pinned `0.9.0` is unchanged from what was reported, so the narrowing has not shipped and the caveat is needed at full length today.
 
 ---
 
