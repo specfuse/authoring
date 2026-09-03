@@ -475,7 +475,7 @@ extends:
   - ../spec-authoring-kit/schemas/spectral/specfuse-openapi.yaml   # 111 rules
 rules:
   rm-delete-204: { ... }        # the same rule again, under the old name
-  rm-etag-on-get: { ... }
+  rm-409-on-delete: { ... }
 ```
 
 Every shared rule now reports twice — two ids, two findings, one violation. The
@@ -511,7 +511,17 @@ pre-rename fork finds nothing at all.
 | **redundant** | the kit owns it, and both bodies select and check the same thing | delete yours |
 | **diverged** | the kit owns the id, but the bodies differ — the script prints the difference | **read it**, then delete |
 | **project-specific** | no kit counterpart | keep |
+| **retired by the kit** | the kit had this rule and dropped it — sometimes because it was **inverted** | **read the note**, then delete or replace |
 | **kit-only, new** | a kit rule you have no equivalent of | new coverage; expect findings |
+
+`retired by the kit` is the newest bucket and the one that reads most like a
+trap. "No kit counterpart" is not the same answer as "project-specific, keep
+it": the kit had the rule and dropped it deliberately, and two of them were
+**inverted** rather than deleted — `rm-428-on-write` and `rm-etag-on-get` both
+now require what the pinned generator errors on. Keeping either is a build
+failure whether or not you extend the kit. The script prints the reason from
+`rule-renames.yaml` under each one; a baseline count for a retired rule never
+carries across, so the ratchet drops the key.
 
 `diverged` is the bucket that matters. It is not the script hedging — it is
 usually the kit's copy being the *repaired* one. Thirty-two of the source

@@ -832,6 +832,35 @@ jobs:
       # its own ruleset, which is exactly the gap the reporter flagged in their
       # own fix: theirs is a convention in CLAUDE.md, so a new rule can
       # reintroduce the form and nothing catches it.
+      # `specfuse-etag-on-get` was retired, not disabled: it keyed on path shape
+      # and demanded an ETag the pinned generator ERRORs on whenever the entity
+      # is not `optimistic` (ENTITY_TAG_DECLARED_UNGATED). A narrowed revival is
+      # the same defect with a smaller blast radius -- a Spectral `given` cannot
+      # resolve a response $ref to the entity's x-entity.concurrency, so any
+      # path-keyed version reintroduces the contradiction.
+      - name: Ruleset self-check — retired rules stay retired
+        run: |
+          set -uo pipefail
+          fail=0
+          for rule in specfuse-428-on-write specfuse-etag-on-get; do
+            if grep -qE "^  ${rule}:" schemas/spectral/*.yaml; then
+              echo "::error::${rule} is defined again. It was retired deliberately;" >&2
+              echo "see compatibility.md and schemas/spectral/rule-renames.yaml." >&2
+              fail=1
+            fi
+          done
+          # The rename map must not resurrect them either: a `renames` entry
+          # would carry a legacy baseline count onto a rule that no longer
+          # exists, and `check_map_is_live` only guards targets that DO exist.
+          for rule in rm-428-on-write rm-etag-on-get; do
+            if grep -qE "^      ${rule}: " schemas/spectral/rule-renames.yaml; then
+              echo "::error::${rule} is mapped under renames again; it belongs in retired." >&2
+              fail=1
+            fi
+          done
+          [ $fail -eq 0 ] || exit 1
+          echo "==> retired rules are still retired, in the ruleset and in the map."
+
       - name: Ruleset self-check — no dot-before-bracket JSONPath unions
         run: |
           set -uo pipefail
