@@ -167,7 +167,7 @@ The kit clarified the project file convention during Phase 2 review:
 
 **Status:** kit canonical (Phase 2, multiple commits)
 
-The kit handbooks document `Authenticated` as a **recommended convention** for pre-business-role flows (signup, invitation acceptance, magic-link redemption) where the caller has a valid auth token but no business role yet. It is not a kit-required value — every project defines its own closed role enum in `common/enums.yaml`, and `Authenticated` is one suggested entry.
+The kit handbooks document `Authenticated` as a **recommended convention** for pre-business-role flows (signup, invitation acceptance, magic-link redemption) where the caller has a valid auth token but no business role yet. It is not a kit-required value — every project declares its own role set, and `Authenticated` is one suggested entry. *(Corrected by §37: the registry is `info.x-roles`, not a `common/enums.yaml` enum. This entry said `common/enums.yaml` because §3.1 did.)*
 
 **Generator action:** do not hardcode `Authenticated` in any generator validation or template logic. The role enum is project-defined; the generator reads it from `common/enums.yaml#/Role` (or wherever the project declares it).
 
@@ -946,6 +946,81 @@ The boolean-flag rule has been live since the pin the kit carried at `0.12.0`, s
 **Not adopted:** the reporter's per-entity table. That is theirs and stays theirs.
 
 **If `#1441` ships, this guidance shrinks to a sentence.** The proposed narrowing is to check whether the timestamp is referenced anywhere else in the specification — a trigger predicate, a `filterableProperties` entry, a list projection. A field nothing else reads is a plausible duplicate; one other machinery depends on is not. The fix text in the pinned `0.9.0` is unchanged from what was reported, so the narrowing has not shipped and the caveat is needed at full length today.
+
+---
+
+### 37. `info.x-roles` was referenced twice, defined nowhere, and contradicted by §3.1 — and the kit's own scaffold disabled the check
+
+**Status:** kit-side **ADOPTED** (this change), including the scaffold. Reported in the consumer handoff `role-as-grant-bundle.md` item 1; item 2 is recorded below as a generator-side follow-up and is **not** built here.
+
+`Vendor_Extensions.md` named `info.x-roles` twice as an existing registry — §3.2 (*"generator-enforced and validated against `info.x-roles`"*) and §14.2 (*"the third registry of the same family as `info.x-domains` and `info.x-roles`"*) — while §3.1, the section a reader actually goes to, said the opposite:
+
+> **Valid Roles**: … Declare the closed role enum in the project's OpenAPI common enums file (typically `common/enums.yaml`); the Spectral validator enforces that every `x-roles` member is drawn from that enum.
+
+**§3.1 was the wrong one, in both halves.** Measured against the pinned `0.9.0` jar. `OperationValidationRule` carries an `extractRoleRegistry` reading `info.x-roles`, and:
+
+```
+$ java -jar specfuse-generator-0.9.0.jar validate probe.yaml
+   # info.x-roles: [Admin, Manager];  operation x-roles: [Admin, Nonexistent]
+[ERROR] OPERATION_UNKNOWN_ROLE: Role 'Nonexistent' is not a member of
+        info.x-roles: [Admin, Manager]
+  Suggested Fix: Use one of the registered roles: [Admin, Manager]
+```
+
+| Code | Severity | Fires when |
+|---|---|---|
+| `OPERATION_UNKNOWN_ROLE` | **ERROR** | an `x-roles` member is not in `info.x-roles` |
+| `OPERATION_ROLE_REGISTRY_MISSING` | WARNING | no `info.x-roles` — *"role membership validation disabled"* |
+| `OPERATION_MISSING_ROLES` | WARNING | a secured operation declares neither `x-roles` nor `x-public` |
+| `OPERATION_EMPTY_ROLES` / `OPERATION_INVALID_ROLE` / `OPERATION_INVALID_ROLES_FORMAT` | — | empty list, empty member, non-array |
+
+And the second half: **no Spectral rule ever enforced membership.** `specfuse-auth-roles-pascal` checks PascalCase shape and carries a comment saying so outright — *"the kit does not bake in the closed value-set"* — with the value-set rule recorded as a project overlay in `rule-renames.yaml` under `retained`. §3.2 line 1799 already said this in passing (*"Unlike `x-roles`, this needs no project overlay"*), so the handbook contradicted itself three sections apart.
+
+**The scaffold shipped the failing pattern, and that is the part that mattered.** `examples/hello-orders` and `templates/project-init` both did exactly what §3.1 said: a `Role` enum in `common/enums.yaml`, `$ref`-ed into `components.schemas`, and **no `info.x-roles`**. The consequence is not a missing nicety — it is that the check turns itself off:
+
+```
+[WARNING] OPERATION_ROLE_REGISTRY_MISSING  no info.x-roles — role membership validation disabled
+[WARNING] SCHEMA_UNREFERENCED              Schema 'Role' (enum) is generated but referenced by
+                                           nothing … Consumers accrete dead code.
+```
+
+Two warnings for following the handbook: the registry absent so **a typo'd or invented role passes `validate` silently**, and the thing declared instead is dead code. Every project scaffolded by `specfuse authoring init` inherited it.
+
+**This is a fail-open default, which is why it went unnoticed.** `info.x-domains` fails closed — an unregistered domain is `ENTITY_DOMAIN_UNREGISTERED` (ERROR), so a project cannot forget the registry without being told. `info.x-roles` absent degrades to a WARNING and silence. A clean `validate` was not evidence the roles were real, and nothing in the kit said so.
+
+**What changed.** §3.1 rewritten around `info.x-roles` with the enforcement table above and the fail-open warning stated; the same correction swept through `API_Handbook.md` (two sites), `Arazzo_Handbook.md` (whose actor-role check draws on the same set), and five more *"project's closed role enum"* phrasings. `info.x-roles` added to the example and the project-init template with the reason in a comment; the dead `Role` enum removed from both, along with the `CLAUDE.md` and `auth.yaml` references that pointed at it. The example's `common/enums.yaml` held nothing else and is gone; the template's keeps `CurrencyCode`, which is a real property type.
+
+Measured on `examples/hello-orders`, errors `0` throughout: **warnings 21 → 19**, exactly the two above.
+
+**A CI step now asserts the registry exists *and covers every role the example declares*.** The coverage half needed care: walking the document naively makes `info.x-roles` count as a use of itself, so a registry always covers its own members and the check passes vacuously. `info` is dropped before the walk.
+
+**§3 → §4.4 cross-reference added**, which was the handoff's other ask and the cheapest thing in it. The reporter built a local `x-authorization` wrapper with a `mode: public` before finding `x-public` — which exists, is generator-read, and which their project was already using — because §3 *Authorization* and §4 *AI Agent Integration* are different top-level sections and nothing pointed from one to the other.
+
+**Not adopted: roles carrying grants** (handoff item 2). The proposal is that `info.x-roles` entries become objects holding `grants:` drawn from the `x-scopes` grammar, so an operation's declared scopes can be checked against the roles allowed to call it. It is a good idea and it is **not kit work by the handoff's own argument**: the coherence rule needs both registries resolved at once, which is the generator's cross-spec validator, not a Spectral `given`. Recorded as follow-up 38 below. Nothing here blocks it — the registry this section documents is the array form the jar reads today, and an object form would be a generator-side widening.
+
+---
+
+### 38. `info.x-roles` entries cannot declare what a role may do (`clabonte/generator`, not yet filed)
+
+**Status:** generator-side ask, **not built**. Raised in `role-as-grant-bundle.md` item 2.
+
+A role is a bare name. `x-scopes` (§3.2) defines what a grant looks like, `x-roles` (§3.1) names who may call an operation, and nothing states **which grants a role holds** — so the two halves cannot be checked against each other. An operation may require `payroll.PayrollRun.write` and list `x-roles: [Employee]`, and no rule in the kit or the generator can notice that `Employee` was never meant to hold payroll write.
+
+Proposed shape, with the grant strings being §3.2's grammar unchanged:
+
+```yaml
+info:
+  x-roles:
+    Admin:         { grants: ["*"] }
+    CompanyAdmin:  { grants: [company.all, employee.all, payroll.read] }
+    Employee:      { grants: [scheduling.read, time-off.EmployeeTimeOffRequest.write] }
+```
+
+What it buys, in order of value: (1) **coherence** — every operation's `x-scopes` must be held by at least one role in its `x-roles`; (2) **dead-grant detection** — a role holding a grant no operation requires, or a scope no role holds; (3) a migration path where `x-roles` becomes *derivable* from `x-scopes`, letting a project delete hand-maintained role lists without changing behaviour.
+
+**Three things the kit will not do here.** The registry must stay **optional and backward-compatible** — the array form is what the pinned jar reads, and a project declaring no `grants` must keep today's behaviour exactly. Rule (1) must ship **WARNING first**: the reporting consumer measured 464 verb-operations, 97 distinct legacy scope values and 152 distinct (role-set × scope-set) combinations, a fair number genuinely wrong rather than merely unmigrated, and a rule that fails a bundle on day one gets switched off rather than adopted. And the coherence check belongs in the **generator's cross-spec validator**, not the kit's Spectral — same reasoning as follow-ups 19 and 20.
+
+Worth noting for whoever picks this up: `x-scopes` is still read by **nothing** in the generator (follow-up 28), verified again against `0.9.0` — 0 class files reference the key, against 6 for `x-roles` and 6 for `x-domains`. A grants vocabulary keyed on a scope grammar the jar does not parse would be two unread declarations instead of one.
 
 ---
 

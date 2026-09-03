@@ -212,22 +212,6 @@
     },
     {
       "severity": "WARNING",
-      "code": "OPERATION_ROLE_REGISTRY_MISSING",
-      "message": "no info.x-roles — role membership validation disabled",
-      "location": "info.x-roles",
-      "category": "DDD",
-      "suggestedFix": "Add info.x-roles: [role1, role2] to enable operation x-roles membership validation"
-    },
-    {
-      "severity": "WARNING",
-      "code": "SCHEMA_UNREFERENCED",
-      "message": "Schema 'Role' (enum) is generated but referenced by nothing — no entity property, context, snapshot, or event payload uses it. Consumers accrete dead code.",
-      "location": "components.schemas.Role",
-      "category": "DDD",
-      "suggestedFix": "Wire it into the model (reference it from an entity / context / snapshot / event) or remove it from the spec."
-    },
-    {
-      "severity": "WARNING",
       "code": "SERVICE_REGISTRY_MISSING",
       "message": "info.x-services is absent or empty; service ownership is not being validated (permissive fallback)",
       "location": "info.x-services",

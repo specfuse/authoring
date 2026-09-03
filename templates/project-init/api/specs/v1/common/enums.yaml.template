@@ -1,30 +1,17 @@
 # =============================================================================
 # Project enums shared across OpenAPI operations.
 # =============================================================================
-# Add domain-specific enums here as needed. Per the API Handbook (§5, §14)
-# and Vendor Extensions (§3.1), the project's closed Role enum lives here
-# and is the source of truth for all x-roles declarations.
-
-# -----------------------------------------------------------------------------
-# Role — project's closed role enum.
-# -----------------------------------------------------------------------------
-# Replace with the project's actual roles. Every x-roles declaration on a
-# secured endpoint must reference one of these values.
+# Add domain-specific enums here as needed.
 #
-# Recommended convention: include `Authenticated` for pre-business-role flows
-# (signup, invitation acceptance) where the caller has a valid token but no
-# business role yet.
-Role:
-  type: string
-  # Roles are PascalCase identifiers, not camelCase values. Declaring the
-  # formatting strategy exempts this enum from specfuse-enum-camel; without it
-  # every role below is reported as an error.
-  x-enum-case: PascalCase
-  enum:
-    - Admin           # System administrator — full access
-    - Manager         # Tenant-level manager
-    - Customer        # End-user with self-service access
-    - Authenticated   # Pre-business-role flows (signup, invitation acceptance)
+# The project's closed ROLE set does NOT live here. It is the `info.x-roles`
+# registry in openapi.yaml — that is what operation `x-roles` values are
+# validated against (OPERATION_UNKNOWN_ROLE, ERROR). A `Role` enum in this file
+# is validated against nothing, and if no property is typed by it the generator
+# reports it as SCHEMA_UNREFERENCED dead code. See Vendor_Extensions.md §3.1.
+#
+# Declare an enum here when a PROPERTY needs the type — as CurrencyCode does
+# below. If some property really is role-typed, keep that enum in step with
+# `info.x-roles` by hand; they are two declarations of one vocabulary.
 
 # -----------------------------------------------------------------------------
 # CurrencyCode — ISO 4217 codes preserved exactly.

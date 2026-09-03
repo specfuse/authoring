@@ -18,6 +18,17 @@ info:
     {initial-domain}:
       title: TODO         # PascalCase display / tag name (e.g., Orders)
       description: TODO — one-line charter for this domain.
+  # Role registry — the closed universe of this project's roles, and the ONLY
+  # thing operation `x-roles` values are validated against. A member outside
+  # this list is OPERATION_UNKNOWN_ROLE (ERROR); with this key ABSENT the check
+  # disables itself (OPERATION_ROLE_REGISTRY_MISSING, WARNING) and a typo'd role
+  # passes silently. A schema enum named `Role` is NOT a substitute — nothing
+  # validates x-roles against one, and an unreferenced enum is reported as
+  # SCHEMA_UNREFERENCED dead code. See handbooks/Vendor_Extensions.md §3.1.
+  # Roles are PascalCase identifiers. Replace with the project's real roles.
+  # Recommended: keep `Authenticated` for pre-business-role flows (signup,
+  # invitation acceptance) where the caller has a token but no business role.
+  x-roles: [Admin, Manager, Customer, Authenticated]
 
 servers:
   - url: https://api.{project}.example/v1
@@ -66,7 +77,6 @@ components:
 
   schemas:
     Error: { $ref: './common/responses/errors.yaml#/Error' }
-    Role:  { $ref: './common/enums.yaml#/Role' }
 
 security:
   - bearerAuth: []

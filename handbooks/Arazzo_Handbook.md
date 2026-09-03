@@ -328,7 +328,7 @@ x-actors:
 
 **Role enum (project-defined, closed set):**
 
-The role values are project-specific. The project defines its role enum in its OpenAPI `x-roles` extension (see the API Handbook), and the Arazzo validator enforces that every `x-actors.*.role` is a member of that set. The illustrative roles used throughout this handbook (`Customer`, `SupportAgent`, `SupportManager`, `Admin`, `Authenticated`) are examples only -- replace them with your project's actual role values.
+The role values are project-specific. The project declares its closed role set in the OpenAPI `info.x-roles` registry (see `Vendor_Extensions.md` §3.1), and the Arazzo validator enforces that every `x-actors.*.role` is a member of that set. The illustrative roles used throughout this handbook (`Customer`, `SupportAgent`, `SupportManager`, `Admin`, `Authenticated`) are examples only -- replace them with your project's actual role values.
 
 **Recommended convention:** projects that distinguish pre-business-role flows (e.g., self-service signup, invitation acceptance, where the user has a valid auth token but no assigned role yet) should include an `Authenticated` role for that case.
 
@@ -931,7 +931,7 @@ This means:
 | `operationId` exists | Arazzo step | OpenAPI `operationId` | Error |
 | Event `{Entity}.{Action}` exists | `x-async.emit` / `x-async.await` | AsyncAPI message `x-label` | Error |
 | Status code assertions don't contradict OpenAPI response codes | `successCriteria` | OpenAPI operation responses | Error |
-| Actor `role` in closed set | `x-actors.*.role` | Project's OpenAPI `x-roles` enum | Error |
+| Actor `role` in closed set | `x-actors.*.role` | Project's OpenAPI `info.x-roles` registry | Error |
 | `x-domain` value valid | `x-domain` | Project's active domain list + `cross-domain` | Error |
 | `cross-domain` only in `scenarios/cross-domain/` | File path + `x-domain` | Directory structure | Error |
 | `$setup.outputs.X` resolves | Expression | Recipe `outputs` map | Error |

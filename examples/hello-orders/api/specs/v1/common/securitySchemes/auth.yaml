@@ -1,7 +1,8 @@
 # =============================================================================
 # Authentication / authorization schemes.
 # =============================================================================
-# See API Handbook §5. The role enum is defined in common/enums.yaml#/Role.
+# See API Handbook §5. The closed role set is the info.x-roles registry in
+# ../../openapi.yaml — see Vendor_Extensions.md §3.1.
 
 bearerAuth:
   type: http
@@ -10,5 +11,5 @@ bearerAuth:
   description: |
     Bearer JWT (RS256). For the hello-orders example, the iss/aud claims are
     not specified — this is illustrative, not deployable. Real projects map
-    token role claims to the Role enum (common/enums.yaml#/Role) at the
+    token role claims to the roles registered in info.x-roles at the
     gateway or auth middleware layer.

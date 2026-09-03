@@ -838,6 +838,67 @@ jobs:
       # the same defect with a smaller blast radius -- a Spectral `given` cannot
       # resolve a response $ref to the entity's x-entity.concurrency, so any
       # path-keyed version reintroduces the contradiction.
+      # `info.x-roles` is the ONLY thing operation `x-roles` values are validated
+      # against, and it fails OPEN: with the key absent the generator disables
+      # membership checking entirely (OPERATION_ROLE_REGISTRY_MISSING, WARNING)
+      # and a typo'd role passes `validate` silently. The example shipped in
+      # exactly that state -- with a `Role` schema enum instead, which validates
+      # nothing -- so a clean run was not evidence the roles were real.
+      #
+      # Assert the registry exists AND covers every role the example declares.
+      # The second half is what a bare presence check would miss.
+      - name: Example declares info.x-roles, covering every role it uses
+        run: |
+          set -uo pipefail
+          python3 - <<'PY'
+          import sys, yaml
+          from pathlib import Path
+
+          root = Path('examples/hello-orders/api/specs/v1')
+          registry = (yaml.safe_load((root / 'openapi.yaml').read_text())
+                      .get('info', {}).get('x-roles'))
+          if not registry:
+              print('::error::examples/hello-orders declares no info.x-roles.')
+              print('Without it the generator disables role membership validation')
+              print('(OPERATION_ROLE_REGISTRY_MISSING) and any x-roles value passes.')
+              sys.exit(1)
+
+          used = set()
+          def walk(node):
+              if isinstance(node, dict):
+                  for k, v in node.items():
+                      if k == 'x-roles' and isinstance(v, list):
+                          used.update(r for r in v if isinstance(r, str))
+                      else:
+                          walk(v)
+              elif isinstance(node, list):
+                  for i in node:
+                      walk(i)
+          for f in sorted(root.rglob('*.yaml')):
+              try:
+                  doc = yaml.safe_load(f.read_text())
+              except Exception:
+                  continue
+              # Drop `info` before walking, or the registry counts itself as a
+              # use and the coverage half of this check becomes vacuous: a
+              # registry always covers its own members.
+              if isinstance(doc, dict):
+                  doc = {k: v for k, v in doc.items() if k != 'info'}
+              walk(doc)
+
+          unregistered = sorted(used - set(registry))
+          if unregistered:
+              print(f'::error::x-roles values not in info.x-roles: {unregistered}')
+              print(f'Registered: {sorted(registry)}')
+              print('The generator reports each as OPERATION_UNKNOWN_ROLE (ERROR).')
+              sys.exit(1)
+          if not used:
+              print('::error::no x-roles declarations found -- the check verified nothing.')
+              sys.exit(1)
+          print(f'==> info.x-roles registers {len(registry)}; '
+                f'{len(used)} distinct role(s) used, all registered.')
+          PY
+
       - name: Ruleset self-check — retired rules stay retired
         run: |
           set -uo pipefail

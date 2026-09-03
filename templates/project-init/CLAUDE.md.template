@@ -45,9 +45,9 @@ Active domains in this project:
 
 Add new domains here as the project grows. The Spectral validator loads this list to enforce `x-domain` values on AsyncAPI channels and Arazzo workflows.
 
-### Role enum
+### Role registry
 
-The project's closed role enum is defined in [`api/specs/v1/common/enums.yaml#/Role`](api/specs/v1/common/enums.yaml). All `x-roles` declarations on secured endpoints must use values from this enum.
+The project's closed role set is the `info.x-roles` registry in [`api/specs/v1/openapi.yaml`](api/specs/v1/openapi.yaml). All `x-roles` declarations on secured endpoints must use values registered there — the generator reports a non-member as `OPERATION_UNKNOWN_ROLE` (ERROR). A schema enum named `Role` is not the registry and validates nothing.
 
 Starter shape (edit `enums.yaml` to add the roles your project actually needs):
 

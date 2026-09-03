@@ -1710,12 +1710,59 @@ deliveryWindow:
 
 **Schema**:
 ```yaml
-x-roles: string[]  # Array of role names from the project's closed role enum
+x-roles: string[]  # Role names, each registered in info.x-roles
 ```
 
-**Valid Roles**: The role values are **project-defined**. Declare the closed role enum in the project's OpenAPI common enums file (typically `common/enums.yaml`); the Spectral validator enforces that every `x-roles` member is drawn from that enum. The illustrative roles used throughout this document (`Admin`, `Manager`, `Customer`, `Authenticated`) are examples only — replace them with your project's actual values.
+**Valid Roles**: The role values are **project-defined**, and the registry that
+closes the set is **`info.x-roles`** — not a schema enum. Earlier revisions of
+this section sent authors to `common/enums.yaml` and claimed the Spectral
+validator enforced membership against it. Both halves were wrong, and following
+them **disables** the enforcement; see `compatibility.md` §37.
+
+```yaml
+info:
+  title: Hello Orders API
+  version: "1.0.0"
+  x-domains: { order: { title: Orders } }
+  x-roles: [Admin, Manager, Customer, Authenticated]
+```
+
+**Who enforces what:**
+
+| | Checks | Severity |
+|---|---|---|
+| generator `OPERATION_UNKNOWN_ROLE` | an `x-roles` member is not in `info.x-roles` | **ERROR** |
+| generator `OPERATION_ROLE_REGISTRY_MISSING` | no `info.x-roles` at all — *"role membership validation disabled"* | WARNING |
+| generator `OPERATION_MISSING_ROLES` | a secured operation declares neither `x-roles` nor `x-public` | WARNING |
+| generator `OPERATION_EMPTY_ROLES` / `OPERATION_INVALID_ROLE` / `OPERATION_INVALID_ROLES_FORMAT` | an empty list, an empty member, or a non-array | — |
+| kit `specfuse-auth-roles-pascal` | the **shape** only: PascalCase identifiers | error |
+
+The kit's Spectral deliberately does **not** bake in the closed value set — it
+cannot know your roles. That is the one half a project may add as an overlay
+(`rule-renames.yaml` records the pairing under `retained`). Membership itself is
+the generator's job and needs no overlay, because `info.x-roles` lives in the
+spec: same argument as `x-scopes` in §3.2, where both registries the grammar
+references are in the document.
+
+**Absence is not safety.** With no `info.x-roles` the membership rule turns
+itself off and reports a WARNING; a typo'd or invented role then passes
+`validate` silently. A schema enum named `Role` does **not** substitute for the
+registry — nothing reads it for this purpose, and if no property is typed by it
+the generator additionally reports it as `SCHEMA_UNREFERENCED` dead code.
+
+**Registry family.** `info.x-roles` is one of three `info`-level registries, all
+closed universes checked against by name: `info.x-domains` (§1.1, entity
+domains), `info.x-roles` (here), and `info.x-services` (§14.2, service
+ownership). `info.x-domains` and `info.x-roles` are separate vocabularies —
+naming a role after a domain does not relate them.
 
 **Recommended convention:** projects that distinguish pre-business-role flows (e.g., self-service signup, invitation acceptance, where the user has a valid auth token but no assigned role yet) should include an `Authenticated` role for that case.
+
+**Anonymous operations do not declare roles at all** — that is `x-public`
+(**§4.4**), which the generator reads, and which lives in §4 rather than here
+because it is grouped with the AI-agent integration keys. An operation declaring
+`x-public: true` must declare neither `x-roles` nor `x-scopes`. Look there before
+inventing a `mode: public` of your own.
 
 **Example**:
 ```yaml
@@ -2566,7 +2613,7 @@ Extensions are validated using Spectral rules defined in the project's Spectral 
 
 **Storage and Security Validation**:
 - Storage patterns must be from approved vocabulary (collection_json, single_json, flatten, serialized, separate_table)
-- Role names must be from the project's closed role enum
+- Role names must be registered in `info.x-roles` (§3.1)
 - Scope names must follow the `<domain>[.<Entity>].<operation>` grammar (§3.2)
 
 **Cardinality Validation Examples**:
@@ -3171,7 +3218,7 @@ For the full rules, rationale, and patterns, see the [Arazzo Handbook](./Arazzo_
 
 #### x-actors
 
-**Purpose**: Declares the actors who perform steps in a scenario. Each actor is bound to a role from the project's closed role enum and optionally to an entity seeded by a setup recipe.
+**Purpose**: Declares the actors who perform steps in a scenario. Each actor is bound to a role registered in the project's `info.x-roles` (§3.1) and optionally to an entity seeded by a setup recipe.
 
 **Scope**: Arazzo workflow
 
@@ -3199,14 +3246,14 @@ x-actors:
 | Field | Required | Type | Description |
 |-------|----------|------|-------------|
 | `<actorKey>` | — | object | Unique key within the workflow (camelCase) |
-| `.role` | Yes | string | Role from the project's closed role enum (matches OpenAPI `x-roles`) |
+| `.role` | Yes | string | Role registered in `info.x-roles` (the same set OpenAPI `x-roles` draws from) |
 | `.description` | No | string | Human-readable description of the actor's purpose |
 | `.ref` | No | expression | Binds the actor to a recipe-seeded entity via `$setup.outputs.X` |
 
 **Rules**:
 - At least one actor must be declared (object must have `minProperties: 1`)
 - Actor keys must be camelCase identifiers
-- The `role` value must come from the project's closed role enum (same set as OpenAPI `x-roles`)
+- The `role` value must be registered in `info.x-roles` (the same set as OpenAPI `x-roles`)
 - The `ref` expression must follow the pattern `$setup.outputs.<name>`
 - Recipes execute as an implicit `$system` actor mapped to the project's highest-privileged role — they must not declare `x-actors`
 
