@@ -781,6 +781,19 @@ jobs:
           values = v.published_values(doc)["x-entity"]
           assert values[("delete", "archiveVisibility")] == {"operational", "restricted"}, values
 
+          # Generator 0.11.0 prints a nested member by its dotted path. Kept
+          # whole, the key read as rejected and its values were never compared.
+          dotted = {"x-entity": [
+              {"key": "valueObjects",
+               "members": [{"key": "protection.atRest",
+                            "values": ["none", "encrypted", "hashed", "never-persist"]}]},
+          ]}
+          dkeys = v.published_vocabulary(dotted)["x-entity"]
+          assert {"protection", "atRest"} <= dkeys, dkeys
+          assert "protection.atRest" not in dkeys, dkeys
+          dvalues = v.published_values(dotted)["x-entity"]
+          assert ("valueObjects", "protection", "atRest") in dvalues, dvalues
+
           # A guard whose enum has fallen behind must read as rejecting the value.
           stale = {"additionalProperties": False,
                    "properties": {"concurrency": {"enum": ["optimistic", "none"]}}}
@@ -800,6 +813,9 @@ jobs:
               av = v._accepted_values(
                   v._descend(v._descend([g["schema"]], "delete"), "archiveVisibility"))
               assert av == {"operational", "restricted"}, av
+              at_rest = v._accepted_values(v._descend(v._descend(v._descend(
+                  [g["schema"]], "valueObjects"), "protection"), "atRest"))
+              assert at_rest and {"none", "encrypted", "hashed", "never-persist"} <= at_rest, at_rest
           print("ok")
           PY
 
