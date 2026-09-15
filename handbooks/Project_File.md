@@ -963,17 +963,34 @@ The full live inventory is available via `java -jar specfuse-generator.jar templ
 
 ### 11.3 Dart / Flutter artifacts
 
-**Snapshot date:** 2026-05-26. **Live source:** `templates --language dart` (Dart and Flutter share the same factory).
+**Snapshot date:** 2026-09-15 (generator `0.11.0`). **Live source:** `templates --language dart` (Dart and Flutter share the same factory).
 
-`entity`, `enum`, `valueObject`, `dartDto`, `dartRepositoryInterface`, `dartApiClient`, `dartRepositoryImpl`, `dartDtoMapper`, `dartUseCase`, `dartQueryProvider`, `dartMutationProvider`, `dartPaginatedNotifier`, `dartFormWidget`, `dartListTile`, `dartBarrelExport`, `dartProblemDetails`, `dartTypedError`, `dartDioErrorInterceptor`, `dartEntityBuilder`, `dartNewDtoBuilder`, `dartUpdateDtoBuilder`, `dartRepositoryFake`, `dartProviderOverrides`, `dartJsonFixture`, `dartFixtureLoader`, `dartCodegenSmokeTest`, `dartSerializationTest`, `dartRepositoryTest`, `dartQueryProviderTest`, `dartMutationProviderTest`, `dartValidatorTest`, `dartPaginationTest`.
+`entity`, `enum`, `valueObject`, `dto`, `dartRepositoryInterface`, `dartApiClient`, `dartRepositoryImpl`, `dartDtoMapper`, `dartUseCase`, `dartQueryProvider`, `mutationBinding`, `dartPaginatedNotifier`, `dartFormWidget`, `dartListTile`, `dartBarrelExport`, `dartProblemDetails`, `dartTypedError`, `dartDioErrorInterceptor`, `entityBuilder`, `newDtoBuilder`, `updateDtoBuilder`, `dartRepositoryFake`, `dartProviderOverrides`, `fixture`, `dartFixtureLoader`, `dartCodegenSmokeTest`, `serializationTest`, `dartRepositoryTest`, `dartQueryProviderTest`, `mutationBindingTest`, `validatorTest`, `dartPaginationTest`, `dartEtagTest`, `dartFormWidgetTest`.
 
 ### 11.4 TypeScript artifacts
 
-**Snapshot date:** 2026-08-13. **Live source:** `templates --language typescript`. Added in generator `0.5.8`.
+**Snapshot date:** 2026-09-15 (generator `0.11.0`). **Live source:** `templates --language typescript`. Added in generator `0.5.8`.
 
-`entity`, `enum`, `valueObject`, `dto`, `updateDto`, `entityBuilder`, `newDtoBuilder`, `updateDtoBuilder`, `typescriptApiClient`, `typescriptRepositoryInterface`, `typescriptRepositoryImpl`, `typescriptRepositoryFake`, `typescriptQueryComposable`, `typescriptMutationComposable`, `typescriptFixture`, `typescriptRepositoryTest`, `typescriptQueryComposableTest`, `typescriptMutationComposableTest`, `typescriptSerializationTest`, `typescriptValidatorTest`.
+`entity`, `enum`, `valueObject`, `dto`, `updateDto`, `entityBuilder`, `newDtoBuilder`, `updateDtoBuilder`, `typescriptApiClient`, `typescriptRepositoryInterface`, `typescriptRepositoryImpl`, `typescriptRepositoryFake`, `typescriptQueryComposable`, `mutationBinding`, `fixture`, `typescriptRepositoryTest`, `typescriptQueryComposableTest`, `mutationBindingTest`, `serializationTest`, `validatorTest`, `typescriptApiClientTest`.
 
-The composable pair mirrors the Dart provider pair (`dartQueryProvider` / `dartMutationProvider`) — a query composable per read operation, a mutation composable per write, each with a generated test.
+`mutationBinding` is one concept with a per-language layout: a Riverpod mutation provider in Dart, a Vue mutation composable in TypeScript — one per write operation, each with a generated `mutationBindingTest`. The query side keeps its framework-named ids (`dartQueryProvider` / `typescriptQueryComposable`).
+
+### 11.4.1 Deprecated artifact ids (generator `0.11.0`)
+
+These ids still generate the same files as their replacement, and each logs a `WARN` naming the replacement. They are temporary aliases that a later generator release removes, so **update `artifacts[]` now**:
+
+| Deprecated id | Replacement |
+|---|---|
+| `dartDto` | `dto` |
+| `dartEntityBuilder` | `entityBuilder` |
+| `dartNewDtoBuilder` | `newDtoBuilder` |
+| `dartUpdateDtoBuilder` | `updateDtoBuilder` |
+| `dartSerializationTest`, `typescriptSerializationTest` | `serializationTest` |
+| `dartValidatorTest`, `typescriptValidatorTest` | `validatorTest` |
+| `dartApiClientTest` | `dartEtagTest` (renamed, not merged: it tests the fake's entity-tag round trip, a different concept from `typescriptApiClientTest`) |
+| `dartMutationProvider`, `typescriptMutationComposable` | `mutationBinding` |
+| `dartMutationProviderTest`, `typescriptMutationComposableTest` | `mutationBindingTest` |
+| `dartJsonFixture`, `typescriptFixture` | `fixture` |
 
 ### 11.5 Markdown artifacts
 
@@ -1146,7 +1163,7 @@ See foot-gun #1 at the top of this document.
       "formatPolicy": "strict",
       "mutationOverrides": ["listPendingApprovals"],
       "artifacts": [
-        "dartQueryProvider", "dartMutationProvider",
+        "dartQueryProvider", "mutationBinding",
         "dartPaginatedNotifier", "dartFormWidget", "dartListTile"
       ]
     },

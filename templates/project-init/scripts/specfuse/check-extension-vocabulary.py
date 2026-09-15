@@ -242,9 +242,16 @@ def published_vocabulary(doc: dict) -> dict[str, set[str]] | None:
             # false`, so a member the ruleset does not list blocks adoption
             # exactly as a top-level key does. `schema_keys` already collects
             # the ruleset side at any depth, so the two sides now meet.
+            #
+            # A member key may itself be a dotted path. Generator 0.11.0 prints
+            # `x-entity.valueObjects[*].protection.atRest` as the member
+            # `protection.atRest` (it printed `protection` before), and no
+            # schema property is spelled with a dot, so the whole string never
+            # matched and a key the ruleset already accepts read as rejected.
+            # Every segment is a property name the guard has to list.
             for member in entry.get("members") or []:
                 if isinstance(member, dict) and isinstance(member.get("key"), str):
-                    keys.add(member["key"])
+                    keys.update(member["key"].split("."))
         if not keys:
             return None
         out[surface] = keys
@@ -275,9 +282,13 @@ def published_values(doc: dict) -> dict[str, dict[tuple[str, ...], set[str]]]:
                 vals = {v for v in values if isinstance(v, str)}
                 if vals:
                     found[path] = vals
+            # Split a dotted member into one step per property, for the reason
+            # `published_vocabulary` gives. Kept whole, `_descend` looks for a
+            # property literally named `protection.atRest`, finds none, and the
+            # value comparison skips the member as absent — silently.
             for member in node.get("members") or []:
                 if isinstance(member, dict) and isinstance(member.get("key"), str):
-                    record(path + (member["key"],), member)
+                    record(path + tuple(member["key"].split(".")), member)
 
         for entry in entries:
             if isinstance(entry, dict) and isinstance(entry.get("key"), str):
