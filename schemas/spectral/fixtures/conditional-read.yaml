@@ -1,0 +1,126 @@
+# =============================================================================
+# Regression fixture: conditional GET (`If-None-Match` + `304 Not Modified`)
+# =============================================================================
+# Pins `specfuse-conditional-read-pair` and `specfuse-conditional-read-shape`
+# in BOTH directions. Each violation mirrors one generator 0.12.0 ERROR
+# (ConditionalReadDeclarationValidationRule); `/stale412` is kit-only.
+#
+# Expected findings (asserted by .github/workflows/example-regen.yml):
+#
+#   /notModifiedOnly       get     -pair   304 without If-None-Match
+#   /ifNoneMatchOnly       get     -pair   If-None-Match without 304
+#   /unsafe                patch   -pair   304 + If-None-Match on a write
+#   /withBody              get     -shape  content on the 304
+#   /noEtag                get     -shape  no 2xx ETag header
+#   /stale412              get     -shape  412 beside the 304 (kit-only)
+#
+#   /clean                 get     NEITHER rule fires
+#   /lowercaseRef          get     NEITHER  <- `$ref`'d, lower-cased header name
+#   /pathLevel             get     NEITHER  <- If-None-Match declared on the path item
+#   /plainWrite            patch   NEITHER  <- If-Match + 412 on a write is not a conditional read
+#
+# The silent cases are the load-bearing ones. The generator matches header
+# names case-insensitively and reads path-level parameters; a rule that did
+# not would flag specs the jar accepts, and that is the rule a consumer
+# switches off.
+#
+# See API_Handbook.md "Conditional GET". Not a Specfuse-conformant example —
+# do not copy.
+# =============================================================================
+openapi: 3.0.3
+info:
+  title: conditional-read fixture
+  version: "1.0.0"
+components:
+  parameters:
+    IfNoneMatchLower:
+      name: if-none-match
+      in: header
+      required: false
+      schema: { type: string }
+  headers:
+    ETag:
+      schema: { type: string }
+paths:
+
+  /notModifiedOnly:
+    get:
+      responses:
+        '200': { description: OK, headers: { ETag: { $ref: '#/components/headers/ETag' } } }
+        '304': { description: Not Modified }
+
+  /ifNoneMatchOnly:
+    get:
+      parameters:
+        - { name: If-None-Match, in: header, required: false, schema: { type: string } }
+      responses:
+        '200': { description: OK, headers: { ETag: { $ref: '#/components/headers/ETag' } } }
+
+  /unsafe:
+    patch:
+      parameters:
+        - { name: If-None-Match, in: header, required: false, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '304': { description: Not Modified }
+
+  /withBody:
+    get:
+      parameters:
+        - { name: If-None-Match, in: header, required: false, schema: { type: string } }
+      responses:
+        '200': { description: OK, headers: { ETag: { $ref: '#/components/headers/ETag' } } }
+        '304':
+          description: Not Modified
+          content:
+            application/json:
+              schema: { type: object }
+
+  /noEtag:
+    get:
+      parameters:
+        - { name: If-None-Match, in: header, required: false, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '304': { description: Not Modified }
+
+  /stale412:
+    get:
+      parameters:
+        - { name: If-None-Match, in: header, required: false, schema: { type: string } }
+      responses:
+        '200': { description: OK, headers: { ETag: { $ref: '#/components/headers/ETag' } } }
+        '304': { description: Not Modified }
+        '412': { description: Precondition Failed }
+
+  /clean:
+    get:
+      parameters:
+        - { name: If-None-Match, in: header, required: false, schema: { type: string } }
+      responses:
+        '200': { description: OK, headers: { ETag: { $ref: '#/components/headers/ETag' } } }
+        '304': { description: Not Modified }
+
+  /lowercaseRef:
+    get:
+      parameters:
+        - $ref: '#/components/parameters/IfNoneMatchLower'
+      responses:
+        '200': { description: OK, headers: { etag: { $ref: '#/components/headers/ETag' } } }
+        '304': { description: Not Modified }
+
+  /pathLevel:
+    parameters:
+      - { name: If-None-Match, in: header, required: false, schema: { type: string } }
+    get:
+      responses:
+        '200': { description: OK, headers: { ETag: { $ref: '#/components/headers/ETag' } } }
+        '304': { description: Not Modified }
+
+  /plainWrite:
+    patch:
+      parameters:
+        - { name: If-Match, in: header, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '412': { description: Precondition Failed }

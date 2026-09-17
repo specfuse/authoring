@@ -691,6 +691,64 @@ async function updateOrder(orderId, changes, maxRetries = 3) {
 - **Append-only resources** (e.g., AuditLog, Payment): Only support POST, no updates
 - **POST operations**: Creating new resources, no If-Match required
 
+#### Conditional GET — `If-None-Match` + `304 Not Modified`
+
+`If-Match` is the **write** precondition. `If-None-Match` is the **read** precondition. They behave in opposite ways, and an author who reasons about the second from the first gets it wrong:
+
+| | `If-Match` (writes) | `If-None-Match` (reads) |
+|---|---|---|
+| On mismatch | fails: `412` | succeeds: `200` with the current representation |
+| On match | the write proceeds | `304 Not Modified`, no body |
+| Required? | `required: true` | optional, or a first-ever fetch is impossible |
+| Guards against | lost updates | nothing: it saves bandwidth, and a failed match is still a correct answer |
+
+**When it is warranted.** The bar is a **polling client**, not merely a cacheable resource: the representation is large, the client re-fetches on a timer rather than on user action, and most fetches would return identical bytes. Examples are a device syncing an offline bundle hourly, or a dashboard auto-refreshing a heavy report. A screen a person refreshes by hand does not qualify: the saving is invisible, and the client-side ETag bookkeeping is not free. Expect this to be rare.
+
+**How to declare it.** On a `GET` (or `HEAD`):
+
+```yaml
+parameters:
+  - name: If-None-Match
+    in: header
+    required: false
+    schema: { type: string }
+    description: >-
+      An ETag from a previous response. If it still matches, the server answers
+      304 with no body. Unlike If-Match, a mismatch is not an error: it is a 200.
+responses:
+  '200':
+    description: The current representation
+    headers:
+      ETag: { $ref: '#/components/headers/ETag' }
+    content: { application/json: { schema: { $ref: '#/components/schemas/OfflineBundle' } } }
+  '304':
+    description: Not Modified. The caller's copy is current.
+```
+
+Put the parameter in the shared header-parameters file next to `If-Match`, if the project keeps one. It is a plain HTTP semantic header, not an integration-specific one.
+
+**Do not:**
+
+- **Pair `If-None-Match` or `304` with a write verb.** A write that wants a precondition wants `If-Match` and `412`.
+- **Declare `304` without `If-None-Match`, or `If-None-Match` without `304`.** A `304` with no header is unreachable; a header with no `304` has nowhere to land. Either way the dead half still gets implemented.
+- **Put a body (`content`) or a `412` on the `304` operation.** A `304` carries no body, and a stale `If-None-Match` is a `200`, never a failure.
+- **Omit the `ETag` from the `200`.** A client can only send back a tag it was given.
+
+**All but the `412` are generator ERRORs** as of generator `0.12.0` (`ConditionalReadDeclarationValidationRule`). Kit Spectral mirrors them, plus the `412`, at `warn` (`specfuse-conditional-read-pair`, `specfuse-conditional-read-shape`):
+
+| Generator code | Fires when |
+|---|---|
+| `CONDITIONAL_READ_NOT_MODIFIED_WITHOUT_IF_NONE_MATCH` | a `GET`/`HEAD` declares `304` but accepts no `If-None-Match` |
+| `CONDITIONAL_READ_IF_NONE_MATCH_WITHOUT_NOT_MODIFIED` | a `GET`/`HEAD` accepts `If-None-Match` but declares no `304` |
+| `CONDITIONAL_READ_NOT_MODIFIED_ON_UNSAFE_METHOD` | any other method declares both |
+| `CONDITIONAL_READ_NOT_MODIFIED_WITH_BODY` | a conditional read's `304` declares `content` |
+| `CONDITIONAL_READ_ENTITY_TAG_UNDECLARED` | a conditional read declares no `ETag` header on any `2xx` |
+| `CONDITIONAL_READ_CENSUS` | SUGGESTION: always, with the count of conditional reads and of each finding |
+
+Header names match case-insensitively, path-level parameters count, and only the literal key `304` counts (`3XX` does not). **No operation is exempt**, `x-manual` included. The pair checks run on every operation, so a spec that already declares either half on its own **fails `validate` on `0.12.0`**. Check for strays before upgrading.
+
+When the `200` body is an entity, the ordinary ETag rule above still applies: that entity must declare `concurrency: optimistic`, or `ENTITY_TAG_DECLARED_UNGATED` fires. A body that is not an entity, such as a composed bundle, only needs the `ETag` the conditional-read rule asks for. Generated clients get a conditional-read method (TypeScript and Dart as of `0.12.0`) that carries the tag for you.
+
 #### No-Op Writes
 
 A PUT/PATCH whose payload leaves every tracked field of the entity unchanged is a **semantic no-op**. It MUST:

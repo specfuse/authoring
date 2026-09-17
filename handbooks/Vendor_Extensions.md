@@ -553,7 +553,7 @@ version column says which release each family first shipped in.
 | `ENTITY_CONCURRENCY_WRITER_ROLE_UNREADABLE` | WARNING | the entity's unsafe-write roles are not a subset of the roles that can read it from a safe operation |
 | `ENTITY_CONCURRENCY_CENSUS` | SUGGESTION | always — reports `optimistic` / `none` / `delegated` / undeclared counts with a `reason` breakdown, in one `validate` run |
 
-**Operation-level preconditions** — generator **0.7.0**, extended in **0.8.0**.
+**Operation-level preconditions** — generator **0.7.0**, extended in **0.8.0** and **0.12.0**.
 These read the operation, not the entity, and they are what an adoption sweep
 actually spends its time on:
 
@@ -561,6 +561,7 @@ actually spends its time on:
 |---|---|---|
 | `CONCURRENCY_PRECONDITION_UNENFORCED` | WARNING | an operation declares a required `If-Match` or a `412`, and no gate is generated for it |
 | `CONCURRENCY_PRECONDITION_UNENFORCEABLE` | WARNING | the write target declares `optimistic`, so a gate **is** generated, but **no safe operation returns that entity as its own 2xx body** — the ETag cannot be obtained and every call is a `412` wall |
+| `CONCURRENCY_PRECONDITION_UNROUTED` | WARNING (0.12.0) | the operation declares an `If-Match` or a `412`, and its `optimistic` target is named **only** by `x-operation.target` (neither the path nor the body resolves it), and `x-operation.category` is not `resource`. `target` is resolution- and diagnostic-only: it does not route the operation to an aggregate, so no gate is generated. Fix by addressing the entity with an `{xId}` path segment, or drop the `If-Match` and `412`. A keyless singleton write (`/me/...`) cannot be gated today. Through `0.11.0` this was silent **and counted as gated** in the census |
 | `CONCURRENCY_PRECONDITION_DELEGATED` | SUGGESTION (0.8.0) | the write target declares `{mode: delegated, to: X}` — informational, and explicitly **not** counted as gated |
 | `CONCURRENCY_REASON_OTHER_NUDGE` | SUGGESTION (0.8.0) | `{mode: none, reason: other}` — `other` is unfalsifiable, which is why `reason` was closed to a vocabulary at all |
 | `CONCURRENCY_PRECONDITION_CENSUS` | SUGGESTION | always — counts operations declaring a required `If-Match` or a `412`, how many get a generated gate, and how many delegate |
@@ -592,7 +593,7 @@ launder a warning; three of these four fail `validate` outright:
 | `DELEGATION_ROOT_ETAG_UNDECLARED` | ERROR | the root's read declares no `ETag` header |
 | `TO_NOT_IN_BELONGS_TO` | WARNING | `to:` is absent from the delegating entity's `belongsTo`. Soft on purpose — `belongsTo` is a cross-check, not a source |
 
-**ETag declaration** — generator **0.8.0**. This family is why the kit no longer
+**ETag declaration** — generator **0.8.0**, extended in **0.12.0**. This family is why the kit no longer
 ships `specfuse-etag-on-get`; see `compatibility.md` §35:
 
 | Rule | Severity | Fires when |
@@ -600,7 +601,8 @@ ships `specfuse-etag-on-get`; see `compatibility.md` §35:
 | `ENTITY_TAG_DECLARED_UNGATED` | **ERROR** | a single-instance 2xx response declares an `ETag` header but its entity does not declare `optimistic`. The generated controller never writes that header |
 | `ENTITY_TAG_UNDECLARED_GATED` | **ERROR** | the converse — an `optimistic` entity's safe read declares no `ETag`. *"Dart and TypeScript, which read the declaration rather than the runtime behaviour, emit no accessor for it at all"* |
 | `ENTITY_TAG_DECLARED_COLLECTION` | WARNING | an `ETag` on a collection response. No single row backs a list body, so no caller can echo it as an `If-Match` |
-| `ENTITY_TAG_CENSUS` | SUGGESTION | always — the three populations above, counted separately |
+| `ENTITY_TAG_UNOBTAINABLE_PROJECTION` | WARNING (0.12.0) | a `GET`/`HEAD` declares no `ETag`, its 2xx body is **not** an entity (a projection), and `x-operation.target` names an `optimistic` entity. The generated controller writes the `ETag` only when the response type **is** the gated entity, so this read publishes no validator. Declaring an `ETag` header here, or adding a token property to the projection, changes nothing: the emitter tests the response type. Return the entity itself from some safe read, or accept that writes addressed this way cannot be gated today |
+| `ENTITY_TAG_CENSUS` | SUGGESTION | always — the four populations above, counted separately |
 
 **The rule this replaces, stated as prose:** the `ETag` header belongs on a safe
 read **if and only if** the response entity declares `concurrency: optimistic`.
