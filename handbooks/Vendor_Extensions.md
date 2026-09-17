@@ -1014,7 +1014,7 @@ x-internal-only: true
 - The property is **excluded from the generated test-support builder** — tests construct it through domain logic, not the builder surface.
 - Because it never reaches a response, an `x-internal-only` property with a secret-shaped name satisfies the `SENSITIVE_FIELD_IN_RESPONSE` rule (see §1.5).
 
-**Relationship with `writeOnly`**: `writeOnly: true` (OpenAPI-native) keeps a property in **request** DTOs but drops it from **response** DTOs — the client sets it, never reads it (e.g. a plaintext `password` on `New*`). `x-internal-only` is stricter: the property leaves **both** directions. Choose `writeOnly` when the client supplies the value; choose `x-internal-only` when only the server ever touches it.
+**Relationship with `writeOnly`**: `writeOnly: true` (OpenAPI-native) keeps a property in **request** DTOs but drops it from **response** DTOs — the client sets it, never reads it (e.g. a plaintext `password` on `New*`). `x-internal-only` is stricter: the property leaves **both** directions. Choose `writeOnly` when the client supplies the value; choose `x-internal-only` when only the server ever touches it. A `writeOnly` property on a `New{Resource}` that is also a `PUT` body is **cleared by every replace that omits it**, and a client that reads the resource back never has it to send. See `API_Handbook.md` §1.4.1.
 
 **Validation rules**:
 

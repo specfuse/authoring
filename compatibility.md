@@ -1024,6 +1024,24 @@ What it buys, in order of value: (1) **coherence** — every operation's `x-scop
 
 Worth noting for whoever picks this up: `x-scopes` is still read by **nothing** in the generator (follow-up 28), verified again against `0.9.0` — 0 class files reference the key, against 6 for `x-roles` and 6 for `x-domains`. A grants vocabulary keyed on a scope grammar the jar does not parse would be two unread declarations instead of one.
 
+### 39. `PUT` erases fields the client cannot read back (generator `FEAT-2026-0174`, reserved)
+
+**Status:** kit documents the current behaviour (`API_Handbook.md` §1.4.1). Generator-side ask, **not built**. Raised in `restomanager-specs`' `write-back-semantics-unreadable-fields.md`, 2026-09-16.
+
+The consumer found that §1.4's *"missing fields reset to defaults"* erases every `writeOnly` property on a GET → PUT round trip. They adopted a local contract: for a field the client cannot read back (`writeOnly`, masked, or crypto-shredded), **absent = keep, `null` = clear, value = set**. They added a rider that no `New{Resource}` may `require` such a field, and asked the kit to adopt both.
+
+**Not adopted as a contract, because the jar does the opposite.** Generator `0.12.0`'s `csharp/domain/Services/partials/replace.mustache` does `entity = mapper.Map<New{Resource}, {Resource}>(body)` and then restores only `Id` and `CreatedAt`. The AutoMapper profile is a bare `CreateMap<…>().ReverseMap()` with no member conditions. So an absent `writeOnly` property is reset. That was the handbook's literal claim, and it is accurate. Writing "absent = keep" into the kit would describe generated code that does not exist. The rider would also do harm today: requiring the field in `New{Resource}` is the only spec-level guard against the silent erase.
+
+**What the kit says instead:** §1.4.1 states the erase, notes that the generator applies no response masking (`x-protection.masking` reaches only `DataProtectionAudit`), and gives three options. Drop `PUT` for such resources (recommended), require the field so omitting it is rejected, or hand-write the replace.
+
+**Generator ask, for whoever picks up FEAT-2026-0174:**
+
+1. Replace: for a property that is `writeOnly` (and, if the project declares them, masked or crypto-shreddable), carry the stored value over when the body omits it; `null` clears; a value sets. `PATCH` already has these semantics.
+2. Only once (1) ships: a cross-schema check that no `New{Resource}` used as a `PUT` body `required`s such a property. Start at WARNING for kit consumers. The reporter has 0 violations, so ERROR is safe for them, but other consumers are unmeasured.
+3. Exempt action-request bodies (`*Request`); a required `writeOnly` `pin` there is correct.
+
+**Kit follow-up when it lands:** rewrite §1.4.1 around the new semantics, keep option 1 as advice rather than a requirement, and check the rider's severity in the jar before documenting it.
+
 ---
 
 ## Outstanding kit-side work
