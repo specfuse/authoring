@@ -327,7 +327,7 @@ components:
 
     CustomerList:
       type: object
-      required: [totalItemsCount, pageCount, page, pageSize, data]
+      required: [totalItemsCount, pageCount, page, pageSize, hasPrev, hasNext, data]
       properties:
         totalItemsCount: { type: integer }
         pageCount:       { type: integer }
