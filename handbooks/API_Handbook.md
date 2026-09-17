@@ -241,6 +241,23 @@ NewCustomer:
 - **Body schema:** **`New{Resource}`** (same as create).
 - **Semantics:** full replacement; missing fields reset to defaults.
 
+#### 1.4.1 Fields the client cannot read back
+
+"Missing fields reset" is literal, and it covers fields a client **could not have echoed**. The generated replace path maps the body onto a fresh entity and carries over only `id` and `createdAt`, so every other property takes the body's value, or its default when the body omits it. There is no per-field exception. As of generator `0.12.0` that erases:
+
+- **`writeOnly` properties.** They are never returned, so a GET → edit → PUT round trip cannot include them, and the PUT clears them. A password, a badge id or an API secret on `New{Resource}` is gone after any ordinary replace.
+- **Masked values, where a project masks responses itself.** Echoing a masked value writes the mask over the real one. The generator does not mask responses: `x-protection.masking` feeds the data-protection audit, not the response serializer. So this applies only to hand-written masking, but it is silent there.
+
+`PATCH` does not have this problem: §1.5's tri-state leaves an absent property untouched. Pick one of these, per resource:
+
+1. **Do not expose `PUT`** on a resource whose `New{Resource}` carries a `writeOnly` property. Offer `PATCH` for edits, and set the secret through `POST` or a dedicated action. This is the default recommendation.
+2. **Keep `PUT`, and make the client resend the field.** List the `writeOnly` property in `New{Resource}.required`, so the contract rejects a replace that omits it instead of silently erasing the value. This matches what the generator does today. It only works when the client still holds the value, which is rarely true of a credential.
+3. **Hand-write the replace** (`x-manual`, or override the generated service method) to keep stored values for absent unreadable fields, and say so in the operation's `description`.
+
+**"Absent means keep" on `PUT` is not the generated behaviour.** A consumer has proposed it as a contract: for a field the client cannot read back, absent = keep, `null` = clear, a value = set, plus a rule that `New{Resource}` must not require such a field. The generator implements neither half. Declaring it in a spec does not change the generated code, and the "must not require" rule removes option 2, the only guard available today. It is tracked as a generator ask in `compatibility.md` §39. Until it ships, write option 1 or 2.
+
+Action requests (`*Request` bodies on `POST …:action`) are not replace bodies and are unaffected: a required `writeOnly` `pin` or `pairingCode` there is correct.
+
 ### 1.5 Partial update (PATCH)
 - **Schema name:** `Update{Resource}` (e.g., `UpdateCustomer`).
 - **Semantics:** partial update; all properties optional; unknown fields ignored per global rule.
