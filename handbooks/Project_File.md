@@ -951,9 +951,11 @@ The full live inventory is available via `java -jar specfuse-generator.jar templ
 
 ### 11.1 C# / `.csharp` artifacts
 
-**Snapshot date:** 2026-05-26. **Live source:** `templates --language csharp`.
+**Snapshot date:** 2026-09-17 (generator `0.12.0`). **Live source:** `templates --language csharp`.
 
-`apiMapper`, `apiModel`, `domainModel`, `entity`, `annotatedEntity`, `valueObject`, `valueObjectConverter`, `enum`, `entityTypeConfiguration`, `repository`, `repositoryInterface`, `serviceInterface`, `service`, `dbContext`, `apiController`, `applicationServiceInterface`, `applicationService`, `apiFunctionalTest`, `useCaseInterface`, `entityBuilder`, `newDtoBuilder`, `updateDtoBuilder`, `valueObjectFake`, `apiModelFake`, `testSeed`, `serviceUnitTest`, `autoMapperTest`, `valueObjectTest`, `efConfigTest`, `authMatrixTest`, `eventContractTest`, `infrastructureProject`, `domainProject`, `domainValidation`, `domainExceptions`, `apiProject`, `event` (+ legacy alias `asyncEvent`), `asyncEventHandler`, `asyncJobInterface`, `asyncConsumerRegistration`, `azureFunctionTopicTrigger`, `azureFunctionTimerTrigger`, `eventBuilder`, `tenancyMarker`, `eventRuntime`, `eventRuntimeImpl`, `eventRuntimeFunctions`, `snapshot`, `snapshotContext`, `recipeFixture`, `scenarioFunctionalTest`.
+`apiMapper`, `apiModel`, `domainModel`, `entity`, `annotatedEntity`, `valueObject`, `valueObjectConverter`, `enum`, `entityTypeConfiguration`, `repository`, `repositoryInterface`, `serviceInterface`, `service`, `dbContext`, `apiController`, `applicationServiceInterface`, `applicationService`, `apiFunctionalTest`, `useCaseInterface`, `entityBuilder`, `newDtoBuilder`, `updateDtoBuilder`, `valueObjectFake`, `apiModelFake`, `testSeed`, `serviceUnitTest`, `autoMapperTest`, `valueObjectTest`, `efConfigTest`, `authMatrixTest`, `eventContractTest`, `infrastructureProject`, `domainProject`, `domainValidation`, `domainExceptions`, `apiProject`, `event` (+ legacy alias `asyncEvent`), `asyncEventHandler`, `asyncJobInterface`, `asyncConsumerRegistration`, `azureFunctionTopicTrigger`, `azureFunctionTimerTrigger`, `eventBuilder`, `tenancyMarker`, `eventRuntime`, `eventRuntimeImpl`, `eventRuntimeFunctions`, `snapshot`, `snapshotContext`, `recipeFixture`, `scenarioFunctionalTest`, `heldEntity`, `heldEntityConfiguration`, `heldEntityHydration`, `heldEntityHydrationTrigger` (generator `0.6.0`, for `holds`, see `Vendor_Extensions.md` §14), `fieldEncryptionConformanceTest` (generator `0.12.0`: known-answer vectors for the generated field-encryption format, with test-only key fakes).
+
+`applicationService` is not printed by `templates` on `0.11.0` or `0.12.0`, though the jar still binds the name. It is kept here until that is confirmed either way.
 
 ### 11.2 Python artifacts
 

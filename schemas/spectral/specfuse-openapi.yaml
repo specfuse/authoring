@@ -40,6 +40,7 @@ functions:
   - openapiReadModelShape
   - openapiClassification
   - openapiScopeGrammar
+  - openapiConditionalRead
 
 rules:
 
@@ -324,6 +325,37 @@ rules:
       function: pattern
       functionOptions:
         notMatch: "\\b428\\b"
+
+  # Conditional GET: `If-None-Match` + `304 Not Modified`. Generator 0.12.0's
+  # ConditionalReadDeclarationValidationRule reports all five of the jar's
+  # checks at ERROR; see the function header for the id each one mirrors and
+  # for the matching details (case-insensitive header names, path-level
+  # parameters, literal "304"). Both rules ship at `warn`, as the 428 pair
+  # above does: the jar already fails the bundle, so Spectral severity only
+  # decides who tells you first. The 412 check in `-shape` is kit-only.
+  specfuse-conditional-read-pair:
+    description: >-
+      If-None-Match and 304 Not Modified are declared together or not at all,
+      and only on GET or HEAD. See API Handbook section 2, Conditional GET.
+    message: "{{error}}"
+    severity: warn
+    given: $.paths
+    then:
+      function: openapiConditionalRead
+      functionOptions:
+        check: pair
+
+  specfuse-conditional-read-shape:
+    description: >-
+      A conditional read's 304 has no body, a 2xx response declares the ETag
+      the client echoes, and no 412 is declared beside the 304.
+    message: "{{error}}"
+    severity: warn
+    given: $.paths
+    then:
+      function: openapiConditionalRead
+      functionOptions:
+        check: shape
 
   # ===== Predefined error responses (presence + correct $ref) =====
   specfuse-401-required:
