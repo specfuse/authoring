@@ -336,11 +336,12 @@ CustomerSearchRequest:
 ### 1.7 Paginated list wrapper
 - **Schema name:** `{Resource}List` (e.g., `CustomerList`).
 - **Data:** array of `Basic{Resource}` within the standard pagination envelope.
+- **Required:** every envelope field except `links`. `hasPrev` and `hasNext` are required because clients page on them: the generated C# `PaginatedList` always serializes both, computed from `page` and `pageCount`, and the generated Dart client reads `hasNext` as the server's answer rather than guessing from the row count. A schema that leaves them optional lets a conformant server omit the one field a client needs to decide whether to render a "next" control. `links` stays optional.
 
 ```yaml
 CustomerList:
   type: object
-  required: [totalItemsCount, pageCount, page, pageSize, data]
+  required: [totalItemsCount, pageCount, page, pageSize, hasPrev, hasNext, data]
   properties:
     totalItemsCount: { type: integer }
     pageCount:       { type: integer }
