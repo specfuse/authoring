@@ -68,7 +68,7 @@ Language-coupling column: ✱ means the field is honoured only for a specific la
 | `groups[].cleanScope[]` | array<string> | optional | — | Explicit relative paths to wipe instead of the language default. |
 | `groups[].filter` | object | optional | — | Predicate tree — **AsyncAPI workers only (v1)**. Other artifact types ignore it. |
 | `groups[].domains` | object | optional | — | Scope the group to a subset of domains: exactly one of `include` / `exclude`. Mutually exclusive with `service`. See §8.13.1. |
-| `groups[].service` | string | optional | ✱ generator > 0.5.8 | Service in `info.x-services` whose owned domains scope this group. Mutually exclusive with `domains`. See §8.13.2. |
+| `groups[].service` | string | optional | ✱ generator ≥ 0.6.0 | Service in `info.x-services` whose owned domains scope this group. Mutually exclusive with `domains`. See §8.13.2. |
 | `groups[].unknownEnumPolicy` | enum | optional | ✱ Dart/Flutter only | `strict` \| `fallback` (default) \| `null`. |
 | `groups[].formatPolicy` | enum | optional | ✱ Dart/Flutter only | `strict` (default) \| `lax`. |
 | `groups[].mutationOverrides[]` | array<string> | optional | ✱ Dart/Flutter only | Operation IDs to flip between query / mutation classification. |
@@ -875,7 +875,7 @@ A group generates every domain in the bundle unless it says otherwise. These two
 
 **Required**: Optional. See `Vendor_Extensions.md` §14 for the registry itself.
 
-> **Not available on the generator this kit pins (0.5.8).** `service` and `info.x-services` landed on the generator's `main` after that release. On 0.5.8 the field is unrecognised. See `compatibility.md` §24.
+> **Available since generator `0.6.0`.** `service` and `info.x-services` shipped together in that release; on `0.5.8` and earlier the field is unrecognised. See `compatibility.md` §24.
 
 **Type**: string — a service name declared in `info.x-services`.
 

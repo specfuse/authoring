@@ -462,7 +462,7 @@ This independently corroborates the consumer reports behind `clabonte/generator#
 
 ### 24. `info.x-services`, `holds`, `Read{Entity}` — kit documents and lints ahead of the pin
 
-**Status:** kit-side work **done** (`Vendor_Extensions.md` §14, `Project_File.md` §8.13.2, nine Spectral rules, `schemas/spectral/fixtures/service-topology.yaml`, a both-directions CI step). Generator-side the vocabulary is **not in the pinned jar** and ships in the release after `0.5.8`.
+**Status:** kit-side work **done** (`Vendor_Extensions.md` §14, `Project_File.md` §8.13.2, nine Spectral rules, `schemas/spectral/fixtures/service-topology.yaml`, a both-directions CI step). Generator-side it **shipped in `0.6.0`** (first jar containing `ServiceTopologyValidationRule`). **Re-verified against `0.12.0` on 2026-09-17:** every §14.9 severity matches the jar except `SERVICE_REGISTRY_UNREADABLE` (WARNING in the jar, `error` in the kit, on purpose; §14.9 now says why). `READ_MODEL_SNAPSHOT_VERSION_DRIFT` is ERROR or WARNING depending on whether the canonical snapshot still carries the field. `SERVICE_CROSS_BOUNDARY_REFERENCE` is still ERROR and still suppressed by a declared hold. Defect 2 below is fixed: `extensions --format json` publishes `info` since `0.11.0`. The rest of this entry is the history of the pre-`0.6.0` state and is kept as the precedent for documenting ahead of a pin.
 
 **The pin state, measured rather than assumed.** `java -jar ~/.specfuse/jars/specfuse-generator-0.5.8.jar extensions --format json` reports `x-entity` keys only — no `x-services`, and no `info`-level extension of any kind. The feature (generator `FEAT-2026-0102`, PRs `#1158` / `#1160` / `#1162`) is on generator `main` at `0.5.9-SNAPSHOT`. So on kit `0.8.0`'s pin the vocabulary is **inert**: declaring it changes nothing that is generated and produces no generator finding.
 
@@ -1042,6 +1042,31 @@ The consumer found that §1.4's *"missing fields reset to defaults"* erases ever
 3. Exempt action-request bodies (`*Request`); a required `writeOnly` `pin` there is correct.
 
 **Kit follow-up when it lands:** rewrite §1.4.1 around the new semantics, keep option 1 as advice rather than a requirement, and check the rider's severity in the jar before documenting it.
+
+### 40. `x-derived-from` — a declarable cross-row seed (`clabonte/generator#1644`, awaiting design)
+
+**Status:** generator-side ask, **not built**. Verified 2026-09-17: generator `0.12.0` contains no `x-derived-from`, `derivedFrom` or `derived-from` anywhere. **The kit documents no key**; it names the gap at `API_Handbook.md` §1.9 and `Vendor_Extensions.md`'s enum-default note. Raised in `restomanager-specs`' `x-derived-from.md`, 2026-09-06.
+
+**The gap.** `REQUIRED_ENUM_MISSING_DEFAULT` has two exits: a literal default, or making the property client-supplied in `New{Resource}`. A value **copied from a related row at creation** is neither, so authors take `x-skip-default-validation: true`. That marker says "stop asking" and nothing more, and the real source survives only as prose in `description`. The consumer classified 24 markers in their tree: 5 are this case (across four domains, two of them explicit frozen snapshots), 1 takes the value from a path parameter, and 18 are genuine "no default exists".
+
+**Proposed shape**, which the kit supports when the generator adopts it:
+
+```yaml
+userRole:
+  allOf: [{ $ref: '../../user/models/UserRoleType.yaml' }]
+  readOnly: true
+  x-derived-from:
+    via: jobRoleDefinitionId    # a declared FK on THIS entity (belongsTo / x-fk-for / x-references)
+    property: defaultUserRole   # a property on the entity that FK resolves to
+    at: create                  # only value in v1: frozen copy, never maintained
+    onMissing: fail             # only value in v1: no implicit fallback
+```
+
+`via` names a local FK, not a dotted `Entity.property` path. The target entity is then declared once, on the FK. The path cannot be ambiguous when an entity has two FKs to one target, and the key stays property-local like `x-expand-of` / `x-references`. `onMissing: fail` comes from consumer evidence: their hand-written fallback wrote a value outside the enum, and three layers let it through.
+
+**Requested validation** (all ERROR from day one; the key has zero uses, so nothing to grandfather): `DERIVED_FROM_VIA_UNRESOLVED`, `_VIA_OPAQUE` (`x-references: none`), `_PROPERTY_UNKNOWN`, `_TYPE_MISMATCH`, `_SOURCE_OPTIONAL` (a required deriving property fed by an optional source), `_STATIC_DEFAULT_CONFLICT`, `_AI_WRITABLE`. Plus: `x-derived-from` **satisfies** `REQUIRED_ENUM_MISSING_DEFAULT`, as a third exit. That is purely additive.
+
+**Kit follow-up when it lands:** document the key beside `x-references` / `x-expand-of` in `Vendor_Extensions.md`. Add it to the property-level shape guard in both directions **in the pin-bump PR**, since the vocabulary gate will flag it. Add the third exit to `API_Handbook.md` §1.9. Read every severity off the jar, not the issue.
 
 ---
 

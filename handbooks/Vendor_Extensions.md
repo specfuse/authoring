@@ -1982,7 +1982,7 @@ x-default: active      # must match `default`
 enum: [active, inactive, suspended]
 ```
 
-**A required enum property needs one.** An entity with a required enum property and no default has no defined state at creation, which is an error (`REQUIRED_ENUM_MISSING_DEFAULT`). Either give the enum a default as above, or make the property required in the `New{Entity}` schema so the client must supply it. Suppress deliberately with `x-skip-default-validation: true` on the property.
+**A required enum property needs one.** An entity with a required enum property and no default has no defined state at creation, which is an error (`REQUIRED_ENUM_MISSING_DEFAULT`). Either give the enum a default as above, or make the property required in the `New{Entity}` schema so the client must supply it. Suppress deliberately with `x-skip-default-validation: true` on the property. That marker is also the only option today for a value copied from a related row at creation; see `compatibility.md` §40.
 
 **Where it goes.** On the **enum schema**, not beside the `$ref` that points at it — OpenAPI 3.0 ignores keywords declared as siblings of `$ref`, so a default written next to the reference is silently dropped. The generator reports this directly as `ENUM_PROPERTY_LEVEL_DEFAULT_IGNORED`: move the `default` to the enum schema and add a matching `x-default` there. If the two are present but disagree, that is `ENUM_DEFAULT_MISMATCH`.
 
@@ -3660,7 +3660,7 @@ x-ui:
 
 ## 14. Service Topology Extensions
 
-> **Availability.** `info.x-services`, `holds` and `Read{Entity}` are **not implemented by the generator this kit pins** (0.5.8). They landed on the generator's `main` after that release and ship in the next one. Verified against the pin: `java -jar specfuse-generator.jar extensions --format json` on 0.5.8 reports `x-entity` keys only. **On 0.5.8 the vocabulary is inert** — declaring it changes nothing about what is generated and produces no generator finding, so the kit's Spectral rules (§14.9) are the only feedback an author gets today. Nothing here is retroactive: a spec that declares none of it is unaffected in every generator version. See `compatibility.md` §24 for the pin state and what changes when the pin moves.
+> **Availability.** `info.x-services`, `holds` and `Read{Entity}` are implemented since generator `0.6.0` and validated by the pinned jar. `extensions --format json` has published the `info`-level surface (`x-domains`, `x-services`, `x-roles`) since `0.11.0`. Nothing here is retroactive: a spec that declares none of it is unaffected in every generator version. See `compatibility.md` §24.
 
 ### 14.0 What this solves
 
@@ -3825,7 +3825,7 @@ Adoption is opt-in and the checks are gated on a declaration, so there is no for
 
 ### 14.9 Kit Spectral rules and their generator counterparts
 
-The kit lints this vocabulary in the editor; the generator validates it at generate time. Each kit rule mirrors a generator finding id at the same severity.
+The kit lints this vocabulary in the editor; the generator validates it at generate time. Each kit rule mirrors a generator finding id at the same severity, with one deliberate exception. `SERVICE_REGISTRY_UNREADABLE` is a WARNING in the jar, but `specfuse-services-registry-shape` is an `error` and is also stricter: it rejects an unknown key inside a service entry (a `hold:` typo for `holds:`), which the jar ignores. A misspelt `holds` means no hold is declared, so every reference it was meant to cover turns into a `SERVICE_CROSS_BOUNDARY_REFERENCE` ERROR somewhere else. The lint names the typo instead. Severities re-verified against generator `0.12.0`.
 
 | kit Spectral rule | severity | generator finding id(s) |
 |---|---|---|
@@ -3841,7 +3841,7 @@ The kit lints this vocabulary in the editor; the generator validates it at gener
 
 **Generator-only, with no kit rule** — each needs the AsyncAPI surface, the OpenAPI surface, or both at once, which no single Spectral run has:
 
-`SERVICE_REGISTRY_MISSING` (warn) · `SERVICE_DOMAIN_UNOWNED` (warn) · `SERVICE_HOLDS_OWNED_ENTITY` (warn) · `SERVICE_CROSS_BOUNDARY_REFERENCE` · `SERVICE_BOUNDARY_OWNER_UNKNOWN` (warn) · `READ_MODEL_MISSING_TENANT_KEY` · `READ_MODEL_NOT_HYDRATABLE` · `READ_MODEL_SNAPSHOT_MISSING_KEY` · `READ_MODEL_NO_SNAPSHOT` (warn) · `READ_MODEL_NO_CREATE_EVENT` · `READ_MODEL_NO_UPDATE_EVENT` · `READ_MODEL_NO_REMOVAL_EVENT` · `READ_MODEL_EVENT_PAYLOAD_NOT_SNAPSHOT` · `READ_MODEL_SNAPSHOT_VERSION_DRIFT` · `READ_MODEL_NO_ORDERING_KEY` (warn) · `READ_MODEL_DUPLICATE_CONSUMER`
+`SERVICE_REGISTRY_MISSING` (warn) · `SERVICE_DOMAIN_UNOWNED` (warn) · `SERVICE_HOLDS_OWNED_ENTITY` (warn) · `SERVICE_CROSS_BOUNDARY_REFERENCE` · `SERVICE_BOUNDARY_OWNER_UNKNOWN` (warn) · `READ_MODEL_MISSING_TENANT_KEY` · `READ_MODEL_NOT_HYDRATABLE` · `READ_MODEL_SNAPSHOT_MISSING_KEY` · `READ_MODEL_NO_SNAPSHOT` (warn) · `READ_MODEL_NO_CREATE_EVENT` · `READ_MODEL_NO_UPDATE_EVENT` · `READ_MODEL_NO_REMOVAL_EVENT` · `READ_MODEL_EVENT_PAYLOAD_NOT_SNAPSHOT` · `READ_MODEL_SNAPSHOT_VERSION_DRIFT` (ERROR when the read model's field survives only in a deprecated snapshot version; warn when the canonical snapshot still carries it) · `READ_MODEL_NO_ORDERING_KEY` (warn) · `READ_MODEL_DUPLICATE_CONSUMER`
 
 **`SERVICE_CROSS_BOUNDARY_REFERENCE` is the one finding that can turn a green `validate` red.** It reports every reference whose target is owned by a different service and is not covered by a `Read{Entity}` + `holds` pair. It fires **only** on a spec that declares `info.x-services`, so it cannot affect a project that has not adopted the vocabulary — but once you do adopt, it is an ERROR, not a warning, and it is satisfiable only by authoring the pairs.
 
