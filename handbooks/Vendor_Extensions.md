@@ -1185,7 +1185,7 @@ x-classification:
 > describes is worth remembering, not because it is current. **Both declarations it
 > names are gone.**
 
-**As of generator 0.7.0 there is one axis, and it is `x-protection.atRest`.** To exclude a field from the implicit AI read surface, or to have encryption converters emitted, declare `x-protection: {atRest: encrypted}` on the property. `x-entity.encryptedProperties` is retired outright — an entity still declaring it fails with `ENTITY_INVALID_CONFIG` naming the replacement — and `x-classification: [encrypted]` is rejected with `INVALID_EXTENSION_VALUE`.
+**As of generator 0.7.0 there is one axis, and it is `x-protection.atRest`.** To exclude a field from the implicit AI read surface, to have it carried into the data-protection audit, or to record an at-rest decision at all, declare `x-protection: {atRest: encrypted}` on the property. Earlier revisions of this sentence also promised "encryption converters emitted"; see *"What `atRest: encrypted` emits, measured"* below for what the pinned generator actually produces, which is not that. `x-entity.encryptedProperties` is retired outright — an entity still declaring it fails with `ENTITY_INVALID_CONFIG` naming the replacement — and `x-classification: [encrypted]` is rejected with `INVALID_EXTENSION_VALUE`.
 
 The migration is mechanical and both halves land in the same release, which is what makes it safe: 0.7.0 also taught `SENSITIVE_FIELD_IN_RESPONSE` to accept `atRest: encrypted` as a satisfier, so a `portalPassword`-shaped property does not start failing as you move it. `specfuse-classification-encrypted-superseded` is now an **error** carrying the replacement text. See `compatibility.md`.
 
@@ -1243,9 +1243,11 @@ email:
 | `mode` | `randomized` \| `deterministic` | `deterministic` parses and is then refused: `PROTECTION_MODE_UNSUPPORTED` ("declared but unsupported in v1"). Only `randomized` is implemented. |
 | `blindIndex` | `{ equality, prefix, normalization[], scope }` | `scope` is `tenant` \| `global`. How an encrypted value stays searchable. |
 | `masking` | `{ first, last }` | How many leading/trailing characters survive masking. |
-| `unbounded` | boolean | The value has no length bound. |
+| `unbounded` | boolean | **The property has no `maxLength`, and that is deliberate.** It asserts that the value's length is genuinely unbounded, so no bounded ciphertext column can be sized for it and the storage falls back to the target's large-object form. Treat it as a review signal rather than a storage switch: at generator `0.12.0` its only consumer is the data-protection audit's protection matrix (`Project_File.md` §11.5, section 2), where `unbounded: true` on an encrypted property is the row an assessor is meant to question. Wherever the value does have a real bound, declare `maxLength` instead — and note that **a `pattern` is not a bound**: `pattern: '^[0-9]{5}$'` pins the length exactly and still leaves the property unbounded as far as any sizing is concerned. |
 | `rationale` | string | **Required when `atRest: none`.** |
 | `reviewedOn` / `reviewedBy` | date / string | Who signed the decision off, and when. From generator 0.9.0 a `reviewedOn` older than **18 months** is reported as a stale review in the data-protection audit — a finding, never a build failure. |
+
+**Two places an author standing here needs to know about.** `x-protection` is also declarable at a **value-object usage site**, in a scalar and a per-member form — §2.1. And the floors these declarations are measured against are not built in: they come from the project file's `encryption.profiles`, and **a project that declares no profiles has no floors at all** — `Project_File.md` §15.
 
 > **These declarations have a deliverable, from generator 0.9.0.** The
 > `dataProtectionAudit` markdown artifact (`Project_File.md` §11.5) renders
@@ -1260,6 +1262,43 @@ email:
 > It is **not emitted unless registered** in a group's `artifacts[]`, and
 > nothing warns you at generation time. Register it, or the evidence quietly
 > does not exist.
+
+#### What `atRest: encrypted` emits, measured against generator `0.12.0`
+
+Worth stating plainly, because the declaration reads like it wires up persistence and at this pin it does not.
+
+`atRest: encrypted` drives **validation, the audit, and the AI read surface**. It does not drive a single line of persistence code. The C# field-encryption library — `AesGcmFieldCipher`, `FieldEnvelope`, `EncryptionContext`, `IDataKeyProvider`, `IKeyWrapper`, `DataKeyCache` and their exception families — is emitted **unconditionally by the `infrastructureProject` artifact**, whether or not any property in the bundle declares encryption. No entity, EF-configuration, repository or converter template reads `x-protection` at all. Verified against the pinned jar: `InfrastructureProjectArtifact` is the only class in the generator that references those templates.
+
+What follows from that, today:
+
+- **Declaring `atRest: encrypted` is a specification and compliance act, not a code-generation one.** It is read by the protection validation rules, by `dataProtectionAudit`, and by the implicit `aiAccess.readableProperties` exclusion (§1.1.1 rule 5).
+- **The persistence half is yours to write**, and it has a registration obligation the generated code will not perform for you: nothing generated calls `AddFieldEncryption()`, and `IDataKeyProvider` and `IKeyWrapper` ship as throwing placeholder factories that `ValidateOnBuild` deliberately does not catch. The first symptom of an unwritten provider is a `FieldEncryptionNotConfiguredException` at first use, not a failed build or a failed boot. `AssertFieldEncryptionConfigured` is the opt-in way to move that failure to startup.
+- **Column sizing, ciphertext columns and the save path are not part of this pin.** Any rule you have read about ciphertext column widths belongs to a later generator; do not size a bound against it yet. Declare `maxLength` anyway — see `unbounded` above.
+
+The full runtime contract a consumer must satisfy is not yet documented in this kit; it is tracked as authoring issue #109.
+
+#### Renaming an encrypted property is a data migration, not a rename
+
+This is the one edit that looks ordinary and is not. Renaming a property that declares `atRest: encrypted` makes every value already stored for it permanently unreadable, in one deploy.
+
+The generated cipher binds the property's **own name** into the additional authenticated data of every value it writes. Measured against the pinned jar's `EncryptionContext`, the tuple is:
+
+```
+AAD = envelopeVersion + tenantId + entityName + propertyName + entityId
+```
+
+Both the write path and the read path derive that AAD from the current model, so the moment the name changes, every stored row authenticates against a string that no longer matches and decryption fails for the whole column at once. Rolling the code back recovers the data only because the old name comes back with it. **The same applies to renaming the entity, and to any migration that rewrites the primary key of a row carrying an encrypted field** — both are AAD segments too.
+
+Do it as a migration instead, in four separately deployable steps:
+
+1. **Add** the new property alongside the old one. Both get their own storage; nothing is removed yet.
+2. **Backfill** out of band — read under the old name, write under the new one — in a batched, resumable job. Never in a migration's forward step: a migration that decrypts and re-encrypts every row has no safe failure mode halfway through.
+3. **Verify**, then move readers to the new property.
+4. **Drop** the old property in a separate, later release.
+
+The gap between steps 3 and 4 is your entire rollback window; collapsing them into one release removes it.
+
+> **Flattened value objects are not covered by the four steps above.** Their AAD segments are not the ones an author would guess, and at generator `0.12.0` an `atRest: encrypted` resolving to a value object emits no ciphertext at all (see the subsection above). The value-object case is tracked for the pin bump that makes it real — authoring issue #114.
 
 **`atRest: none` is a decision, not a default.** It is the only value that requires a `rationale`, because it is the only one that leaves a classified value in plaintext. An unreviewed escape hatch is how a classified field quietly ends up unprotected; the rationale is what makes it reviewable by the next person.
 
@@ -1614,7 +1653,50 @@ valueObjects:
     indexHints: string[]   # Optional: Fields that should be indexed
     propertyPrefix: string # Optional: Prefix for flattened properties
     serializer: string     # Optional: Serialization format
+    classification: string[]  # Optional (generator 0.6.0): x-classification tokens
+    protection: object        # Optional (generator 0.6.0): x-protection, in one of two shapes
 ```
+
+#### `classification` and `protection` — sensitivity belongs to the usage site
+
+Both keys land in `ValueObjectConfiguration` alongside `storage` and `queryable`, and both have been accepted by the guard since the generator `0.6.0` pin. They took until kit `0.19.0` to reach this schema, so a spec written against an earlier revision of this section will have declared neither.
+
+**Why they belong here and not on the value object's own definition.** A shared value object — an address, a contact, a money range — is embedded at many sites, and its sensitivity is a property of the site, not of the shape. The same address definition can be a natural person's home address at one usage site and a business location at twenty-six others; a classification written on the definition would be wrong at twenty-six of twenty-seven. The usage site is the only place the true statement can be written, which is why the keys exist at both levels and why this one is the one to reach for by default.
+
+**`protection` has two shapes, told apart by their keys.** If any top-level key of the object is a known `x-protection` sub-key (`atRest`, `mode`, `blindIndex`, `masking`, `unbounded`, `rationale`, `reviewedOn`, `reviewedBy`), the whole object is read as **one declaration covering every member** of the value object:
+
+```yaml
+x-entity:
+  valueObjects:
+    residenceAddress:
+      storage: 'flatten'
+      queryable: []
+      classification: [pii]
+      protection:
+        atRest: encrypted
+        rationale: "Residential address of a natural person."
+```
+
+If none of them is, it is read as a **per-member map**, keyed by member name — the form for a value object whose members do not share one protection class:
+
+```yaml
+valueObjects:
+  deviceReading:
+    storage: 'flatten'
+    queryable: []
+    protection:
+      preciseLocation: { atRest: encrypted }
+      secretDigest:    { atRest: hashed, rationale: "Never read back in plaintext." }
+      # capturedAt is not listed, and inherits the default: none
+```
+
+The disambiguation is the generator's own (`ProtectionDefinition.isSubKey` over the map's key set), and it has one sharp edge worth knowing: a value object with a **member actually named** `masking`, `rationale` or any other sub-key cannot use the per-member form, because that member's name makes the object parse as the scalar shape instead. Rename the member or declare the scalar form deliberately.
+
+**Encrypting a flattened value object is an error while any column stays queryable.** This is a build failure, not a silent trade-off: `VALUE_OBJECT_ENCRYPTED_QUERYABLE` (FE-G28) fires when an encrypted usage site has a non-empty **effective** queryable set, because encryption turns those flattened columns into unfilterable ciphertext. The remedy the generator names is *set `queryable: []` at this usage site, or declare a blind index for the columns that must stay searchable.*
+
+The trap is the word *effective*: the set is the usage site's `queryable` **if it declares one**, and the definition's `defaultQueryable` otherwise. So a usage site that declares no `queryable` at all inherits one and fails, and the fix is to declare `queryable: []` explicitly rather than to remove the key.
+
+> **At generator `0.12.0` this is a declaration, not emitted encryption.** An `atRest: encrypted` resolving to a value object produces validation and audit rows, and no ciphertext column — see §1.5, *"What `atRest: encrypted` emits, measured"*. The generator work that makes it real, and the all-or-nothing member rule that comes with it, is tracked for a later pin as authoring issue #114.
 
 **Storage Patterns**:
 

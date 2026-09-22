@@ -53,6 +53,15 @@
 #   UniqueByUnknownMember         flagged: unknown key inside a constraint object
 #   UniqueByBadPropertyName       flagged: property names are camelCase
 #
+# Kit 0.19.0 documents `classification` and `protection` on a valueObjects
+# usage site (generator 0.6.0 vocabulary, published in Vendor §2.1 only now),
+# and widens the guard to the per-member shape of `protection`:
+#
+#   ValueObjectProtectionScalar     no finding — scalar declaration, every member
+#   ValueObjectProtectionPerMember  no finding — per-member map keyed by member name
+#   ValueObjectProtectionUnknownSubKey   flagged: typo'd sub-key matches neither shape
+#   ValueObjectProtectionMemberNotObject flagged: a member's value must be a declaration
+#
 # And, by `specfuse-xentity-concurrency-unprotected-needs-reason` only — these
 # two must NOT appear in any specfuse-xentity-shape finding:
 #
@@ -308,6 +317,73 @@ components:
           address:
             storage: 'flatten'
             prefix: 'addr_'             # misspelling of propertyPrefix
+      properties:
+        id: { type: string, format: uuid }
+
+    # ---- x-entity.valueObjects[*].classification / .protection ----
+    # Both keys have been in ValueObjectConfiguration since generator 0.6.0.
+    # `protection` has two shapes, told apart by whether any top-level key is a
+    # known x-protection sub-key (ProtectionDefinition.isSubKey). The guard is
+    # additionalProperties: false, so each shape the jar accepts and the kit
+    # does not is a spec that lints clean nowhere and generates fine.
+    # See handbooks/Vendor_Extensions.md §2.1.
+    ValueObjectProtectionScalar:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        valueObjects:
+          residenceAddress:
+            storage: 'flatten'
+            queryable: []
+            classification: [pii]
+            protection:
+              atRest: encrypted
+              rationale: "Residential address of a natural person."
+              reviewedOn: '2026-09-22'
+              reviewedBy: platform team
+      properties:
+        id: { type: string, format: uuid }
+
+    ValueObjectProtectionPerMember:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        valueObjects:
+          deviceReading:
+            storage: 'flatten'
+            queryable: []
+            protection:
+              preciseLocation: { atRest: encrypted }
+              secretDigest: { atRest: hashed, rationale: "Never read back in plaintext." }
+      properties:
+        id: { type: string, format: uuid }
+
+    ValueObjectProtectionUnknownSubKey:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        valueObjects:
+          residenceAddress:
+            storage: 'flatten'
+            protection:
+              atRest: encrypted
+              reviewdOn: '2026-09-22'    # typo: not a sub-key, not a member map
+      properties:
+        id: { type: string, format: uuid }
+
+    ValueObjectProtectionMemberNotObject:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        valueObjects:
+          deviceReading:
+            storage: 'flatten'
+            protection:
+              preciseLocation: encrypted    # a member maps to a declaration, not a scalar
       properties:
         id: { type: string, format: uuid }
 
