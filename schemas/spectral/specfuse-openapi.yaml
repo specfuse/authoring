@@ -1187,63 +1187,85 @@ rules:
                   # by `specfuse-xprotection-shape` below. One definition, two
                   # call sites — a YAML alias cannot drift the way two
                   # hand-maintained copies of a schema do.
-                  protection: &xProtectionShape
-                    type: object
-                    additionalProperties: false
-                    properties:
-                      # ProtectionDefinition$AtRest. Matched case-insensitively
-                      # by the generator (`toLowerCase` before `fromString`);
-                      # BOTH separators are accepted for never-persist. The
-                      # generator lower-cases and normalises before matching, so
-                      # `never_persist` and `never-persist` reach it as the same
-                      # value — measured against 0.7.0, same result on a value
-                      # object and on an entity property. `extensions`, the
-                      # command the kit tells consumers to derive a ruleset
-                      # from, prints the HYPHEN form, so pinning the underscore
-                      # made the kit reject the spelling its own published
-                      # vocabulary advertises.
-                      #
-                      # `neverPersist` (camelCase) is still NOT accepted: the
-                      # generator's normalisation collapses separators, not
-                      # case boundaries.
-                      #
-                      # Widening this enum alone opens a hole — see
-                      # specfuse-xprotection-never-persist-not-mapped, whose
-                      # guard has to match both spellings or it silently stops
-                      # covering one of them. The two changes belong together.
-                      atRest:
-                        type: string
-                        enum: [none, encrypted, hashed, never_persist, never-persist]
-                      # ProtectionDefinition$Mode. `deterministic` parses and is
-                      # then refused by PROTECTION_MODE_UNSUPPORTED ("declared
-                      # but unsupported in v1"), so it is accepted here and
-                      # flagged by its own rule rather than rejected as a
-                      # malformed value — the two are different findings and the
-                      # author needs to be told which.
-                      mode:
-                        type: string
-                        enum: [randomized, deterministic]
-                      blindIndex:
+                  # Two shapes, and the generator tells them apart by whether
+                  # any top-level key is a known x-protection sub-key
+                  # (`ProtectionDefinition.isSubKey` over the key set): a
+                  # scalar declaration covering every flattened member, or a
+                  # per-member map keyed by member name. Accepting only the
+                  # scalar form made the per-member form unadoptable — the jar
+                  # takes it, the kit rejected it, which is the adoption-
+                  # blocking direction this ruleset exists to avoid.
+                  #
+                  # The oneOf is unambiguous for every real input: a map whose
+                  # member is *named* like a sub-key parses as the scalar form
+                  # in both the jar and here, which is the edge Vendor §2.1
+                  # tells authors to rename around.
+                  protection:
+                    oneOf:
+                      - &xProtectionShape
                         type: object
                         additionalProperties: false
                         properties:
-                          equality: { type: boolean }
-                          prefix: { type: integer, minimum: 1 }
-                          normalization:
-                            type: array
-                            uniqueItems: true
-                            items: { type: string }
-                          scope: { type: string, enum: [tenant, global] }
-                      masking:
-                        type: object
-                        additionalProperties: false
-                        properties:
-                          first: { type: integer, minimum: 0 }
-                          last: { type: integer, minimum: 0 }
-                      unbounded: { type: boolean }
-                      rationale: { type: string, minLength: 1 }
-                      reviewedOn: { type: string, format: date }
-                      reviewedBy: { type: string, minLength: 1 }
+                          # ProtectionDefinition$AtRest. Matched case-insensitively
+                          # by the generator (`toLowerCase` before `fromString`);
+                          # BOTH separators are accepted for never-persist. The
+                          # generator lower-cases and normalises before matching, so
+                          # `never_persist` and `never-persist` reach it as the same
+                          # value — measured against 0.7.0, same result on a value
+                          # object and on an entity property. `extensions`, the
+                          # command the kit tells consumers to derive a ruleset
+                          # from, prints the HYPHEN form, so pinning the underscore
+                          # made the kit reject the spelling its own published
+                          # vocabulary advertises.
+                          #
+                          # `neverPersist` (camelCase) is still NOT accepted: the
+                          # generator's normalisation collapses separators, not
+                          # case boundaries.
+                          #
+                          # Widening this enum alone opens a hole — see
+                          # specfuse-xprotection-never-persist-not-mapped, whose
+                          # guard has to match both spellings or it silently stops
+                          # covering one of them. The two changes belong together.
+                          atRest:
+                            type: string
+                            enum: [none, encrypted, hashed, never_persist, never-persist]
+                          # ProtectionDefinition$Mode. `deterministic` parses and is
+                          # then refused by PROTECTION_MODE_UNSUPPORTED ("declared
+                          # but unsupported in v1"), so it is accepted here and
+                          # flagged by its own rule rather than rejected as a
+                          # malformed value — the two are different findings and the
+                          # author needs to be told which.
+                          mode:
+                            type: string
+                            enum: [randomized, deterministic]
+                          blindIndex:
+                            type: object
+                            additionalProperties: false
+                            properties:
+                              equality: { type: boolean }
+                              prefix: { type: integer, minimum: 1 }
+                              normalization:
+                                type: array
+                                uniqueItems: true
+                                items: { type: string }
+                              scope: { type: string, enum: [tenant, global] }
+                          masking:
+                            type: object
+                            additionalProperties: false
+                            properties:
+                              first: { type: integer, minimum: 0 }
+                              last: { type: integer, minimum: 0 }
+                          unbounded: { type: boolean }
+                          rationale: { type: string, minLength: 1 }
+                          reviewedOn: { type: string, format: date }
+                          reviewedBy: { type: string, minLength: 1 }
+                      # The per-member form: every key is a flattened member
+                      # name and every value is one scalar declaration. The
+                      # alias is the point — one definition, three call sites,
+                      # none of which can drift from the others.
+                      - type: object
+                        minProperties: 1
+                        additionalProperties: *xProtectionShape
             # Write policy for the entity's rows after insert. Omitted means
             # `mutable`, so declaring nothing keeps the previous behaviour.
             #   mutable     rows are updated in place (the default)

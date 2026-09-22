@@ -165,6 +165,7 @@ jobs:
                       ConcurrencyOtherWithText ConcurrencyTextNoReason \
                       ConcurrencyDelegated ArchiveVisibilityOperational \
                       UniqueBySingleAndComposite UniqueByEmptyList \
+                      ValueObjectProtectionScalar ValueObjectProtectionPerMember \
                       DeprecatedSchemaKey; do
             if grep "specfuse-xentity-shape" "$REPORT" | grep -q "$good"; then
               echo "::error::$good uses only documented x-entity keys but was flagged." >&2
@@ -185,6 +186,8 @@ jobs:
                      DelegatedWithReason ToOnOptimistic \
                      ArchiveVisibilityOnHard BadArchiveVisibility \
                      UniqueByNoProperties UniqueByEmptyProperties \
+                     ValueObjectProtectionUnknownSubKey \
+                     ValueObjectProtectionMemberNotObject \
                      UniqueByUnknownMember UniqueByBadPropertyName; do
             if ! grep "specfuse-xentity-shape" "$REPORT" | grep -q "$bad"; then
               echo "::error::specfuse-xentity-shape did not flag $bad." >&2

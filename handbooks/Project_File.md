@@ -55,6 +55,9 @@ Language-coupling column: ✱ means the field is honoured only for a specific la
 | `persistence.default` | descriptor | optional | — | Backend descriptor used for any `x-entity` not in `entities`. Required if any entity is unlisted. |
 | `persistence.entities` | object<entityName, descriptor> | optional | — | Per-entity descriptor overrides. Keys must match `x-entity` schemas in the bundled spec. |
 | `persistence.schemaCheckTimeoutSeconds` | number | optional | — | Wall-clock cap for the startup schema-compatibility check, in seconds. Default `30`. |
+| `encryption` | object | optional | — | Compliance floors and key scope for the `x-protection` axis. **Absent means no floors are applied and nothing warns** — see §15. |
+| `encryption.profiles[]` | array<string> | optional | — | `law25` \| `pci` \| `soc2`. Composed as a **union of floors, not a ladder**. See §15. |
+| `encryption.keyScope` | string | optional | — | `tenant` \| `global`. Governs `PROTECTION_ENCRYPTED_TENANT_SCOPE_REQUIRED` and the generated `EncryptionProfile.DeclaredKeyScope`. Absent disables both. See §15. |
 | `groups[]` | array<object> | yes for generation | — | One artifact group per output tree. |
 | `groups[].name` | string | recommended | — | Human-readable group label; used by `--group` and diagnostics. |
 | `groups[].description` | string | optional | — | Free-form description. |
@@ -1027,6 +1030,8 @@ Emits `data-protection-audit.md` plus a machine-readable companion `data-protect
 
 **What it is and is not.** Every row is a declaration the specifications carry, not an observation of a running system — which is the property that makes it useful: it is diffable, so `git blame` answers *"when did this field start being encrypted, and who approved it"* with a commit. It says so itself, in the document. Three findings are reported and **none fails the build**: declarations reviewed more than 18 months ago, classified fields reaching a snapshot without a `x-snapshot-pii-acknowledged` entry, and fields made AI-readable by an explicit `aiAccess.readableProperties` listing that the implicit expansion would have withheld. The stale-review finding is deliberately non-fatal, and the generator explains why in the document: a build that fails on a calendar date guarantees somebody rubber-stamps a date bump to go green.
 
+**The floors the audit's exception register is measured against are configured, not built in** — see §15 for the project file's `encryption` block, and note that a project declaring no profiles has no floors at all.
+
 Key custody, rotation cadence, split knowledge and dual control are runtime properties of the key provider and appear nowhere — the document states that silence explicitly rather than letting an empty section read as a pass.
 
 ---
@@ -1181,6 +1186,50 @@ See foot-gun #1 at the top of this document.
   ]
 }
 ```
+
+---
+
+## 15. Encryption
+
+**Numbering note.** This section documents a top-level block that has been parsed since the `x-protection` axis landed in generator `0.6.0` and was never written up. It is numbered 15 rather than inserted after §6 so that every existing `§7`–`§14` cross-reference, here and in the other handbooks, keeps pointing at the same content.
+
+```json
+{
+  "encryption": {
+    "profiles": ["law25", "pci"],
+    "keyScope": "tenant"
+  }
+}
+```
+
+**Absent means no floors, and nothing says so.** This is the whole reason the section exists. An absent `encryption` block, or an absent `profiles` list, means **no compliance floor is applied to any declaration** — and the result is indistinguishable, from a validation run, from a project whose floors are all satisfied. A project can classify a field `credential`, declare `atRest: none` with a one-word rationale, and validate clean, not because the declaration was reviewed against a floor but because no floor was ever configured. Same shape as *"Register it or it does not exist"* in §11.5, and the same remedy: declare the block deliberately, even if the answer is one profile.
+
+### `profiles`
+
+A **union of floors, not a ladder.** Each declared profile sets a minimum `atRest` per classification token, and declaring two applies both; there is no ordering between them and no "highest wins". Three are recognised by the pinned generator (`0.12.0`):
+
+| Profile | What it adds |
+|---|---|
+| `law25` | Privacy floors per classification token. A classified property below the floor is `PROTECTION_LAW25_FLOOR`, whose remedy is *declare `x-protection.atRest: encrypted`, or `hashed` (with a rationale stating the value is never read back in plaintext, unless classified `credential`)*. |
+| `pci` | Cardholder-data floors. `cardholder` must be `atRest: encrypted` with `masking.first <= 6` and `masking.last <= 4`, or `atRest: hashed` with a rationale (PCI-DSS 3.5.1). `sad` must be `never-persist` — sensitive authentication data may not be stored after authorisation. Reported as `PROTECTION_PCI_FLOOR`. |
+| `soc2` | Not a floor but a metadata gate: it makes `rationale`, `reviewedOn` **and** `reviewedBy` mandatory on every declared `x-protection` (`PROTECTION_SOC2_METADATA_REQUIRED`). A `reviewedOn` older than 18 months is a **finding**, never a build failure — see §11.5 for why that is deliberate. |
+
+An unrecognised profile token is not a floor; it is simply not one of the three, and it configures nothing.
+
+### `keyScope`
+
+Declares the scope at which data keys are expected to exist. Two values are meaningful: **`tenant`** (matched case-insensitively) and **`global`**.
+
+It does two things, and both are silent when the key is absent:
+
+- **`tenant` turns on a spec-level check.** An encrypted property on an entity that is not tenant-scoped — no tenant in its `belongsTo` chain — is `PROTECTION_ENCRYPTED_TENANT_SCOPE_REQUIRED` (FE-G26). The remedy the generator names is *add the project's tenant to this entity's `belongsTo` chain, or set `encryption.keyScope: global` if this entity is intentionally global.* **With `keyScope` absent the check does not run at all**, so a non-tenant-scoped encrypted entity passes validation in a project that intended tenant-scoped keys.
+- **The declared value is carried into the generated C# `EncryptionProfile.DeclaredKeyScope`**, where the runtime compares it against the scope the host's key provider is configured for and refuses to continue on a disagreement (`DeclaredKeyScopeMismatchException`) — because proceeding writes ciphertext keyed at a scope the specification never declared. Declare nothing and `DeclaredKeyScope` is `null`, and that mismatch can never be raised.
+
+Anything other than `tenant` reads as "not tenant scoped" for the first check and is passed through verbatim for the second, so treat `global` as the spelling to use rather than a synonym of your own.
+
+### Where the declarations it governs live
+
+The block sets floors; the per-property decisions are `x-classification` and `x-protection` in the OpenAPI document (`Vendor_Extensions.md` §1.5), and the deliverable that renders both is the `dataProtectionAudit` artifact (§11.5). None of the three is reachable from the other two by inspection, which is why each names the others.
 
 ---
 
