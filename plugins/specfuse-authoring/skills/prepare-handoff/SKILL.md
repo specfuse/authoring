@@ -8,17 +8,17 @@ Copyright 2026 Specfuse Contributors
 Licensed under the Apache License, Version 2.0. See LICENSE.
 -->
 
-Produce a feature handoff manifest at `api/docs/handoffs/<correlation-id>.md` per the consumer contract in the project's orchestrator (typically `../orchestrator/project/specs-handoff-contract.md`). Composes existing primitives (validation, scenario doc regen, bundling, scenario impact, prompt-corpus parser) and delegates manifest composition to the `handoff-composer` sub-agent.
+Produce a feature handoff manifest at `api/docs/handoffs/<correlation-id>.md` per the consumer contract in the project's orchestration repo (`<orchestrator>/project/specs-handoff-contract.md`, where `<orchestrator>` is resolved per §"Resolving the orchestration repo" below). Composes existing primitives (validation, scenario doc regen, bundling, scenario impact, prompt-corpus parser) and delegates manifest composition to the `handoff-composer` sub-agent.
 
 *Enforces: (general — no single handbook)*
 
 **Before doing anything**, read and internalize:
 
-1. `../orchestrator/project/specs-handoff-contract.md` — authoritative section list, formats, freshness rules.
-2. `../orchestrator/project/coordination-conventions.md` — §2 operation classification, §7 async classification, §10 direction-of-reference rule.
-3. `.specfuse/methodology/rules/correlation-ids.md` — minting rules, per-year-resetting numbering.
-4. `../orchestrator/shared/templates/feature-registry.md` — registry-entry template.
-5. `../orchestrator/shared/schemas/feature-frontmatter.schema.json` — registry-entry frontmatter schema.
+1. `<orchestrator>/project/specs-handoff-contract.md` — authoritative section list, formats, freshness rules. **Authored per project**, by the orchestration repo's onboarding agent; Specfuse ships `project/` with a README and nothing else.
+2. `<orchestrator>/project/coordination-conventions.md` — §2 operation classification, §7 async classification, §10 direction-of-reference rule. **Authored per project**, as above.
+3. `.specfuse/methodology/rules/correlation-ids.md` — minting rules, per-year-resetting numbering. Provisioned by `specfuse init`; resolves from this repo.
+4. `<orchestrator>/shared/templates/feature-registry.md` — registry-entry template. Ships with the orchestration scaffold.
+5. The registry-entry frontmatter schema, reached through the core CLI as `specfuse validate-frontmatter` — **not** as a file path. Core resolves it from its own install, so it needs no orchestration checkout at all.
 6. The input/output contract of the `handoff-composer` subagent (provided by the specfuse-authoring plugin) — you will delegate manifest composition to it.
 7. `api/docs/implementation-prompts/README.md` — front-matter convention for prompt files.
 
@@ -31,7 +31,26 @@ Accept ONE positional argument and optional flags:
 | `<correlation-id>` | no | When supplied, validate format `FEAT-\d{4}-\d{4}` and use as-is. When omitted, **mint autonomously** — see §1 below. |
 | `--scope <paths>` | no | Comma-separated list of paths under `api/specs/v1/` to override scope derivation. |
 | `--since <ref>` | no | Override the diff base for scope derivation; default `origin/main`. |
+| `--orchestrator <path>` | no | Path to the project's orchestration repo. Default `../orchestrator`. Set it whenever your orchestration repo is named or located otherwise — the default is a convention, not a requirement. |
 | `--dry-run` | no | Produce manifest content and registry-entry content but do not write or commit. Useful for review before live use. |
+
+## Resolving the orchestration repo
+
+Everything this skill reads or writes outside this repository resolves from a single value, `<orchestrator>`:
+
+1. `--orchestrator <path>` when supplied.
+2. Otherwise `../orchestrator`.
+
+**The default is a convention, not a layout requirement.** Earlier revisions of this skill hardcoded `../orchestrator/` at every call site and told a consumer whose repo was named otherwise to rename their repositories to match — which is the dependency inversion authoring #26 exists to remove, in its structural form. A path is as much extraction residue as a brand name is.
+
+**Two failures, and they are not the same failure.** Resolve `<orchestrator>` before Step 1 and report them separately:
+
+- **The path does not resolve.** `<orchestrator>/` is not a directory. Say which path was tried and which flag sets it. Never instruct the operator to rename a repository.
+- **The path resolves and the contract is absent.** `<orchestrator>/project/specs-handoff-contract.md` or `coordination-conventions.md` is missing. These are authored per project by the orchestration repo's onboarding agent — Specfuse ships neither — so the remedy is to run onboarding or author them, not to fix a path. Telling these two apart is what lets an operator distinguish a misconfiguration from work that was never done.
+
+`<orchestrator>` is a per-invocation flag today. A persistent per-install setting is the right home for it and does not exist yet; until it does, projects whose orchestration repo is not `../orchestrator` must pass the flag on every run.
+
+---
 
 ## Process
 
@@ -44,14 +63,14 @@ Run sequentially. Stop at any **gate** that asks for user confirmation; surface 
 **If supplied:**
 - Validate format `FEAT-\d{4}-\d{4}`.
 - Compare year against `date +%Y`. Mismatch → warn but continue (historical features may legitimately need backfill); user can confirm or abort.
-- Check whether `../orchestrator/features/<correlation-id>.md` exists. If yes, treat this as a re-run (Step 11 path). If no, treat as supplied-mint and create the registry entry as part of Step 12.
+- Check whether `<orchestrator>/features/<correlation-id>.md` exists. If yes, treat this as a re-run (Step 11 path). If no, treat as supplied-mint and create the registry entry as part of Step 12.
 
 **If omitted (autonomous mint):**
 
-1. Verify `../orchestrator/features/` exists. If not, STOP:
-   > Orchestrator repo not found at `../orchestrator/features/`. Cannot mint correlation ID. Confirm the sibling-path layout matches `<project>App/{orchestrator,<project>-specs}/`.
-2. Read `../orchestrator/shared/schemas/feature-frontmatter.schema.json`. If unreachable, STOP with the same shape of message.
-3. Glob `../orchestrator/features/FEAT-{currentYear}-*.md`. Extract the largest `NNNN`. Pick the next ordinal (or `0001` if none). Per-year-resetting per `correlation-ids.md`.
+1. Verify `<orchestrator>/features/` exists. If not, STOP:
+   > Orchestration repo not found at `<orchestrator>/features/`. Cannot mint correlation ID. Pass `--orchestrator <path>` if your orchestration repo is elsewhere; `../orchestrator` is the default, not a required layout.
+2. Verify the core CLI can validate a registry entry: `specfuse validate-frontmatter --help`. If the CLI is unavailable, STOP — core provisions the frontmatter schema and there is no file path to fall back to.
+3. Glob `<orchestrator>/features/FEAT-{currentYear}-*.md`. Extract the largest `NNNN`. Pick the next ordinal (or `0001` if none). Per-year-resetting per `correlation-ids.md`.
 4. Set `correlationId = FEAT-<year>-<NNNN>`.
 5. Defer the registry-entry write until Step 12 — production failure should not leave a phantom entry behind.
 
@@ -218,7 +237,7 @@ In this order (manifest first, registry entry second — production-then-registr
 
 1. Write `api/docs/handoffs/<correlation-id>.md` with the composed Markdown.
 2. If a draft was slurped in Step 10, delete `api/docs/handoffs/<correlation-id>.notes-draft.md` (the manifest is now the source of truth for §11).
-3. If the registry entry doesn't yet exist, write `../orchestrator/features/<correlation-id>.md` per `shared/templates/feature-registry.md` with minimum frontmatter:
+3. If the registry entry doesn't yet exist, write `<orchestrator>/features/<correlation-id>.md` per `<orchestrator>/shared/templates/feature-registry.md` with minimum frontmatter:
    ```yaml
    ---
    correlation_id: <correlation-id>
@@ -228,7 +247,7 @@ In this order (manifest first, registry entry second — production-then-registr
 
    See [handoff manifest](../../<project>-specs/api/docs/handoffs/<correlation-id>.md) for feature scope.
    ```
-4. Validate the registry entry's frontmatter against `../orchestrator/shared/schemas/feature-frontmatter.schema.json` before writing — schema-validation failure here is a hard error.
+4. Validate the registry entry's frontmatter with `specfuse validate-frontmatter --file <path>` before writing — schema-validation failure here is a hard error. The core CLI resolves the schema from its own install, so this check works in a repo with no orchestration checkout and cannot silently pass by failing to find a schema.
 
 ---
 
@@ -238,7 +257,7 @@ Print a section-count summary and a copy-paste two-repo commit/push line:
 
 ```
 Manifest written: api/docs/handoffs/<correlation-id>.md
-Registry entry:   ../orchestrator/features/<correlation-id>.md
+Registry entry:   <orchestrator>/features/<correlation-id>.md
 Bundles:          output/openapi-bundled.yaml, output/asyncapi-bundled.yaml
 
 Summary:
@@ -263,13 +282,13 @@ To commit and push (two repos, in order):
   git commit -m "feat(<domain>): handoff manifest for <correlation-id>"
   git push
 
-  # 2. orchestrator
-  cd ../orchestrator
+  # 2. orchestration repo
+  cd <orchestrator>
   git add features/<correlation-id>.md
   git commit -m "feat: register <correlation-id>"
   git push
 
-If the orchestrator push is rejected (race with another producer), re-run:
+If the orchestration-repo push is rejected (race with another producer), re-run:
   /prepare-handoff   (no arg — will mint a fresh ordinal)
 ```
 
