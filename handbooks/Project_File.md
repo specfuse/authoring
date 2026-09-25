@@ -1032,6 +1032,8 @@ Emits `data-protection-audit.md` plus a machine-readable companion `data-protect
 
 **The floors the audit's exception register is measured against are configured, not built in** — see §15 for the project file's `encryption` block, and note that a project declaring no profiles has no floors at all.
 
+The runtime contracts behind these declarations — the key provider, the failure classifier, the poisoned-field tracker — are documented in `Field_Encryption_Runtime.md`.
+
 Key custody, rotation cadence, split knowledge and dual control are runtime properties of the key provider and appear nowhere — the document states that silence explicitly rather than letting an empty section read as a pass.
 
 ---
