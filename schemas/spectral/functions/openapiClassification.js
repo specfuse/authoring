@@ -227,6 +227,54 @@ function checkPiiRequired(schema, basePath) {
   return results;
 }
 
+// specfuse-xprotection-unavailable-properties-required — MIRRORS THE JAR.
+//
+// Generator 0.13.0 made this an ERROR (`UNAVAILABLE_PROPERTIES_NOT_DECLARED`):
+// an entity declaring `x-protection.atRest: encrypted` on one of its own
+// properties must also expose a `readOnly` string array named
+// `unavailableProperties`. It is where a poisoned read surfaces the fields it
+// could not decrypt — without it, a decryption failure has nowhere to go but
+// an exception or, worse, a silently empty value.
+//
+// Scope deliberately matches the jar and no more: it fires on a property whose
+// OWN `x-protection` says encrypted. An entity whose only encrypted target is a
+// flattened value object does NOT trip it — measured against 0.13.0, which
+// generates per-member ciphertext for that case and still asks for nothing.
+// That asymmetry is the generator's, not the kit's; widening it here would fail
+// specs that generate cleanly, which is the adoption-blocking direction.
+function checkUnavailablePropertiesRequired(schema, basePath) {
+  const encrypted = [];
+  for (const [name, prop] of entityProperties(schema)) {
+    const protection = prop && typeof prop === "object" ? prop["x-protection"] : null;
+    if (!protection || typeof protection !== "object") continue;
+    const atRest = protection.atRest;
+    if (typeof atRest === "string" && atRest.toLowerCase() === "encrypted") {
+      encrypted.push(name);
+    }
+  }
+  if (encrypted.length === 0) return [];
+
+  const member = (schema.properties || {}).unavailableProperties;
+  if (member && typeof member === "object") {
+    // Present. Shape is the jar's to enforce at generate time; the kit only
+    // reports absence, which is the failure an author cannot see coming.
+    return [];
+  }
+
+  return [
+    {
+      message:
+        `declares x-protection.atRest: encrypted on ${encrypted
+          .map((n) => `'${n}'`)
+          .join(", ")} but has no 'unavailableProperties' member. ` +
+        "A poisoned read must have somewhere to surface which properties it could not " +
+        "decrypt. Declare unavailableProperties as a readOnly string[] member " +
+        "(generator 0.13.0, UNAVAILABLE_PROPERTIES_NOT_DECLARED).",
+      path: [...basePath, "properties"],
+    },
+  ];
+}
+
 module.exports = function openapiClassification(targetVal, opts, context) {
   if (!targetVal || typeof targetVal !== "object" || Array.isArray(targetVal)) return;
 
@@ -240,6 +288,8 @@ module.exports = function openapiClassification(targetVal, opts, context) {
       return checkExposedDescription(targetVal, basePath);
     case "piiRequired":
       return checkPiiRequired(targetVal, basePath);
+    case "unavailablePropertiesRequired":
+      return checkUnavailablePropertiesRequired(targetVal, basePath);
     default:
       return;
   }
