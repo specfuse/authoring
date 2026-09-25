@@ -38,6 +38,7 @@ In scope:
 
 Out of scope:
 
+- **Publishing or un-publishing an idea** — `ideation-publish` owns that, and it asks first. Groom reports drift between a dossier and its issue; it never opens, closes or edits one.
 - **Minting / intake** — `ready` items are *surfaced*, not minted. Graduation is the
   human running the `initiative-intake` skill.
 - **Shaping an item** — that is the `ideation-shape` skill;
@@ -51,6 +52,7 @@ Out of scope:
 |-------|-----------|------------|
 | **ready-to-mint** | item state `ready` | surface prominently; recommend `/initiative-intake` |
 | **stale** | `idea`/`shaping`, untouched a long while, no momentum | recommend `parked` (auto on accept) |
+| **published/state drift** | the dossier carries an `issue:` URL and the issue disagrees with it — closed while the row says `shaping`, a status label edited by hand, an idea moved on the board | report only; a human decides which is right. **The file is authoritative for state**, so the usual fix is to re-mirror — but a human closing the issue often *meant* it, and silently reopening it would be the tool overruling the person. |
 | **`specified` and aging** | specs authored and a manifest published, and nobody has minted | report only — a human decides. The two readings are *the implementation is not wanted* (record `delivered`) and *it is stalled*. This signal is unambiguous **because** `specified` is a waypoint and never a terminus; a state that could mean both would need a heuristic to tell them apart. |
 | **dupe-internal** | two ideas describe the same initiative | recommend they **bundle** (set lead `bundles:`) or merge — route to `/ideation-shape` |
 | **overtaken** | idea overlaps an already-minted `INIT-` (roadmap/registry) | recommend `dropped` with a link to the INIT |
