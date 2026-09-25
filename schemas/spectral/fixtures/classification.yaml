@@ -68,6 +68,14 @@ components:
       required: [id]
       properties:
         id: { type: string, format: uuid }
+        # Generator 0.13.0 requires this on any entity with an encrypted
+        # property (UNAVAILABLE_PROPERTIES_NOT_DECLARED, ERROR). Customer has
+        # two, so the positive control carries the migration every real spec
+        # has to make: without it this schema stops being ERROR-free.
+        unavailableProperties:
+          type: array
+          readOnly: true
+          items: { type: string }
         email:
           type: string
           format: email
@@ -184,6 +192,14 @@ components:
         domain: crm
         type: entity
       properties:
+        # Two encrypted properties below, so generator 0.13.0 requires the
+        # poisoned-read surface here too. This control exists to prove the
+        # classification rules do not over-match on the widened value set, and
+        # it can only do that while it is ERROR-free.
+        unavailableProperties:
+          type: array
+          readOnly: true
+          items: { type: string }
         id: { type: string, format: uuid }
         internalMemo:
           type: string
@@ -301,6 +317,14 @@ components:
         domain: crm
         type: entity
       properties:
+        # `okEncrypted` and `okUnbounded` below are must-stay-silent controls,
+        # so this schema has to be clean of the 0.13.0 poisoned-read rule too —
+        # its finding names every encrypted property, and a property-scoped
+        # assertion cannot tell that apart from a rule over-matching.
+        unavailableProperties:
+          type: array
+          readOnly: true
+          items: { type: string }
         id: { type: string, format: uuid }
         # MUST fire: classified, no atRest.  (PROTECTION_ATREST_REQUIRED)
         classifiedNoAtRest:
@@ -398,3 +422,69 @@ components:
           description: Reviewed — the customer's own invoice total.
           x-classification: [financial, exposed]
           x-protection: { atRest: none, rationale: Shown to the payer. }
+
+    # ---- unavailableProperties, generator 0.13.0 -----------------------------
+    # The poisoned-read surface. An entity that encrypts a property must give a
+    # failed decrypt somewhere to be reported, or the only outcomes are an
+    # exception or a silently empty value — and an empty value written back is
+    # unrecoverable data loss.
+    PoisonedReadMissing:
+      type: object
+      x-entity:
+        domain: crm
+        type: aggregate
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
+        # MUST fire — encrypted, with nowhere to surface a failed decrypt.
+        taxId:
+          type: string
+          maxLength: 11
+          x-classification: [pii]
+          x-protection: { atRest: encrypted }
+
+    PoisonedReadDeclared:
+      type: object
+      x-entity:
+        domain: crm
+        type: aggregate
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
+        # MUST NOT fire — the member is present. Its shape is the jar's to
+        # enforce at generate time; the kit reports absence only, which is the
+        # failure an author cannot see coming.
+        unavailableProperties:
+          type: array
+          readOnly: true
+          items: { type: string }
+        taxId:
+          type: string
+          maxLength: 11
+          x-classification: [pii]
+          x-protection: { atRest: encrypted }
+
+    ValueObjectOnlyEncryption:
+      type: object
+      # MUST NOT fire — MEASURED against generator 0.13.0, which generates
+      # per-member ciphertext for this case and still asks for nothing. The
+      # asymmetry looks like a generator gap, but a kit rule stricter than the
+      # jar fails specs that generate cleanly, which is the adoption-blocking
+      # direction. If the jar closes the gap, this control flips and the scope
+      # note on the rule comes off.
+      x-entity:
+        domain: crm
+        type: aggregate
+        valueObjects:
+          residenceAddress:
+            storage: flatten
+            queryable: []
+            classification: [pii]
+            protection:
+              atRest: encrypted
+              rationale: Residential address of a natural person.
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
+        residenceAddress:
+          type: object

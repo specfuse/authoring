@@ -2491,6 +2491,33 @@ rules:
       functionOptions:
         check: exposedDescription
 
+  specfuse-xprotection-unavailable-properties-required:
+    description: >-
+      An entity with an encrypted property must expose unavailableProperties.
+    # Mirrors the generator's UNAVAILABLE_PROPERTIES_NOT_DECLARED (ERROR, new in
+    # 0.13.0) so the author sees it in the editor rather than as an aborted
+    # generate. The jar's own words: "A poisoned read must have somewhere to
+    # surface which properties it could not decrypt."
+    #
+    # This one BREAKS EXISTING SPECS on the 0.13.0 pin — any entity already
+    # using `atRest: encrypted` fails until it adds the member — which is
+    # exactly why it is worth catching at lint time.
+    #
+    # Scope matches the jar exactly: a property whose OWN x-protection says
+    # encrypted. An entity whose only encrypted target is a flattened value
+    # object does NOT trip it, measured against 0.13.0 — that case generates
+    # per-member ciphertext and is asked for nothing. The asymmetry looks like a
+    # generator gap, but widening the kit past the jar would fail specs that
+    # generate cleanly, which is the adoption-blocking direction this ruleset
+    # exists to avoid.
+    message: "{{error}}"
+    severity: error
+    given: $.components.schemas[?(@ && @["x-entity"])]
+    then:
+      function: openapiClassification
+      functionOptions:
+        check: unavailablePropertiesRequired
+
   specfuse-classification-pii-required:
     description: >-
       An entity property strongly indicative of PII must declare x-classification.

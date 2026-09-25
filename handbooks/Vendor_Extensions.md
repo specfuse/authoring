@@ -1263,6 +1263,36 @@ email:
 > nothing warns you at generation time. Register it, or the evidence quietly
 > does not exist.
 
+#### `unavailableProperties` — every encrypting entity owes a poisoned-read surface
+
+**New in generator `0.13.0`, and it breaks specs that validated on `0.12.0`.** An entity declaring `x-protection: {atRest: encrypted}` on one of its own properties MUST also expose a `readOnly` string array named `unavailableProperties`, or generation aborts with `UNAVAILABLE_PROPERTIES_NOT_DECLARED` (ERROR).
+
+```yaml
+Person:
+  type: object
+  x-entity:
+    domain: people
+    type: aggregate
+  properties:
+    id: { type: string, format: uuid }
+    unavailableProperties:            # required once anything here is encrypted
+      type: array
+      readOnly: true
+      items: { type: string }
+    taxId:
+      type: string
+      maxLength: 11
+      writeOnly: true
+      x-classification: [pii]
+      x-protection: { atRest: encrypted, rationale: ..., reviewedOn: ..., reviewedBy: ... }
+```
+
+**Why the generator insists.** In the jar's own words: *"A poisoned read must have somewhere to surface which properties it could not decrypt."* A field whose decryption failed has to be distinguishable from a field that legitimately holds nothing — otherwise the only available outcomes are an exception, or an empty value materialised in its place. The second is the dangerous one: an empty value is written back by the save path as fresh, valid ciphertext, and the original is unrecoverable. This member is where that failure surfaces instead.
+
+**Spec-author action on upgrading to the `0.13.0` pin.** Search for `atRest: encrypted` and add the member to every entity that declares it. Kit Spectral mirrors the rule as `specfuse-xprotection-unavailable-properties-required` (error), so lint names the schema before a generate run does.
+
+> **It is required for directly-declared encrypted properties only.** An entity whose *only* encrypted target is a flattened value object does **not** need the member — measured against `0.13.0`, which emits per-member ciphertext for that case and asks for nothing. Treat that as the generator's current scope rather than as a statement that those members cannot fail: they can. The kit deliberately does not widen past the jar, because a lint rule stricter than the generator fails specs that generate cleanly.
+
 #### What `atRest: encrypted` emits, measured against generator `0.12.0`
 
 Worth stating plainly, because the declaration reads like it wires up persistence and at this pin it does not.
@@ -1331,6 +1361,7 @@ The two sides split cleanly, and the split is the generator's own: `PiiClassific
 | 14 | `sad`, and `atRest: never_persist` / `never-persist`, MUST NOT appear on an `x-entity` property — those are persisted by construction. | generator — `PROTECTION_SAD_MAPPED` / `PROTECTION_NEVER_PERSIST_MAPPED`; mirrored by kit `specfuse-xprotection-sad-not-persisted` / `-never-persist-not-mapped` |
 | 6 | A property carrying `x-classification: [exposed]` MUST carry a non-empty `description` justifying why exposure is safe. | kit — `specfuse-classification-exposed-needs-description` (error) |
 | 7 | A property the validator reads as PII MUST declare `x-classification` (see "Where it is required" above). | generator — `PII_FIELD_MISSING_CLASSIFICATION` (error); mirrored in the editor by kit `specfuse-classification-pii-required` |
+| 15 | An entity declaring `x-protection.atRest: encrypted` on one of its own properties MUST expose a `readOnly` string array `unavailableProperties`. Generator `0.13.0`; **breaks specs that validated on `0.12.0`**. Not required when the only encrypted target is a flattened value object. | generator — `UNAVAILABLE_PROPERTIES_NOT_DECLARED` (error); mirrored by kit `specfuse-xprotection-unavailable-properties-required` |
 
 Rules 5 and 6 were documented here for some time and enforced by **nothing** on either side — rule 5 even named a finding id (`CLASSIFICATION_EXPOSED_CONTRADICTION`) that exists in neither the kit nor the jar. They are kit Spectral rules now. Rule 2 is still unenforced anywhere; treat it as guidance, not a gate.
 

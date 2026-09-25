@@ -598,6 +598,10 @@ jobs:
             # guard anchored on the underscore alone reports clean while
             # covering nothing — on a property that must never reach a column.
             "specfuse-xprotection-never-persist-not-mapped|hyphenNeverPersist|never-persist (hyphen) on a persisted x-entity property was accepted"
+            # generator 0.13.0, UNAVAILABLE_PROPERTIES_NOT_DECLARED (ERROR).
+            # The one rule in this file that BREAKS EXISTING SPECS on its pin,
+            # which is precisely why lint has to catch it before generate does.
+            "specfuse-xprotection-unavailable-properties-required|PoisonedReadMissing|an encrypted property with no unavailableProperties member was accepted"
           )
           for row in "${EXPECTED[@]}"; do
             IFS='|' read -r rule needle why <<<"$row"
@@ -634,6 +638,29 @@ jobs:
           if grep -E "specfuse-xprotection" "$REPORT" | grep -q "cardVerificationValueHyphen"; then
             echo "::error::x-protection.atRest 'never-persist' was flagged on a non-entity" >&2
             echo "request DTO. Both separators are valid; the generator normalises them." >&2
+            fail=1
+          fi
+
+          # ---- unavailableProperties: both silent controls ----------------
+          #
+          # Declared: the member is present, so the rule must say nothing. The
+          # kit reports ABSENCE only; the member's shape is the jar's to police
+          # at generate time, and a kit rule that also policed shape would fail
+          # specs the generator accepts.
+          UP_RULE=specfuse-xprotection-unavailable-properties-required
+          if grep "$UP_RULE" "$REPORT" | grep -q "PoisonedReadDeclared"; then
+            echo "::error::${UP_RULE} fired on PoisonedReadDeclared, which declares the member." >&2
+            fail=1
+          fi
+
+          # Value-object-only encryption: MEASURED against generator 0.13.0,
+          # which emits per-member ciphertext here and still requires nothing.
+          # The kit must not be stricter than the jar — that fails specs which
+          # generate cleanly, the adoption-blocking direction. If the generator
+          # closes this gap, this control flips to an EXPECTED row above.
+          if grep "$UP_RULE" "$REPORT" | grep -q "ValueObjectOnlyEncryption"; then
+            echo "::error::${UP_RULE} fired on ValueObjectOnlyEncryption. The jar does not" >&2
+            echo "require the member for value-object-only encryption; the kit must not either." >&2
             fail=1
           fi
 
