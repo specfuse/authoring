@@ -192,6 +192,14 @@ components:
         domain: crm
         type: entity
       properties:
+        # Two encrypted properties below, so generator 0.13.0 requires the
+        # poisoned-read surface here too. This control exists to prove the
+        # classification rules do not over-match on the widened value set, and
+        # it can only do that while it is ERROR-free.
+        unavailableProperties:
+          type: array
+          readOnly: true
+          items: { type: string }
         id: { type: string, format: uuid }
         internalMemo:
           type: string
