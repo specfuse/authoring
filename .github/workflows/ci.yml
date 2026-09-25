@@ -696,6 +696,59 @@ jobs:
           fi
           echo "==> Script ownership boundary holds in both directions."
 
+          # `.specfuse/authoring/config.yml` is the authoring plane's per-install
+          # configuration. It is seeded once and is the PROJECT's thereafter: it
+          # is outside OVERLAY and outside every PRUNE_DIRS root, so an upgrade
+          # must neither overwrite nor delete it. If that ever stops being true,
+          # an upgrade silently resets where a project's orchestration repo and
+          # ideas repo are, and the skills quietly fall back to defaults.
+          CFG="$P/.specfuse/authoring/config.yml"
+          [[ -f "$CFG" ]] || { echo "::error::init did not seed $CFG." >&2; exit 1; }
+
+          python3 - "$CFG" <<'PY'
+          import pathlib, sys
+          p = pathlib.Path(sys.argv[1])
+          s = p.read_text()
+          s = s.replace("orchestrator: ../orchestrator", "orchestrator: ../my-orchestration")
+          s = s.replace("repo: null", "repo: acme/product")
+          p.write_text(s)
+          PY
+
+          $CLI upgrade "$P" >/dev/null 2>&1 || true
+
+          grep -q "orchestrator: ../my-orchestration" "$CFG" || {
+            echo "::error::upgrade reset repos.orchestrator in config.yml. The file is the" >&2
+            echo "project's — seeded once, never overwritten — and this just silently" >&2
+            echo "repointed a consumer at ../orchestrator." >&2
+            exit 1
+          }
+          grep -q "repo: acme/product" "$CFG" || {
+            echo "::error::upgrade reset github.ideas.repo in config.yml." >&2
+            exit 1
+          }
+
+          # The reader must tell three states apart. A caller cannot act on them
+          # the same way, and returning "" for all three is how a typo'd key ends
+          # up indistinguishable from a deliberately-off feature.
+          (
+            cd "$P"
+            [[ "$(python3 scripts/specfuse/authoring-config.py repos.orchestrator)" == "../my-orchestration" ]] \
+              || { echo "::error::reader did not return the configured orchestrator path." >&2; exit 1; }
+
+            python3 scripts/specfuse/authoring-config.py github.ideas.nope >/dev/null 2>&1
+            [[ $? -eq 2 ]] || { echo "::error::an unknown key must exit 2, not be treated as unset." >&2; exit 1; }
+
+            python3 - <<'RESET'
+          import pathlib
+          p = pathlib.Path(".specfuse/authoring/config.yml")
+          p.write_text(p.read_text().replace("repo: acme/product", "repo: null"))
+          RESET
+            python3 scripts/specfuse/authoring-config.py github.ideas.repo --required >/dev/null 2>&1
+            [[ $? -eq 1 ]] || { echo "::error::an unset required key must exit 1 and say the feature is off." >&2; exit 1; }
+          ) || exit 1
+
+          echo "==> config.yml survives upgrade and the reader separates unset / default / unknown."
+
       - name: Scaffolded project validates with its own scripts
         run: |
           set -euo pipefail

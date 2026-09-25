@@ -1,0 +1,54 @@
+# Authoring-plane configuration for this project.
+#
+# Seeded once by `specfuse authoring init` and never touched again — this file
+# is yours. `upgrade` does not overwrite it and does not prune it, the same
+# treatment `vocabulary-exceptions.yaml` beside it already gets.
+#
+# Two sections, cut by HOW each thing is reached. A filesystem path and a GitHub
+# remote fail differently, are diagnosed differently, and need different error
+# messages; one flat namespace would hide that.
+#
+# ABSENT IS ALWAYS REPORTED AS ABSENT. A default may be applied; it may never be
+# invisible. The project file's `encryption` block is the cautionary tale — an
+# absent `profiles` list means no compliance floors apply, silently, and a
+# project with no floors reads exactly like one whose floors all pass
+# (Project_File.md §15). Nothing here behaves that way: a skill that falls back
+# to a default says so, and a skill whose feature is unconfigured says that
+# rather than failing obscurely.
+#
+# An unrecognised key is an ERROR, not a shrug. The generator project file
+# silently drops unknown fields, which is why a setting could not live there:
+# a typo would disable a feature with no signal.
+
+# ---------------------------------------------------------------------------
+# Sibling checkouts. Filesystem paths, relative to this repository's root.
+# Reached by reading files. A wrong value fails as "not a directory".
+# ---------------------------------------------------------------------------
+repos:
+  # The project's orchestration repo. `../orchestrator` is a CONVENTION, not a
+  # layout requirement — set this whenever yours is named or located otherwise.
+  # Skills that need it accept a `--orchestrator` flag which wins over this
+  # value; this is the per-install answer so the flag is not needed every run.
+  orchestrator: ../orchestrator
+
+# ---------------------------------------------------------------------------
+# GitHub surfaces. `owner/repo`, reached through the API, never the filesystem.
+# A wrong value fails as 404 — indistinguishable from "no permission".
+# ---------------------------------------------------------------------------
+github:
+  # Where backlog ideas are exposed as issues, so people outside a kit-configured
+  # project can submit them and so a team can plan a shaped idea on a board.
+  #
+  # NOTE: this file is committed. Repo names are not secrets, but "where our
+  # ideas live" can itself be a disclosure for a private product repo.
+  ideas:
+    # null disables BOTH idea intake from issues and publishing ideas to them.
+    # Invoking either then reports that it is unconfigured, naming this key.
+    repo: null
+    # The label an issue must carry to be treated as a submitted idea.
+    label: specfuse:idea
+    # Optional board for published ideas. GitHub Projects are org- or
+    # user-scoped rather than repo-scoped, so this is an owner plus a number:
+    #   project: { owner: acme, number: 7 }
+    # A list is accepted when ideas appear on more than one board.
+    project: null
