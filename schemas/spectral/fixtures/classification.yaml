@@ -317,6 +317,14 @@ components:
         domain: crm
         type: entity
       properties:
+        # `okEncrypted` and `okUnbounded` below are must-stay-silent controls,
+        # so this schema has to be clean of the 0.13.0 poisoned-read rule too —
+        # its finding names every encrypted property, and a property-scoped
+        # assertion cannot tell that apart from a rule over-matching.
+        unavailableProperties:
+          type: array
+          readOnly: true
+          items: { type: string }
         id: { type: string, format: uuid }
         # MUST fire: classified, no atRest.  (PROTECTION_ATREST_REQUIRED)
         classifiedNoAtRest:
