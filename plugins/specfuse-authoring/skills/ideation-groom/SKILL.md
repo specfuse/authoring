@@ -1,6 +1,6 @@
 ---
-name: backlog-groom
-description: "Periodically triage the whole initiative ideation backlog -- surfacing ready-to-mint ideas, parking stale ones, and flagging internal dupes, items overtaken by minted work, under-shaped entries, bundle drift, and orphaned dossiers. The backlog analog of the PM's roadmap-sync: report-first, read-mostly (orchestrator registries/roadmap read-only), writing only the backlog index and never deleting a row or dossier."
+name: ideation-groom
+description: "Periodically triage the whole initiative ideation backlog -- surfacing ideas whose specs are authored and awaiting a mint decision, parking stale ones, and flagging internal dupes, items overtaken by minted work, under-shaped entries, bundle drift, and orphaned dossiers. The backlog analog of the PM's roadmap-sync: report-first, read-mostly (orchestrator registries/roadmap read-only), writing only the backlog index and never deleting a row or dossier."
 ---
 
 <!--
@@ -8,7 +8,7 @@ Copyright 2026 Specfuse Contributors
 Licensed under the Apache License, Version 2.0. See LICENSE.
 -->
 
-# Specs agent — backlog-groom skill (v0.1)
+# Specs agent — ideation-groom skill (v0.1)
 
 > **Model B (docs/naming-convention.md).** Periodic triage of the initiative
 > ideation backlog. The backlog analog of the PM's `roadmap-sync`: keeps the
@@ -51,6 +51,7 @@ Out of scope:
 |-------|-----------|------------|
 | **ready-to-mint** | item state `ready` | surface prominently; recommend `/initiative-intake` |
 | **stale** | `idea`/`shaping`, untouched a long while, no momentum | recommend `parked` (auto on accept) |
+| **`specified` and aging** | specs authored and a manifest published, and nobody has minted | report only — a human decides. The two readings are *the implementation is not wanted* (record `delivered`) and *it is stalled*. This signal is unambiguous **because** `specified` is a waypoint and never a terminus; a state that could mean both would need a heuristic to tell them apart. |
 | **dupe-internal** | two ideas describe the same initiative | recommend they **bundle** (set lead `bundles:`) or merge — route to `/ideation-shape` |
 | **overtaken** | idea overlaps an already-minted `INIT-` (roadmap/registry) | recommend `dropped` with a link to the INIT |
 | **under-shaped** | `ready` box checked but dossier thin/unsupported | revert to `shaping`; point at `/ideation-shape` |
