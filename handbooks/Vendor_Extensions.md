@@ -1293,19 +1293,59 @@ Person:
 
 > **It is required for directly-declared encrypted properties only.** An entity whose *only* encrypted target is a flattened value object does **not** need the member — measured against `0.13.0`, which emits per-member ciphertext for that case and asks for nothing. Treat that as the generator's current scope rather than as a statement that those members cannot fail: they can, and the gap is filed as `clabonte/generator#2097`. The kit deliberately does not widen past the jar, because a lint rule stricter than the generator fails specs that generate cleanly.
 
-#### What `atRest: encrypted` emits, measured against generator `0.12.0`
+#### What `atRest: encrypted` emits, measured against generator `0.13.0`
 
-Worth stating plainly, because the declaration reads like it wires up persistence and at this pin it does not.
+`0.13.0` is the release where this declaration started producing storage. Through `0.12.0` the C# encryption library was emitted **unconditionally by `infrastructureProject`** and no entity, EF-configuration, repository or converter template read `x-protection` at all: the declaration drove validation, the data-protection audit and the `aiAccess` read surface, and produced no ciphertext column anywhere.
 
-`atRest: encrypted` drives **validation, the audit, and the AI read surface**. It does not drive a single line of persistence code. The C# field-encryption library — `AesGcmFieldCipher`, `FieldEnvelope`, `EncryptionContext`, `IDataKeyProvider`, `IKeyWrapper`, `DataKeyCache` and their exception families — is emitted **unconditionally by the `infrastructureProject` artifact**, whether or not any property in the bundle declares encryption. No entity, EF-configuration, repository or converter template reads `x-protection` at all. Verified against the pinned jar: `InfrastructureProjectArtifact` is the only class in the generator that references those templates.
+At this pin it drives all of that **plus** the persistence path — a ciphertext column per encrypted property, a `FieldEncryptionSaveChangesInterceptor` on the write side, a `FieldDecryptionMaterializationInterceptor` on the read side, and the runtime contracts a host must satisfy.
 
-What follows from that, today:
+**If you adopted `atRest: encrypted` on an earlier pin, this bump gives you columns you have never had, and a schema migration with them.**
 
-- **Declaring `atRest: encrypted` is a specification and compliance act, not a code-generation one.** It is read by the protection validation rules, by `dataProtectionAudit`, and by the implicit `aiAccess.readableProperties` exclusion (§1.1.1 rule 5).
-- **The persistence half is yours to write**, and it has a registration obligation the generated code will not perform for you: nothing generated calls `AddFieldEncryption()`, and `IDataKeyProvider` and `IKeyWrapper` ship as throwing placeholder factories that `ValidateOnBuild` deliberately does not catch. The first symptom of an unwritten provider is a `FieldEncryptionNotConfiguredException` at first use, not a failed build or a failed boot. `AssertFieldEncryptionConfigured` is the opt-in way to move that failure to startup.
-- **Column sizing, ciphertext columns and the save path are not part of this pin.** Any rule you have read about ciphertext column widths belongs to a later generator; do not size a bound against it yet. Declare `maxLength` anyway — see `unbounded` above.
+The runtime obligations that come with it — what to register, which failure absorbs and which rethrows, and why an empty value must never stand in for a failed decrypt — are their own page: **`Field_Encryption_Runtime.md`**.
 
-The full runtime contract a consumer must satisfy is not yet documented in this kit; it is tracked as authoring issue #109.
+#### Ciphertext column sizing, and why a `pattern` will not do
+
+An encrypted string's column is sized from its declared `maxLength`:
+
+```
+column bytes = maxLength × 4 + 46
+```
+
+`× 4` is the UTF-8 worst case per character. `46` is the envelope, exactly — `FieldEnvelope` is `[ver:1][alg:1][keyId:16][nonce:12][ciphertext:n][tag:16]`, and the cipher does not pad, so the ciphertext length equals the plaintext's byte count. `fieldEncryptionConformanceTest` pins the format with known-answer vectors.
+
+Two thresholds follow, both constants in the generator:
+
+| `maxLength` | Column |
+|---|---|
+| ≤ **1988** | a bounded binary column — `floor((8000 − 46) ÷ 4)` |
+| above that, or undeclared | the large-object form (`varbinary(max)`) |
+
+**A `pattern` is not a bound.** This is the rule that costs real columns:
+
+```yaml
+transitNumber:
+  type: string
+  pattern: '^[0-9]{5}$'     # pins the length exactly...
+  x-protection: { atRest: encrypted }
+```
+
+…and still has no `maxLength`, so it sizes to the large-object form. Declaring `maxLength: 5` alongside the pattern takes the column to 66 bytes — large enough for five four-byte characters and no larger. The redundancy is the point.
+
+**Both paths warn when the bound is missing**, scalar and value-object member alike:
+
+> `encrypted string has no usable bound for its ciphertext column (declared maxLength={}), falling back to varbinary(max). Declare x-protection.unbounded: true to silence this warning, or set maxLength to {} or less.`
+
+The value-object path was silent through `0.12.0` (`clabonte/generator#1993`); it is not any more, so `unbounded: true` now means *"I have read the warning and the large object is deliberate"* rather than being the only way to say anything at all.
+
+#### Which targets can actually be encrypted
+
+`atRest: encrypted` is honoured only where a value has a sound canonical round-trip. The set is closed:
+
+| Encrypted | Refused — warns `PROTECTION_ENCRYPTED_NON_STRING_TARGET`, column stays plaintext |
+|---|---|
+| `string`, `boolean`, any integer width, `format: uuid`, `format: date` | `double`, `float` (binary round-trip through a canonical string is not guaranteed), `decimal` (no canonical string form), a bare `format: date-time` (ambiguous between a calendar date and an instant — declare `format: date` if you mean a date), arrays, multi-branch composites |
+
+**A value object is all-or-nothing.** The rule refuses *"a value object carrying a member in one of those categories"*, so one `decimal` member leaves **every** member of that value object in plaintext, including the sound ones. Worth knowing before adding a price to an encrypted address.
 
 #### Renaming an encrypted property is a data migration, not a rename
 
@@ -1328,7 +1368,26 @@ Do it as a migration instead, in four separately deployable steps:
 
 The gap between steps 3 and 4 is your entire rollback window; collapsing them into one release removes it.
 
-> **Flattened value objects are not covered by the four steps above.** Their AAD segments are not the ones an author would guess, and at generator `0.12.0` an `atRest: encrypted` resolving to a value object emits no ciphertext at all (see the subsection above). The value-object case is tracked for the pin bump that makes it real — authoring issue #114.
+**A flattened value object binds different names, and they are not the ones you would guess.** It is persisted as an owned type in its own right, so the AAD segments come from the *value object*, not from the entity that embeds it:
+
+| AAD segment | Value | **Not** |
+|---|---|---|
+| entity name | the **value object's** name | the owning entity's |
+| property name | the **member's** name | the embed property's name on the entity |
+| row identity | the owning row's key, reached through the owned type's key | — |
+| tenant | empty, when the owned type carries no tenant foreign key of its own | the owner's tenant id |
+
+Measured against `0.13.0`: the read path takes `EntityType.ClrType.Name`, which for an owned type is the value object's CLR type, and the member's own name for the property segment.
+
+Three consequences, none of which a spec author would predict:
+
+1. **Renaming a shared value object breaks every member's ciphertext at every site that embeds it** — not just the entity you were editing. One rename becomes a multi-entity data migration.
+2. **Renaming a single member** breaks that member's column, exactly as renaming a scalar encrypted property does.
+3. **Moving a member between value objects is both at once**, since it changes the bound entity name and may change the bound property name.
+
+Run the four steps **per member**.
+
+> **A row with no usable primary key refuses rather than guessing.** `EncryptedRowIdentityException` is raised instead of decrypting under an empty key, and the write path refuses to encrypt under one for the same reason — the row identity is an AAD segment, so a missing key would silently bind ciphertext to the wrong string.
 
 **`atRest: none` is a decision, not a default.** It is the only value that requires a `rationale`, because it is the only one that leaves a classified value in plaintext. An unreviewed escape hatch is how a classified field quietly ends up unprotected; the rationale is what makes it reviewable by the next person.
 
@@ -1727,7 +1786,26 @@ The disambiguation is the generator's own (`ProtectionDefinition.isSubKey` over 
 
 The trap is the word *effective*: the set is the usage site's `queryable` **if it declares one**, and the definition's `defaultQueryable` otherwise. So a usage site that declares no `queryable` at all inherits one and fails, and the fix is to declare `queryable: []` explicitly rather than to remove the key.
 
-> **At generator `0.12.0` this is a declaration, not emitted encryption.** An `atRest: encrypted` resolving to a value object produces validation and audit rows, and no ciphertext column — see §1.5, *"What `atRest: encrypted` emits, measured"*. The generator work that makes it real, and the all-or-nothing member rule that comes with it, is tracked for a later pin as authoring issue #114.
+**The value object's own schema is a second declaration site, and the usage site wins outright.** From generator `0.13.0` an `x-protection` on the `x-value-object` definition emits the same columns the usage-site form does. Where both declare, **the embed's block is discarded in full — not layered underneath**:
+
+```yaml
+PostalAddress:
+  x-value-object:
+    defaultStorage: flatten
+    protection:                       # definition site
+      line1: { atRest: hashed, rationale: ... }
+      city:  { atRest: none,  rationale: ... }
+
+Person:
+  x-entity:
+    valueObjects:
+      residenceAddress:
+        protection: { atRest: encrypted, rationale: ... }   # usage site — this one wins
+```
+
+Measured: every member is `encrypted`. The definition's per-member map does not survive, and **nothing warns**. So a usage site declaring a scalar over an embed that declared per-member nuance silently discards it — and can *weaken* protection at a site whose author believed they were inheriting. A warning for the both-declared case is filed as `clabonte/generator#1995`; the precedence itself is settled and intentional.
+
+> **The audit is coarser than the storage, deliberately.** A value object protected by a scalar usage-site declaration appears as **one row keyed by the embed property name** in both section 1 and the section 2 matrix of `data-protection-audit.md`, while `0.13.0` encrypts **per member**. An assessor reading `residenceAddress | encrypted` is seeing a summary of several columns, not one.
 
 **Storage Patterns**:
 

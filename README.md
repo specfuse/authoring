@@ -69,6 +69,7 @@ See [`examples/hello-orders/`](examples/hello-orders/) for a complete worked exa
 | Add a setup recipe | [`handbooks/Arazzo_Handbook.md`](handbooks/Arazzo_Handbook.md) §7 + [`samples/recipe-samples.yaml`](samples/recipe-samples.yaml) | `/specfuse-authoring:design-recipe` |
 | Configure AI agent access | [`handbooks/AI_Access_Policy_Framework.md`](handbooks/AI_Access_Policy_Framework.md) + [`templates/ai-access-policy-template.md`](templates/ai-access-policy-template.md) | (copy template into project) |
 | Look up a `x-*` extension | [`handbooks/Vendor_Extensions.md`](handbooks/Vendor_Extensions.md) | — |
+| Implement field encryption at runtime | [`handbooks/Field_Encryption_Runtime.md`](handbooks/Field_Encryption_Runtime.md) | — |
 | Configure the generator project file | [`handbooks/Project_File.md`](handbooks/Project_File.md) | — |
 | See a complete worked example | [`examples/hello-orders/README.md`](examples/hello-orders/README.md) | — |
 
@@ -91,7 +92,7 @@ The kit is upstream of both: it defines *what* a Specfuse spec must look like. T
 
 ## Status
 
-**Incubating** (`v0.21.0`), Apache-2.0. Handbooks, samples, schemas, the `project-init` template, the bundled `hello-orders` example, the `specfuse-authoring` plugin (in the `specfuse/specfuse` marketplace), and the `specfuse authoring` CLI are all in place. Generator-side alignment items are tracked in [`compatibility.md`](compatibility.md#outstanding-generator-side-follow-ups).
+**Incubating** (`v0.22.0`), Apache-2.0. Handbooks, samples, schemas, the `project-init` template, the bundled `hello-orders` example, the `specfuse-authoring` plugin (in the `specfuse/specfuse` marketplace), and the `specfuse authoring` CLI are all in place. Generator-side alignment items are tracked in [`compatibility.md`](compatibility.md#outstanding-generator-side-follow-ups).
 
 The kit is distributed on PyPI as `specfuse-authoring` and hosted under [`Specfuse/authoring`](https://github.com/Specfuse/authoring). The code generator it drives is distributed separately as a pinned, checksum-verified release asset (see [`generator.lock`](generator.lock)); `specfuse authoring generate` resolves, verifies, and runs it on demand.
 
