@@ -45,7 +45,7 @@ Out of scope:
 - **Shaping, interrogating, or assessing readiness** — the `ideation-shape` skill.
 - **Minting an `INIT-` id or creating a registry** — the `initiative-intake` skill;
   capture never touches the orchestrator repo.
-- **Triage / reprioritization** — the `backlog-groom` skill.
+- **Triage / reprioritization** — the `ideation-groom` skill.
 
 ## Inputs
 

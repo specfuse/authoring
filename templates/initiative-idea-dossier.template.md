@@ -1,12 +1,15 @@
 ---
 idea_id: IDEA-NNN
 slug: <kebab-slug>
-state: idea          # idea | shaping | ready | minted | parked | dropped
+state: idea          # idea | shaping | ready | specified | minted | delivered | parked | dropped
 target_repos: []     # owner/repo guesses; must be non-empty to reach `ready`
 autonomy_guess: review   # auto | review | supervised — becomes intake's autonomy_default
 bundles: []          # IDEA-NNN ids folded INTO this one (this is the lead); else empty
 bundled_into: null   # set on a follower: the lead IDEA-NNN this folds into
+graduated_to: null   # set when a loop feature starts authoring the specs: FEAT-YYYY-NNNN
+handoff: null        # set at `specified`: path to the handoff manifest that feature published
 minted_init: null    # set on graduation: the INIT-YYYY-NNNN this became
+issue: null          # set on publish: the GitHub issue mirroring this idea (see #118)
 ---
 
 # IDEA-NNN — <title>
