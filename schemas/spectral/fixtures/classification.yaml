@@ -468,7 +468,7 @@ components:
       type: object
       # MUST NOT fire — MEASURED against generator 0.13.0, which generates
       # per-member ciphertext for this case and still asks for nothing. The
-      # asymmetry looks like a generator gap, but a kit rule stricter than the
+      # asymmetry is a generator gap — clabonte/generator#2097 — but a kit rule stricter than the
       # jar fails specs that generate cleanly, which is the adoption-blocking
       # direction. If the jar closes the gap, this control flips and the scope
       # note on the rule comes off.

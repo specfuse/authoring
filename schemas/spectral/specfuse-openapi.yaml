@@ -2506,8 +2506,8 @@ rules:
     # Scope matches the jar exactly: a property whose OWN x-protection says
     # encrypted. An entity whose only encrypted target is a flattened value
     # object does NOT trip it, measured against 0.13.0 — that case generates
-    # per-member ciphertext and is asked for nothing. The asymmetry looks like a
-    # generator gap, but widening the kit past the jar would fail specs that
+    # per-member ciphertext and is asked for nothing. That is a generator gap,
+    # filed as clabonte/generator#2097; widening the kit past the jar would fail specs that
     # generate cleanly, which is the adoption-blocking direction this ruleset
     # exists to avoid.
     message: "{{error}}"

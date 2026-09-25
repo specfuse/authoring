@@ -1291,7 +1291,7 @@ Person:
 
 **Spec-author action on upgrading to the `0.13.0` pin.** Search for `atRest: encrypted` and add the member to every entity that declares it. Kit Spectral mirrors the rule as `specfuse-xprotection-unavailable-properties-required` (error), so lint names the schema before a generate run does.
 
-> **It is required for directly-declared encrypted properties only.** An entity whose *only* encrypted target is a flattened value object does **not** need the member — measured against `0.13.0`, which emits per-member ciphertext for that case and asks for nothing. Treat that as the generator's current scope rather than as a statement that those members cannot fail: they can. The kit deliberately does not widen past the jar, because a lint rule stricter than the generator fails specs that generate cleanly.
+> **It is required for directly-declared encrypted properties only.** An entity whose *only* encrypted target is a flattened value object does **not** need the member — measured against `0.13.0`, which emits per-member ciphertext for that case and asks for nothing. Treat that as the generator's current scope rather than as a statement that those members cannot fail: they can, and the gap is filed as `clabonte/generator#2097`. The kit deliberately does not widen past the jar, because a lint rule stricter than the generator fails specs that generate cleanly.
 
 #### What `atRest: encrypted` emits, measured against generator `0.12.0`
 
