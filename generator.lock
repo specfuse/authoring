@@ -1,6 +1,6 @@
 {
   "kit_version": "0.22.0",
-  "min_java": 17,
+  "min_java": 21,
   "generator": {
     "version": "0.13.0",
     "asset": "specfuse-generator-0.13.0.jar",

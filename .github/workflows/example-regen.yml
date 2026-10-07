@@ -1186,12 +1186,20 @@ jobs:
         if: steps.token.outputs.have == 'true'
         uses: actions/checkout@v6
 
+      - name: Read min_java from generator.lock
+        if: steps.token.outputs.have == 'true'
+        id: lock
+        # Read, not hard-coded: the lock is the contract the launcher enforces
+        # on users, so CI runs on exactly the floor it promises. It said 17
+        # while every jar since 0.1.0 needed 21; this job is what caught it.
+        run: echo "min_java=$(python3 -c 'import json;print(json.load(open("generator.lock"))["min_java"])')" >> "$GITHUB_OUTPUT"
+
       - name: Set up Java
         if: steps.token.outputs.have == 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'   # generator.lock min_java
+          java-version: ${{ steps.lock.outputs.min_java }}
 
       - name: Set up Python
         if: steps.token.outputs.have == 'true'

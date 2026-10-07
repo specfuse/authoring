@@ -140,6 +140,6 @@ def resolve_jar() -> tuple[Path, dict]:
 
 def generate(passthrough_args: list[str]) -> int:
     jar, pin = resolve_jar()
-    _check_java(int(pin.get("min_java", 17)))
+    _check_java(int(pin.get("min_java", 21)))
     print(f"Running generator: {jar.name}")
     return subprocess.run(["java", "-jar", str(jar), *passthrough_args]).returncode

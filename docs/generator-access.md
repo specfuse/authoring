@@ -107,7 +107,7 @@ In CI, store it as a secret and export it for the generate step only.
 | `404` / `release not found` on download | no Read access, or wrong account | confirm the maintainer granted access to the authenticated user |
 | `no generator is pinned for this kit version yet` | kit release predates a published generator | `pipx upgrade specfuse` once a generator-bearing release ships |
 | `checksum mismatch on downloaded generator jar` | corrupted download or a tampered asset | delete `~/.specfuse/jars/` and retry; if it persists, report it — do not use the jar |
-| `'java' not found` / wrong version | no JRE 17+ | install a JRE that meets `min_java` in `generator.lock` |
+| `'java' not found` / wrong version | no JRE 21+ (every generator jar since `0.1.0` is class-file 65) | install a JRE that meets `min_java` in `generator.lock` |
 
 ---
 
