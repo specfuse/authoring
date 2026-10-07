@@ -90,9 +90,12 @@ try:
     import yaml
 except ImportError:  # pragma: no cover - environment guidance, not logic
     sys.stderr.write(
-        "check-extension-vocabulary.py requires PyYAML, which is not installed.\n"
-        "\n"
-        "  pip install PyYAML          (or: pipx inject specfuse PyYAML)\n"
+        "check-extension-vocabulary.py requires PyYAML in the python3 on your PATH.\n"
+        "These scripts run under that python3, not inside the specfuse CLI's\n"
+        "isolated install, so `pipx inject` does not reach them. Install it with:\n"
+        "  python3 -m pip install PyYAML     (where your python3 allows it)\n"
+        "  sudo apt install python3-yaml     (Debian/Ubuntu)\n"
+        "or activate a virtualenv that has it. See the getting-started guide, Prerequisites.\n"
         "\n"
         "Without it this guard cannot read the Spectral rulesets, and vendor\n"
         "extension drift goes back to being found by a failing lint.\n"

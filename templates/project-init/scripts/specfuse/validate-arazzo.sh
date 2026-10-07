@@ -50,6 +50,12 @@ fi
 # STATUS: PASS, FAIL, WARN
 # Additional detail lines prefixed with DETAIL|
 
+# Fail with the cause, not a traceback swallowed into $RESULTS.
+if ! python3 -c 'import yaml' 2>/dev/null; then
+    echo "ERROR: validate-arazzo.sh requires PyYAML in the python3 on your PATH (not the specfuse CLI's isolated install, so pipx inject does not help): python3 -m pip install PyYAML, sudo apt install python3-yaml, or activate a virtualenv that has it. See the getting-started guide, Prerequisites." >&2
+    exit 2
+fi
+
 RESULTS=$(python3 << 'PYEOF'
 import yaml
 import os
