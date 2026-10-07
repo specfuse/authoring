@@ -1315,7 +1315,6 @@ All write operations (POST/PUT/PATCH/DELETE) must support the `validateOnly` que
     "belongsTo": ["Tenant","Customer"],
     "filterableProperties": ["status","priority","customerId","createdAt"],
     "searchableProperties": ["notes.en","notes.fr","reference"],
-    "encryptedProperties": ["taxId"],
     "aiAccess": {
       "operations": ["read", "update"],
       "writableProperties": ["status", "priority"],
@@ -1330,12 +1329,12 @@ All write operations (POST/PUT/PATCH/DELETE) must support the `validateOnly` que
 - `requiresPagination` (boolean, default: true): indicates if this resource can grow large and requires pagination when returned in collections. When `true`, endpoints returning collections of this resource should use `{Resource}List` wrapper and support `page`, `pageSize`, `sort` parameters. When `false`, endpoints can return simple arrays.
 - Assistant may infer cardinality from `hasOne` / `hasMany` / `belongsTo`, but asks if in doubt.
 - One-sided declarations are allowed; assistants warn on likely mismatches.
-- `filterableProperties` / `searchableProperties` / `encryptedProperties` must reference existing **top-level** fields (no nested paths, except for BilingualText subfields like `title.en`).
+- `filterableProperties` / `searchableProperties` must reference existing **top-level** fields (no nested paths, except for BilingualText subfields like `title.en`).
 - **CRITICAL (filterableProperties)**: All fields usable in OData `filter` expressions MUST be declared in `filterableProperties` (except generic parameters: page, pageSize, sort, search, filter, expand, validateOnly).
 - **CRITICAL (searchableProperties)**: All fields included in free-text `search` MUST be declared in `searchableProperties`. For BilingualText fields, reference subfields (e.g., `title.en`, `title.fr`).
-- Masking for `encryptedProperties` on reads: **first N chars + `****` + last M chars** (default 2 + `****` + 2 if unspecified).
+- Encryption is declared **per property**, not in `x-entity`: `x-protection: {atRest: encrypted}` on the property schema, with `x-protection.masking: {first, last}` for how many characters survive masking on reads. `x-entity.encryptedProperties` was retired in generator 0.7.0 and fails with `ENTITY_INVALID_CONFIG`. See `Vendor_Extensions.md` §1.5.
 - Writes accept plaintext; privileged reads may return unmasked (implementation-level).
-- `aiAccess` (required on every `x-entity`): declares the AI agent access policy enforced by generated repositories. Absence triggers a validator WARN (`ENTITY_AIACCESS_MISSING`); for entities the AI must not touch, use the canonical Tier 0 form `operations: []` with `reason`. `operations` lists allowed verbs from `[read, create, update, delete]`; an empty array is the Tier 0 declaration. Write verbs require `writableProperties` and a `reason`. Encrypted fields are excluded from implicit read access and must be listed explicitly in `readableProperties` to be AI-readable. Full schema and examples: see `Vendor_Extensions.md` §1.1.1.
+- `aiAccess` (required on every `x-entity`): declares the AI agent access policy enforced by generated repositories. Absence triggers a validator WARN (`ENTITY_AIACCESS_MISSING`); for entities the AI must not touch, use the canonical Tier 0 form `operations: []` with `reason`. `operations` lists allowed verbs from `[read, create, update, delete]`; an empty array is the Tier 0 declaration. Write verbs require `writableProperties` and a `reason`. Fields declaring `x-protection: {atRest: encrypted}` are excluded from implicit read access and must be listed explicitly in `readableProperties` to be AI-readable. Full schema and examples: see `Vendor_Extensions.md` §1.1.1.
 
 ---
 

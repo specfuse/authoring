@@ -1200,16 +1200,29 @@ Customer:
     id:
       type: string
       format: uuid
+    unavailableProperties:            # required once anything here is encrypted (rule 15)
+      type: array
+      readOnly: true
+      items: { type: string }
     email:
       type: string
       format: email
       x-classification: [pii]
+      x-protection:
+        atRest: none
+        rationale: The application must read it in plaintext to send notifications.
     taxId:
       type: string
-      x-classification: [pii, encrypted]
+      maxLength: 11
+      writeOnly: true
+      x-classification: [pii]          # what it is
+      x-protection: { atRest: encrypted }   # how it is handled — not [pii, encrypted]
     creditScore:
       type: number
       x-classification: [sensitive]
+      x-protection:
+        atRest: none
+        rationale: Recomputed from the bureau on every read; a `number` is outside the encryptable set anyway.
     avatarHash:
       type: string
       description: Content-address of the public avatar image; not a credential. Safe on responses despite the secret-shaped name.
@@ -1406,12 +1419,12 @@ The two sides split cleanly, and the split is the generator's own: `PiiClassific
 
 | # | rule | enforced by |
 |---|---|---|
-| 1 | Values must come from the closed set `[pii, sensitive, confidential, exposed, financial, credential, cardholder, sad, encrypted]`, as a non-empty array with no duplicates. Widened from four values on 2026-08-21 (authoring #76). | kit — `specfuse-classification-values` (error) |
-| 2 | `x-classification: [encrypted]` requires the property to be representable as a string (encryption produces opaque ciphertext). | **nothing yet** — see `compatibility.md` §26 |
+| 1 | Values must come from the closed set `[pii, sensitive, confidential, exposed, financial, credential, cardholder, sad]`, as a non-empty array with no duplicates. Widened from four values on 2026-08-21 (authoring #76); `encrypted` left the set with generator 0.7.0 and is rule 8's to reject. | kit — `specfuse-classification-values` (error) |
+| 2 | `x-protection.atRest: encrypted` is honoured only on a target with a sound canonical round-trip — see *"Which targets can actually be encrypted"* above. A refused target warns and keeps a plaintext column. | generator — `PROTECTION_ENCRYPTED_NON_STRING_TARGET` (warning) |
 | 3 | A snapshot referencing a property whose source entity carries `pii` or `sensitive` MUST declare `x-snapshot-pii-acknowledged.{propertyName}` with a justification ≥ 20 chars (see §11.2). | kit — `specfuse-async-snapshot-guardrails` (AsyncAPI ruleset) |
 | 4 | When `aiAccess.readableProperties` is omitted, properties declaring **`x-protection: {atRest: encrypted}`** are excluded from the implicit allow-set (§1.1.1 rule 5). Generator 0.7.0 resolves this set from the protection axis; `x-entity.encryptedProperties`, which held this role through 0.6.0, is retired. `atRest` values `hashed`, `none` and `never-persist` do **not** exclude. | generator |
 | 5 | `x-classification: [exposed]` MUST NOT co-occur with `sensitive` or `confidential`, nor with an `x-protection.atRest` of `encrypted` or `hashed`. `pii`, `financial` and `cardholder` may pair with `exposed` — data legitimately shown to the person it concerns is both. **Corrected against generator 0.6.0**; the earlier set was reasoned rather than measured and had `cardholder` and `confidential` the wrong way round. | generator — `PROTECTION_EXPOSED_MUTEX` (error); mirrored by kit `specfuse-classification-exposed-contradiction` |
-| 8 | `x-classification: [encrypted]` is superseded by `x-protection.atRest: encrypted`. Still accepted; prefer the protection axis on new properties. | kit — `specfuse-classification-encrypted-superseded` (warn) |
+| 8 | `x-classification: [encrypted]` is **retired** (generator 0.7.0). Declare `x-protection: {atRest: encrypted}` instead. | generator — `INVALID_EXTENSION_VALUE` (error); mirrored by kit `specfuse-classification-encrypted-superseded` (error) |
 | 9 | Every property carrying `x-classification` MUST declare `x-protection.atRest`. | generator — `PROTECTION_ATREST_REQUIRED` (error); mirrored by kit `specfuse-xprotection-atrest-required` |
 | 10 | `x-protection.atRest: none` MUST carry a `rationale`. | generator — `PROTECTION_NONE_REQUIRES_RATIONALE` (error); mirrored by kit `specfuse-xprotection-none-requires-rationale` |
 | 11 | `x-protection` sub-keys and values must come from the closed set in §"The two axes". | generator — `UNKNOWN_PROTECTION_SUBKEY` / `INVALID_EXTENSION_VALUE`; mirrored by kit `specfuse-xprotection-shape` (error) |
@@ -1422,7 +1435,7 @@ The two sides split cleanly, and the split is the generator's own: `PiiClassific
 | 7 | A property the validator reads as PII MUST declare `x-classification` (see "Where it is required" above). | generator — `PII_FIELD_MISSING_CLASSIFICATION` (error); mirrored in the editor by kit `specfuse-classification-pii-required` |
 | 15 | An entity declaring `x-protection.atRest: encrypted` on one of its own properties MUST expose a `readOnly` string array `unavailableProperties`. Generator `0.13.0`; **breaks specs that validated on `0.12.0`**. Not required when the only encrypted target is a flattened value object. | generator — `UNAVAILABLE_PROPERTIES_NOT_DECLARED` (error); mirrored by kit `specfuse-xprotection-unavailable-properties-required` |
 
-Rules 5 and 6 were documented here for some time and enforced by **nothing** on either side — rule 5 even named a finding id (`CLASSIFICATION_EXPOSED_CONTRADICTION`) that exists in neither the kit nor the jar. They are kit Spectral rules now. Rule 2 is still unenforced anywhere; treat it as guidance, not a gate.
+Rules 5 and 6 were documented here for some time and enforced by **nothing** on either side — rule 5 even named a finding id (`CLASSIFICATION_EXPOSED_CONTRADICTION`) that exists in neither the kit nor the jar. They are kit Spectral rules now. Rule 2 warns rather than fails: a refused target generates, in plaintext, so read the warning as a protection decision that did not happen.
 
 **`SENSITIVE_FIELD_IN_RESPONSE` — the `exposed` escape hatch**
 
@@ -1466,7 +1479,7 @@ x-content: true
 **Semantics**:
 
 - The property is **not** included in default list/projection DTOs (e.g., the generated `Basic{Entity}` shape used by paginated list endpoints).
-- The property is **not** auto-included in `aiAccess.readableProperties` when the latter is omitted (same safe-by-default treatment as `x-classification: [encrypted]`).
+- The property is **not** auto-included in `aiAccess.readableProperties` when the latter is omitted (same safe-by-default treatment as `x-protection: {atRest: encrypted}` — §1.5 rule 4).
 - The persistence layer chooses storage based on the resolved `kind` in `project.json` — typically a JSON/JSONB column for `relational` entities, the document body itself for `document` entities, a separate blob for `hybrid` entities. The spec does not encode the choice.
 
 **Required for `kind: hybrid` entities**: a hybrid backend descriptor splits an entity into a queryable metadata side and an opaque content side. The split is driven by `x-content`: every property carrying `x-content: true` lands on the content side; every other property lands on the metadata side. A hybrid entity with no `x-content` property fails project-file load (`PERSISTENCE_HYBRID_NO_CONTENT` — see `Project_File.md` §6.6).
@@ -1475,7 +1488,7 @@ x-content: true
 
 1. A property marked `x-content: true` MUST NOT be `required: true`. Metadata reads must be allowed to omit the payload; a required-and-omitted field is a contract violation. Enforced at spec validation.
 2. `x-content` may only appear on property schemas inside an `x-entity` main resource. It is ignored on derivatives (`Basic*`, `New*`, `Update*`) and on value-object schemas.
-3. `x-content` and `x-classification: [encrypted]` may co-occur. Encryption applies to the opaque payload at rest.
+3. `x-content` and `x-protection: {atRest: encrypted}` may co-occur. Encryption applies to the opaque payload at rest.
 
 **Examples**:
 
@@ -3384,7 +3397,7 @@ The following extensions existed in v1 (or were considered during v2 design) and
 | `x-message-category: sagaStep` | Removed | Sagas deferred |
 | `x-subscription.filter` (raw SQL author-written) | Forbidden | Filters are derived from the operation's `messages:` list; use `x-subscription.requiredHeaders` for header-equality and `x-subscription.filterOverride` only as a justified escape hatch. |
 | `x-action-class` | Not introduced | Action class is inferred from the message-name suffix (`*Created` → created, `*Updated` → updated, `*Deleted` → deleted, anything else → state transition). |
-| `x-pii` / `x-sensitive` (boolean per-field flags) | Not introduced as separate extensions | Use `x-classification` with values from the closed set `[pii, sensitive, confidential, exposed, financial, credential, cardholder, sad, encrypted]` on the entity property schema. See §1.5. |
+| `x-pii` / `x-sensitive` (boolean per-field flags) | Not introduced as separate extensions | Use `x-classification` with values from the closed set `[pii, sensitive, confidential, exposed, financial, credential, cardholder, sad]` on the entity property schema, plus `x-protection.atRest` for how the value is stored. See §1.5. |
 | Three-segment `Label` (`{Entity}.{Action}.{tenantId}`) | Removed (v1 routing) | Labels are exactly two segments: `{Entity}.{Action}`. Tenant routing moves to envelope `tenantId` ApplicationProperty; tenant-scoped subscribers AND-merge `user.tenantId = '<guid>'` via `requiredHeaders`. |
 
 ### 12.6 OpenAPI ↔ AsyncAPI Cross-Spec Link
