@@ -13,7 +13,7 @@ This guide takes you from zero to a generated backend: install the kit, bootstra
 |---|---|---|
 | **Python 3.10+** | runs the `specfuse` CLI | `python3 --version` |
 | **[pipx](https://pipx.pypa.io/)** or **[uv](https://docs.astral.sh/uv/)** | installs the CLI as an isolated app | `pipx --version` / `uv --version` |
-| **Java 17+ (JRE)** | the code generator is a Java binary | `java -version` |
+| **Java 21+ (JRE)** | the code generator is a Java binary | `java -version` |
 | **[Claude Code](https://claude.com/claude-code)** (optional) | the `/specfuse-authoring:*` authoring skills | — |
 | **GitHub access token** | only needed to run `generate` (pulls the private generator) | see §6 |
 
