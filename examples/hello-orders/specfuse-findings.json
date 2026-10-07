@@ -33,6 +33,13 @@
     },
     {
       "severity": "SUGGESTION",
+      "code": "CONDITIONAL_READ_CENSUS",
+      "message": "Conditional read census: 0 conditional read(s) accept If-None-Match and declare 304 Not Modified on a safe read method. CONDITIONAL_READ_NOT_MODIFIED_WITHOUT_IF_NONE_MATCH: 0, CONDITIONAL_READ_IF_NONE_MATCH_WITHOUT_NOT_MODIFIED: 0, CONDITIONAL_READ_NOT_MODIFIED_ON_UNSAFE_METHOD: 0, CONDITIONAL_READ_NOT_MODIFIED_WITH_BODY: 0, CONDITIONAL_READ_ENTITY_TAG_UNDECLARED: 0.",
+      "location": "paths",
+      "category": "Operation"
+    },
+    {
+      "severity": "SUGGESTION",
       "code": "DELETE_SEMANTICS_CENSUS",
       "message": "x-entity.delete census: soft 0 / hard 0 / undeclared 4 (of 4 x-entity schemas).",
       "location": "components.schemas",
@@ -48,9 +55,17 @@
     {
       "severity": "SUGGESTION",
       "code": "ENTITY_TAG_CENSUS",
-      "message": "ETag declaration census: 2 operation(s) declare an ETag response header, 0 of them on a single-instance response resolving to an entity that does not declare x-entity.concurrency: optimistic (ENTITY_TAG_DECLARED_UNGATED), 0 of them on a collection response (ENTITY_TAG_DECLARED_COLLECTION), and 0 gated entity(ies)' safe read declares no ETag at all (ENTITY_TAG_UNDECLARED_GATED). The three populations converge independently on distinct spec edits, so gate 2's severity flip reads this line, not a warning count.",
+      "message": "ETag declaration census: 2 operation(s) declare an ETag response header, 0 of them on a single-instance response resolving to an entity that does not declare x-entity.concurrency: optimistic (ENTITY_TAG_DECLARED_UNGATED), 0 of them on a collection response (ENTITY_TAG_DECLARED_COLLECTION), and 0 gated entity(ies)' safe read declares no ETag at all (ENTITY_TAG_UNDECLARED_GATED), and 0 safe read(s) of a gated entity return a projection rather than the entity, so they can publish no validator at all (ENTITY_TAG_UNOBTAINABLE_PROJECTION). The four populations converge independently on distinct spec edits, so gate 2's severity flip reads this line, not a warning count. The fourth does NOT converge on a spec edit (#1872): declaring the header there would promise one the generated controller never sends.",
       "location": "paths",
       "category": "DDD"
+    },
+    {
+      "severity": "SUGGESTION",
+      "code": "ENUM_VALUE_SET_DUPLICATE",
+      "message": "Enums 'TenantStatus' and 'CustomerStatus' share value set [active, suspended] (Jaccard 0.67, shared name token) — possibly the same concept modeled twice",
+      "location": "components.schemas.TenantStatus,CustomerStatus",
+      "category": "DDD",
+      "suggestedFix": "Consider consolidating 'TenantStatus' and 'CustomerStatus' into one enum if they represent the same concept"
     },
     {
       "severity": "SUGGESTION",

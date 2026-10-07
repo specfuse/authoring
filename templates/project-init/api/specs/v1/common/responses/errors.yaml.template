@@ -3,8 +3,12 @@
 # =============================================================================
 # Reference these from operation files via $ref. See API Handbook §2 and §11.
 
+# Every shape here that lands in components.schemas declares `x-domain: common`:
+# generator 0.13.0 requires a domain on every non-entity schema
+# (SCHEMA_DOMAIN_REQUIRED, ERROR), and `common` is the reserved shared value.
 Error:
   type: object
+  x-domain: common
   required: [code, message]
   properties:
     id:
@@ -105,6 +109,7 @@ ConflictError:
 # shape with no name cannot be generated into a typed DTO.
 PreconditionFailedBody:
   type: object
+  x-domain: common
   properties:
     errors:
       type: array

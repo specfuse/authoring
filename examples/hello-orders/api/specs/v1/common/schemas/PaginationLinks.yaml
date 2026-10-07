@@ -1,4 +1,8 @@
+# Generator 0.13.0 (SCHEMA_DOMAIN_REQUIRED): every non-entity, non-derived
+# schema declares its domain. `common` is reserved for shared shapes and is
+# never a member of info.x-domains.
 type: object
+x-domain: common
 description: HATEOAS pagination links for a paged collection response.
 properties:
   self:  { type: string, format: uri }
