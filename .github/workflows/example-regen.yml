@@ -1208,7 +1208,9 @@ jobs:
       - name: Install the kit CLI and redocly
         if: steps.token.outputs.have == 'true'
         run: |
-          pip install --quiet .
+          # PyYAML is not a kit dependency, but the scaffold's
+          # dedupe-async-bundle.py needs it; a fresh project needs it too.
+          pip install --quiet . pyyaml
           npm install -g @redocly/cli
 
       - name: Cache the pinned jar
