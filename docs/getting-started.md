@@ -16,6 +16,19 @@ This guide takes you from zero to a generated backend: install the kit, bootstra
 | **Java 21+ (JRE)** | the code generator is a Java binary | `java -version` |
 | **[Claude Code](https://claude.com/claude-code)** (optional) | the `/specfuse-authoring:*` authoring skills | — |
 | **GitHub access token** | only needed to run `generate` (pulls the private generator) | see §6 |
+| **Node.js + [redocly](https://redocly.com/docs/cli/) + [Spectral](https://github.com/stoplight/spectral)** | the project's `scripts/specfuse/` bundle and lint your specs | `redocly --version` / `spectral --version` |
+| **PyYAML, in the `python3` on your PATH** | several `scripts/specfuse/` helpers parse YAML — notably the AsyncAPI bundle step | `python3 -c 'import yaml'` |
+
+**PyYAML goes in your `python3`, not in the CLI's install.** The project scripts run with whatever `python3` is on your PATH. pipx or uv keeps the CLI in its own isolated environment, so neither installing the CLI nor `pipx inject` makes PyYAML visible to them. Pick one:
+
+```bash
+python3 -m venv .venv && . .venv/bin/activate && pip install PyYAML   # any OS; activate it before running the scripts
+sudo apt install python3-yaml                                          # Debian / Ubuntu
+sudo dnf install python3-pyyaml                                        # Fedora
+python3 -m pip install --user PyYAML                                   # where your python3 allows it (not on PEP 668-managed installs such as Homebrew)
+```
+
+For the Node tools: `npm install -g @redocly/cli @stoplight/spectral-cli`.
 
 You do **not** need to clone this repo. The CLI ships every kit asset (handbooks, samples, templates, schemas) inside the package, and the Claude Code authoring assets ship as the `specfuse-authoring` plugin in the `specfuse/specfuse` marketplace.
 

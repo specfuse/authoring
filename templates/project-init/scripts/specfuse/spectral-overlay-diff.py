@@ -101,7 +101,7 @@ from pathlib import Path
 try:
     import yaml
 except ImportError:  # pragma: no cover - surfaced to the operator, not handled
-    sys.exit("spectral-overlay-diff: PyYAML is required (pip install PyYAML)")
+    sys.exit("spectral-overlay-diff: requires PyYAML in the python3 on your PATH (not the specfuse CLI's isolated install, so `pipx inject` does not help): python3 -m pip install PyYAML, sudo apt install python3-yaml, or activate a virtualenv that has it. See the getting-started guide, Prerequisites.")
 
 RENAME_MAP_NAME = "rule-renames.yaml"
 

@@ -36,7 +36,7 @@ from pathlib import Path
 try:
     import yaml
 except ImportError:  # pragma: no cover - environment problem, not a config one
-    sys.stderr.write("PyYAML is required to read .specfuse/authoring/config.yml\n")
+    sys.stderr.write("authoring-config.py requires PyYAML to read .specfuse/authoring/config.yml in the python3 on your PATH (not the specfuse CLI's isolated install, so `pipx inject` does not help): python3 -m pip install PyYAML, sudo apt install python3-yaml, or activate a virtualenv that has it. See the getting-started guide, Prerequisites.\n")
     raise SystemExit(1)
 
 CONFIG_PATH = Path(".specfuse/authoring/config.yml")

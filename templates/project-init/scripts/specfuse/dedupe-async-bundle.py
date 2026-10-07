@@ -30,9 +30,12 @@ except ImportError:
     # dedup failed", so an unhandled ImportError here reaches the user as an
     # opaque bundling failure with no indication that a dependency is absent.
     sys.stderr.write(
-        "dedupe-async-bundle.py requires PyYAML, which is not installed.\n"
-        "\n"
-        "  pip install PyYAML          (or: pipx inject specfuse PyYAML)\n"
+        "dedupe-async-bundle.py requires PyYAML in the python3 on your PATH.\n"
+        "These scripts run under that python3, not inside the specfuse CLI's\n"
+        "isolated install, so `pipx inject` does not reach them. Install it with:\n"
+        "  python3 -m pip install PyYAML     (where your python3 allows it)\n"
+        "  sudo apt install python3-yaml     (Debian/Ubuntu)\n"
+        "or activate a virtualenv that has it. See the getting-started guide, Prerequisites.\n"
         "\n"
         "It is used to slim the bundled AsyncAPI document after redocly expands\n"
         "it; without it the bundle stays large enough to hit the generator's\n"

@@ -53,7 +53,7 @@ from pathlib import Path
 try:
     import yaml
 except ImportError:
-    print("ERROR: PyYAML not installed. Run: pip3 install pyyaml", file=sys.stderr)
+    print("ERROR: build-prompt-index.sh requires PyYAML in the python3 on your PATH (not the specfuse CLI's isolated install, so pipx inject does not help): python3 -m pip install PyYAML, sudo apt install python3-yaml, or activate a virtualenv that has it. See the getting-started guide, Prerequisites.", file=sys.stderr)
     sys.exit(1)
 
 prompts_dir = Path(sys.argv[1])
