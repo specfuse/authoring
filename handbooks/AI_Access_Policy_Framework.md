@@ -54,7 +54,7 @@ aiAccess:
 - Human-owned data the agent must understand but never edit (employment records, preferences, time-off requests).
 - Anything an agent reads to make decisions about *other* entities (e.g., the agent reads a tenant config to decide how to triage a work item, but never writes the tenant itself).
 
-**Encrypted-field default:** when `readableProperties` is omitted, the agent reads every top-level property *except* those listed in `encryptedProperties`. To grant read access to an encrypted field, list it explicitly (see §4 below).
+**Encrypted-field default:** when `readableProperties` is omitted, the agent reads every top-level property *except* those declaring `x-protection: {atRest: encrypted}`. To grant read access to an encrypted field, list it explicitly (see §4 below).
 
 **No write access whatsoever.** Tier 1 is purely read-only. If the agent needs to write *any* property, the entity is tier 2 or 3.
 
@@ -141,23 +141,33 @@ Soft-delete is the only delete in a Specfuse project (see [`API_Handbook.md §2`
 
 ### 3.2 Encrypted fields excluded from implicit read
 
-When `readableProperties` is omitted on a tier 1+ entity, the agent reads every top-level property *except* fields listed in **`x-entity.encryptedProperties`**.
+When `readableProperties` is omitted on a tier 1+ entity, the agent reads every top-level property *except* fields declaring **`x-protection: {atRest: encrypted}`**. The rule is owned by [`Vendor_Extensions.md` §1.5](./Vendor_Extensions.md) rule 4; this section restates it. `atRest` values `hashed`, `none` and `never-persist` do **not** exclude.
 
-> **⚠ Corrected 2026-08-21 (authoring #76).** This sentence previously read "…or fields
+> **⚠ Corrected 2026-10-07 (authoring #130).** This section kept naming
+> `x-entity.encryptedProperties` as the exclusion key after generator 0.7.0 retired it.
+> An entity still declaring that key fails with `ENTITY_INVALID_CONFIG`, so the old
+> wording no longer validates — but an author who followed it and did **not** also declare
+> `x-protection.atRest: encrypted` left the field in the implicit read surface. Audit any
+> tier 1+ entity that omits `readableProperties` for encrypted-in-intent fields carrying
+> no `x-protection`.
+
+> **⚠ Corrected 2026-08-21 (authoring #76)** — historical; superseded by generator 0.7.0
+> and the box above. This sentence previously read "…or fields
 > carrying `x-classification: [encrypted]`", treating the two as interchangeable. They are
 > not. `encryptedProperties` is the only declaration the generator reads; a field
 > classified `encrypted` but absent from that array **is** in the implicit read surface.
 > Verified against the pinned `0.5.8` jar — no class in it references both keys. This is
 > the permissive direction, so an entity authored on the old wording grants AI read access
 > the author believed was withheld. Audit any entity that relies on classification alone.
-> See `Vendor_Extensions.md` §1.5.
+> See `Vendor_Extensions.md` §1.5. **Both keys this box names are gone as of generator
+> 0.7.0**: `encryptedProperties` fails with `ENTITY_INVALID_CONFIG`, and
+> `x-classification: [encrypted]` with `INVALID_EXTENSION_VALUE`.
 
 To grant AI read access to an encrypted field, list it explicitly in `readableProperties`:
 
 ```yaml
 Customer:
   x-entity:
-    encryptedProperties: [taxId]
     aiAccess:
       operations: [read]
       readableProperties:
@@ -169,7 +179,16 @@ Customer:
       reason: >
         Tax-reconciliation agent needs the tax ID to match
         external accounting system records.
+  properties:
+    # ...
+    taxId:
+      type: string
+      maxLength: 11
+      x-classification: [pii]
+      x-protection: { atRest: encrypted }   # this is what excludes it by default
 ```
+
+The entity also owes an `unavailableProperties` member once anything on it is encrypted — see `Vendor_Extensions.md` §1.5.
 
 Masking rules on the wire still apply — encrypted fields surface masked unless the caller has the elevated privilege to see plaintext.
 
@@ -309,8 +328,9 @@ The flowchart is biased toward restriction by design.
 | Extension | Relationship |
 |---|---|
 | `x-entity` | `aiAccess` is a property of `x-entity`. See [`Vendor_Extensions.md §1.1.1`](./Vendor_Extensions.md). |
-| `x-entity.encryptedProperties` | **The only key that excludes a field from the implicit read surface** (§3.2). |
-| `x-classification: [encrypted]` | Records intent for humans and for kit lint. **Excludes nothing on its own** — it is not a derived view of `encryptedProperties`, corrected 2026-08-21, authoring #76. |
+| `x-protection: {atRest: encrypted}` | **The only declaration that excludes a field from the implicit read surface** (§3.2; `Vendor_Extensions.md` §1.5 rule 4). |
+| `x-entity.encryptedProperties` | **Retired, generator 0.7.0** — fails with `ENTITY_INVALID_CONFIG`. Held the exclusion role through 0.6.0. |
+| `x-classification: [encrypted]` | **Retired, generator 0.7.0** — rejected with `INVALID_EXTENSION_VALUE`, and by kit `specfuse-classification-encrypted-superseded` (error). |
 | `x-classification: [pii \| sensitive]` | PII/sensitive fields are not auto-excluded from AI read, but they trigger snapshot acknowledgement rules (`x-snapshot-pii-acknowledged`) when included in event snapshots. See `AsyncAPI_Handbook.md §2.3`. |
 | `x-ai-safe` (operations) | **Read by nothing — do not gate on it.** It was intended to operate at the HTTP operation level (may an AI agent invoke this endpoint without approval) where `aiAccess` operates at the entity/repository level, but no generated code and no lint rule enforces it. `aiAccess` is enforced; `x-ai-safe` is documentation. The live per-tool control is `x-mcp.safeForAutoInvoke` on an Arazzo scenario (`Arazzo_Handbook.md` §4.8). See `Vendor_Extensions.md` §4.1 and `compatibility.md` §25. |
 | `x-ai.entities` (AsyncAPI workers) | When an AsyncAPI worker declares `x-ai.entities.{reads,creates,updates,deletes}`, every listed entity MUST have a matching `aiAccess` block granting the corresponding operation. The cross-spec validator enforces this. See `AsyncAPI_Handbook.md §4.3`. |
