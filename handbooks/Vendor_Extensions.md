@@ -1957,7 +1957,7 @@ info:
 |---|---|---|
 | generator `OPERATION_UNKNOWN_ROLE` | an `x-roles` member is not in `info.x-roles` | **ERROR** |
 | generator `OPERATION_ROLE_REGISTRY_MISSING` | no `info.x-roles` at all — *"role membership validation disabled"* | WARNING |
-| generator `OPERATION_MISSING_ROLES` | a secured operation declares neither `x-roles` nor `x-public` | WARNING |
+| generator `OPERATION_MISSING_ROLES` | a secured operation declares neither `x-roles` nor `x-public` | **ERROR** |
 | generator `OPERATION_EMPTY_ROLES` / `OPERATION_INVALID_ROLE` / `OPERATION_INVALID_ROLES_FORMAT` | an empty list, an empty member, or a non-array | — |
 | kit `specfuse-auth-roles-pascal` | the **shape** only: PascalCase identifiers | error |
 
@@ -1973,6 +1973,18 @@ itself off and reports a WARNING; a typo'd or invented role then passes
 `validate` silently. A schema enum named `Role` does **not** substitute for the
 registry — nothing reads it for this purpose, and if no property is typed by it
 the generator additionally reports it as `SCHEMA_UNREFERENCED` dead code.
+
+> **⚠ Do not author the object form of `info.x-roles` on this pin.** A newer
+> generator accepts a map form — `Admin: { superuser: true, grants: [...] }` —
+> for roles that carry grants (authoring #128). **Generator `0.13.0` does not.**
+> It reads a map as *no registry at all*: `OPERATION_ROLE_REGISTRY_MISSING`
+> (WARNING), and `OPERATION_UNKNOWN_ROLE` switches off. Measured on hello-orders:
+> an operation listing an undeclared role `Ghost` is an ERROR under the list
+> form and passes under the map form. The kit's Spectral is silent on the map
+> form too. That makes it the "absence is not safety" failure above, reached
+> by writing *more* configuration. Keep the list form until the kit pins a
+> generator that reads the map; the pin-bump row in `compatibility.md` will
+> say so.
 
 **Registry family.** `info.x-roles` is one of three `info`-level registries, all
 closed universes checked against by name: `info.x-domains` (§1.1, entity

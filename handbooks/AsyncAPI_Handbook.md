@@ -756,6 +756,11 @@ Requires a **new version** (breaking):
 - Change a property's type
 - Make an optional property required
 - Change the meaning of an existing property or enum value
+- **Add a state-transition event whose `x-trigger-when` can match a write that today emits the entity's `*Updated`.** Bump `x-version.current` on that `*Updated` message (see below).
+
+**A new transition event is a break on `*Updated`, not an addition.** Adding a message looks additive — consumers that don't want it won't subscribe. But under the mutual-exclusivity rule (§2.2, and *"`x-trigger-when`"* below), a write that matches the new event's predicate emits the transition event **instead of** `*Updated`. Any existing `*Updated` consumer that detects that transition itself — filtering on `before.status` / `after.status`, say, to catch `proposed → verified` — silently stops seeing it from that release on. Nothing errors, and `*Updated`'s schema and version are unchanged, so no tooling flags it; the gap surfaces in reconciliation, if at all.
+
+So the version bump belongs on the message whose **emission set shrank** — `*Updated` — not only on the new event. While the entity's messages are still `x-version.status: draft`, adding the transition event is free; nothing is consuming them yet.
 
 **Version lifecycle:**
 1. `draft` — Schema is under development, not yet consumed in production

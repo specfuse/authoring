@@ -983,7 +983,7 @@ $ java -jar specfuse-generator-0.9.0.jar validate probe.yaml
 |---|---|---|
 | `OPERATION_UNKNOWN_ROLE` | **ERROR** | an `x-roles` member is not in `info.x-roles` |
 | `OPERATION_ROLE_REGISTRY_MISSING` | WARNING | no `info.x-roles` — *"role membership validation disabled"* |
-| `OPERATION_MISSING_ROLES` | WARNING | a secured operation declares neither `x-roles` nor `x-public` |
+| `OPERATION_MISSING_ROLES` | **ERROR** *(corrected 2026-10-07, authoring #128: this row said WARNING; the 0.9.0, 0.12.0 and 0.13.0 jars all raise it as an error)* | a secured operation declares neither `x-roles` nor `x-public` |
 | `OPERATION_EMPTY_ROLES` / `OPERATION_INVALID_ROLE` / `OPERATION_INVALID_ROLES_FORMAT` | — | empty list, empty member, non-array |
 
 And the second half: **no Spectral rule ever enforced membership.** `specfuse-auth-roles-pascal` checks PascalCase shape and carries a comment saying so outright — *"the kit does not bake in the closed value-set"* — with the value-set rule recorded as a project overlay in `rule-renames.yaml` under `retained`. §3.2 line 1799 already said this in passing (*"Unlike `x-roles`, this needs no project overlay"*), so the handbook contradicted itself three sections apart.
