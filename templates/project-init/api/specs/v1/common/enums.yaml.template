@@ -19,6 +19,7 @@
 # Replace with the currencies the project actually supports.
 CurrencyCode:
   type: string
+  x-domain: common          # SCHEMA_DOMAIN_REQUIRED (generator 0.13.0)
   x-enum-case: preserve     # ISO codes must not be re-cased by the generator
   enum:
     - USD

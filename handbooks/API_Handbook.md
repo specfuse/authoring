@@ -89,6 +89,7 @@ info:
 Every reference to a domain across the three specs resolves against this registry:
 
 - `x-entity.domain` on each OpenAPI entity (`Vendor_Extensions.md §1.1`) — MUST be a registered key (`ENTITY_DOMAIN_UNREGISTERED`, ERROR otherwise).
+- `x-domain` on every **non-entity OpenAPI schema** in `components.schemas` — enums, shared shapes, error bodies — MUST be a registered key or the reserved value `common` (`SCHEMA_DOMAIN_REQUIRED` / `SCHEMA_DOMAIN_UNREGISTERED`, ERROR, from generator 0.13.0). See `Vendor_Extensions.md §1.1`, *"Non-entity schemas declare `x-domain`"*.
 - `x-domain` on every AsyncAPI channel and Arazzo workflow (`Vendor_Extensions.md §12.1`, `§13.1`) — same key set (plus the reserved `cross-domain` value for Arazzo files under `scenarios/cross-domain/`).
 - The `domains/{domain}/` folder name and the entity's PascalCase OpenAPI tag.
 

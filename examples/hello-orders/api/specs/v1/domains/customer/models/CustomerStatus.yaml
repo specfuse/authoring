@@ -1,4 +1,5 @@
 type: string
+x-domain: customer   # SCHEMA_DOMAIN_REQUIRED (generator 0.13.0); enums are not entities
 description: Lifecycle status of a Customer.
 # `default` and `x-default` must agree and both be present: OpenAPI Generator
 # does not reliably pick up `default` alone (ENUM_MISSING_X_DEFAULT).

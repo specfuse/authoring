@@ -61,6 +61,24 @@ x-entity:
 
 **`domain` (required, leads the block).** Every entity is assigned to exactly one domain. The value is a kebab-case name that **MUST** be a key in the project's domain registry `info.x-domains` (see `API_Handbook.md §0.1` and the new-project scaffold's `openapi.yaml`). The registry is a **closed universe**: an entity may only name a registered domain, and the validator rejects an `x-entity.domain` that has no matching `info.x-domains` key (`ENTITY_DOMAIN_UNREGISTERED`, ERROR). The value also matches the entity's `domains/{domain}/` folder and lines up 1:1 with the AsyncAPI channel `x-domain` (§12.1) and Arazzo workflow `x-domain` (§13.1) — one domain vocabulary shared across all three specs. Author it first so the entity's home is unambiguous before any relationship or access metadata is read.
 
+**Non-entity schemas declare `x-domain` (generator 0.13.0).** An entity carries its domain in `x-entity.domain`; every *other* schema in `components.schemas` — an enum, a shared value shape, an error body — declares it as a top-level `x-domain`. Missing is `SCHEMA_DOMAIN_REQUIRED` (ERROR); a value that is neither an `info.x-domains` key nor `common` is `SCHEMA_DOMAIN_UNREGISTERED` (ERROR).
+
+```yaml
+OrderStatus:            # domain-owned enum
+  type: string
+  x-domain: order
+Error:                  # shared shape, no owning domain
+  type: object
+  x-domain: common
+```
+
+- **Exempt:** `x-entity` schemas, pure `$ref` aliases, and the derived shapes of an entity (`New{E}`, `Basic{E}`, `Update{E}`, `{E}List`) — the generator resolves those to their main model's domain.
+- **`common` is reserved.** It means *shared, no owning domain*, and it MUST NOT itself be registered in `info.x-domains` — registering it is `SCHEMA_DOMAIN_UNREGISTERED` against the registry.
+- **What counts is `components.schemas` after bundling.** A shape you only `$ref` from an operation file is hoisted there by `redocly bundle`, so it needs the key in its source file even though no hand-written `components` block names it.
+- A schema that references a schema owned by **another** domain is reported as `SCHEMA_DOMAIN_CROSS_REFERENCED` (WARNING) — a boundary hint, not a failure; `common` is never a cross-reference.
+
+**Spec-author action on the `0.13.0` pin.** Run `validate` on a fresh bundle and add `x-domain` to every schema it names. This rule shipped in `0.13.0` and the kit missed it at that pin bump (`compatibility.md`, `v0.20.0` row); the kit's own example and new-project scaffold both failed it until the fix that added this paragraph. No kit Spectral mirror yet — the derived-shape exemption needs the entity set, which a schema-local rule does not have.
+
 > **Storage technology choices are not declared on `x-entity`.** Database engine, connection, schema name, and container name are designed to live in `project.json.persistence` — see `Project_File.md` §6, **which the generator does not yet read** (`compatibility.md` §27).
 >
 > That changes what to do about `x-entity.schema`, which this handbook calls **deprecated** in favour of `persistence.entities.<EntityName>.schema`. The replacement is not live: the jar parses `x-entity.schema` and ignores `persistence` entirely, so migrating today moves a working declaration onto a key nothing reads — and silently, since the block raises no diagnostic. **Keep `x-entity.schema` where it is.** It remains deprecated in direction and supported in fact; migrate when §6 is implemented, and take the `specfuse-xentity-schema-deprecated` WARNING as a marker of that future move rather than a task for today.
