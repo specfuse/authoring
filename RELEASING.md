@@ -25,6 +25,24 @@ publishes to PyPI via **OIDC trusted publishing** (no API token).
    PyPI's links point at `github.com/Specfuse/authoring`, and the wheel exposes
    the handbooks/samples anyway, so a published package + private repo is
    inconsistent. The leakage scrub (the gate for going public) is already done.
+4. **Give CI read access to the generator jar** (`GENERATOR_DIST_TOKEN`).
+   `example-regen.yml`'s `generate` job runs the pinned jar on hello-orders and
+   on a fresh scaffold, and the jar lives in the private
+   `Specfuse/generator-dist`. Without this secret the job fails on purpose.
+   - GitHub → *Settings → Developer settings → Personal access tokens →
+     Fine-grained tokens → Generate new token*.
+   - Resource owner: **`Specfuse`**. Repository access: *Only select
+     repositories* → **`Specfuse/generator-dist`** only.
+   - Repository permissions: **Contents: Read-only** (Metadata: Read-only is
+     added automatically). Nothing else.
+   - Expiration: the longest the org allows; note the date. When it expires,
+     the `generate` job fails with a download error, not silently.
+   - If the org requires approval for fine-grained tokens, an org owner
+     approves it under *Specfuse → Settings → Personal access tokens →
+     Pending requests*.
+   - Store it: *Specfuse/authoring → Settings → Secrets and variables →
+     Actions → New repository secret*, name **`GENERATOR_DIST_TOKEN`**. Or
+     `gh secret set GENERATOR_DIST_TOKEN -R Specfuse/authoring` and paste.
 
 ## Per-release checklist
 
@@ -47,7 +65,11 @@ publishes to PyPI via **OIDC trusted publishing** (no API token).
    python -m build
    pipx run --spec "$(ls dist/*.whl)" specfuse-authoring --version   # or install in a venv
    ```
-   Confirm `examples/hello-orders/` still lints (CI does this on push, too).
+   Confirm `examples/hello-orders/` still lints **and generates** on the pinned
+   jar — the `example-regen` `generate` job checks both, plus a fresh
+   scaffold. On a pin bump, read its output before writing the
+   `compatibility.md` row: a new ERROR there is a breaking change the row
+   must name.
 5. **Commit** the version bump on `main` and push.
 6. **Tag and push the tag:**
    ```bash

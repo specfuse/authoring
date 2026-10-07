@@ -5,10 +5,13 @@
 # at examples/hello-orders/ on every PR. If a handbook or template change
 # breaks the example, the PR fails.
 #
-# Two jobs run today:
+# Three jobs run today:
 #   - validate: YAML parseability + project.json validity (the floor).
 #   - spectral: bundle the OpenAPI surface with redocly, then lint all three
 #     surfaces against the kit's rulesets; fail on any `error`-severity finding.
+#   - generate: run the PINNED generator jar on a fresh bundle of the example
+#     (validate + generate) and of a fresh scaffold (validate). Needs the
+#     GENERATOR_DIST_TOKEN secret; see the job's own comment.
 #
 # Every Spectral invocation goes through scripts/spectral-lint.sh rather than
 # calling `spectral lint` directly. The wrapper exists because the default
@@ -19,7 +22,7 @@
 # authoring issue #14.
 #
 # Still to come as the toolchain grows:
-#   - End-to-end generator regeneration + diff (once wired into CI).
+#   - Diffing generated output against a committed baseline.
 # =============================================================================
 
 name: example-regen
@@ -32,6 +35,8 @@ on:
       - 'samples/**'
       - 'templates/**'
       - 'schemas/**'
+      - 'generator.lock'   # a pin bump is when the generate job matters most
+      - 'specfuse/**'      # the launcher that downloads and verifies the jar
       - '.github/workflows/example-regen.yml'
   push:
     branches:
@@ -1142,3 +1147,110 @@ jobs:
 
           [[ $fail -eq 0 ]] || exit 1
           echo "==> Conditional-read rules fire on all six violations and stay silent on four accepted shapes."
+
+  generate:
+    # The job authoring #97 asked for. `validate` and `spectral` above prove the
+    # example *lints*; neither runs the generator, and that gap let the kit's
+    # own example stay unbuildable across several pins — #97 (a bodyless POST
+    # read as a Create) and again at 0.13.0 (SCHEMA_DOMAIN_REQUIRED, which the
+    # pin bump missed). This job runs the PINNED jar, through the kit's own
+    # launcher, on a fresh bundle of the example and of a fresh scaffold.
+    #
+    # The jar lives in the private Specfuse/generator-dist, so this job needs
+    # GENERATOR_DIST_TOKEN: a fine-grained token, read-only Contents on that one
+    # repo. Missing token FAILS the job — a skipped generator run reported as
+    # green is the exact silence this job exists to end. The one exception is a
+    # pull request from a fork, where GitHub withholds secrets by design; that
+    # case warns and exits, and the run on main after merge is the backstop.
+    name: Generate hello-orders + fresh scaffold (pinned jar)
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GENERATOR_DIST_TOKEN }}
+      SPECFUSE_TOKEN: ${{ secrets.GENERATOR_DIST_TOKEN }}
+      IS_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+    steps:
+      - name: Require the generator-dist token
+        id: token
+        run: |
+          if [[ -n "${GH_TOKEN}" ]]; then
+            echo "have=true" >> "$GITHUB_OUTPUT"
+          elif [[ "${IS_FORK_PR}" == "true" ]]; then
+            echo "::warning::Fork PR: GENERATOR_DIST_TOKEN is withheld, so the generator did not run. The push to main after merge runs it."
+            echo "have=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::GENERATOR_DIST_TOKEN is not set. Add a fine-grained token with read-only Contents on Specfuse/generator-dist as a repository secret (see RELEASING.md)."
+            exit 1
+          fi
+
+      - name: Checkout
+        if: steps.token.outputs.have == 'true'
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        if: steps.token.outputs.have == 'true'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'   # generator.lock min_java
+
+      - name: Set up Python
+        if: steps.token.outputs.have == 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Set up Node
+        if: steps.token.outputs.have == 'true'
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Install the kit CLI and redocly
+        if: steps.token.outputs.have == 'true'
+        run: |
+          pip install --quiet .
+          npm install -g @redocly/cli
+
+      - name: Cache the pinned jar
+        if: steps.token.outputs.have == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.specfuse/jars
+          # The launcher re-verifies the sha256 on every run, so a cache hit
+          # can never substitute an unpinned jar.
+          key: generator-jar-${{ hashFiles('generator.lock') }}
+
+      - name: Validate + generate hello-orders
+        if: steps.token.outputs.have == 'true'
+        working-directory: examples/hello-orders
+        run: |
+          set -euo pipefail
+          # Bundle fresh, with the same scripts a scaffolded project uses.
+          # output/ is gitignored; a stale local bundle is how a broken example
+          # can look like it validates.
+          bash ../../templates/project-init/scripts/specfuse/bundle-spec.sh
+          bash ../../templates/project-init/scripts/specfuse/bundle-async-spec.sh
+
+          specfuse-authoring generate validate hello-orders-project.json | tee "$RUNNER_TEMP/validate.out"
+          grep -q -- '- Status: PASSED' "$RUNNER_TEMP/validate.out" \
+            || { echo "::error::validate did not report PASSED"; exit 1; }
+
+          specfuse-authoring generate generate hello-orders-project.json
+          # A generate that exits 0 having written nothing is not a pass.
+          n=$(find out -type f | wc -l)
+          [[ "$n" -gt 0 ]] || { echo "::error::generate exited 0 but wrote no files under out/"; exit 1; }
+          echo "==> hello-orders validates and generates on the pinned jar ($n files)."
+
+      - name: Validate a fresh scaffold
+        if: steps.token.outputs.have == 'true'
+        run: |
+          set -euo pipefail
+          P="$RUNNER_TEMP/scaffold"
+          specfuse-authoring init "$P" --name probe-app --token probe --domain billing -y
+          cd "$P"
+          bash scripts/specfuse/bundle-spec.sh
+          bash scripts/specfuse/bundle-async-spec.sh
+          specfuse-authoring generate validate probe-app-project.json | tee "$RUNNER_TEMP/scaffold.out"
+          grep -q -- '- Status: PASSED' "$RUNNER_TEMP/scaffold.out" \
+            || { echo "::error::a fresh scaffold does not validate on the pinned jar"; exit 1; }
+          echo "==> A fresh scaffold validates on the pinned jar."
