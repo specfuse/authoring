@@ -1273,7 +1273,7 @@ email:
 | `atRest` | `none` \| `encrypted` \| `hashed` \| `never_persist` (or `never-persist`) | **Required on every classified property.** Either separator works — the generator normalises them to one value, and `specfuse-generator extensions` prints the hyphen form. `neverPersist` (camelCase) is not accepted: the normalisation collapses separators, not case boundaries. |
 | `mode` | `randomized` \| `deterministic` | `deterministic` parses and is then refused: `PROTECTION_MODE_UNSUPPORTED` ("declared but unsupported in v1"). Only `randomized` is implemented. |
 | `blindIndex` | `{ equality, prefix, normalization[], scope }` | `scope` is `tenant` \| `global`. How an encrypted value stays searchable. |
-| `masking` | `{ first, last }` | How many leading/trailing characters survive masking. |
+| `masking` | `{ first, last }` | How many leading/trailing characters survive masking. **Applied on the wire from generator `0.14.0`** by a C# API group registering `apiMapper`; an `atRest: encrypted` string declaring none gets a default. Plain strings only — `MASKING_NON_STRING` (ERROR) otherwise. See "Masking on the wire, and `x-unmask`" below. |
 | `unbounded` | boolean | **The property has no `maxLength`, and that is deliberate.** It asserts that the value's length is genuinely unbounded, so no bounded ciphertext column can be sized for it and the storage falls back to the target's large-object form. Treat it as a review signal rather than a storage switch: at generator `0.12.0` its only consumer is the data-protection audit's protection matrix (`Project_File.md` §11.5, section 2), where `unbounded: true` on an encrypted property is the row an assessor is meant to question. Wherever the value does have a real bound, declare `maxLength` instead — and note that **a `pattern` is not a bound**: `pattern: '^[0-9]{5}$'` pins the length exactly and still leaves the property unbounded as far as any sizing is concerned. |
 | `rationale` | string | **Required when `atRest: none`.** |
 | `reviewedOn` / `reviewedBy` | date / string | Who signed the decision off, and when. From generator 0.9.0 a `reviewedOn` older than **18 months** is reported as a stale review in the data-protection audit — a finding, never a build failure. |
@@ -1293,6 +1293,84 @@ email:
 > It is **not emitted unless registered** in a group's `artifacts[]`, and
 > nothing warns you at generation time. Register it, or the evidence quietly
 > does not exist.
+
+#### Masking on the wire, and `x-unmask` (generator `0.14.0`)
+
+**Through `0.13.0`, `masking` reached the data-protection audit and nothing else; no generated response was masked.** From `0.14.0` it is a wire contract, and it arrives without an opt-in: any C# API group that registers `apiMapper` masks on its next regeneration.
+
+**What is masked.** A property is masked when it is a plain string (`type: string` with no `format: date` / `date-time` / `time`, not a value object) and either:
+
+- declares `x-protection.masking: { first, last }`, whatever its `atRest`; or
+- declares `atRest: encrypted` and no `masking` — it gets the **default**, the last four characters.
+
+A `writeOnly` property is never returned, so it is never masked.
+
+**Where.** Every response the generated C# controller builds through the mapper: single-resource GET, list, create / update / delete returning a body, a parent DTO embedding a masked child, and an action routed through an application service (its controller masks what the service returns). Measured on a generated fixture: each mapper gains a `{Entity}To{Entity}Response` that applies the mask, and every controller response goes through it.
+
+**The mask.** One implementation, the generated `FieldMask`: `value[0..first] + "****" + value[len-last..]`. The fill is a fixed four asterisks, so it does not encode the length. The revealed total is clamped to at most `min(4, floor(len / 2))`, taken from `first` before `last`, so a short value cannot be shown in full. `null` stays `null` and `""` stays `""`. Measured against the generated `FieldMask`:
+
+| declared | value | on the wire |
+|---|---|---|
+| none (`atRest: encrypted`) | `123456789` | `****6789` |
+| none (`atRest: encrypted`) | `12345` | `****45` |
+| `{ first: 2, last: 2 }` | `123456789` | `12****89` |
+| `{ first: 2, last: 2 }` | `12345` | `****45` |
+
+**Who masks.** Only the generated **C#** API. Dart and TypeScript clients mask nothing — the server decides, and a client receives what it was sent. Measured: no Dart, TypeScript or Python template at `0.14.0` references the mask.
+
+**What breaks.** A client that read such a field verbatim now reads `****` and a suffix. A client that writes a read value back into a PUT body stores the mask unless something stops it — `API_Handbook.md` §1.4.1 covers what the generated replace keeps and the `pattern` that rejects an echo.
+
+**Diagnostics:**
+
+| code | severity | fires on |
+|---|---|---|
+| `MASKING_NON_STRING` | **ERROR** | `masking` declared on a non-string, a value object, or a `date` / `date-time` / `time` string — a masked date still reveals its structure |
+| `MASKING_DEFAULT_NOT_APPLICABLE` | INFO (printed as `SUGGESTION`) | an `atRest: encrypted` target that is not a plain string and declares no `masking` — the default cannot reach it, so it is **not masked** on the wire |
+
+##### `x-unmask` — asking for a masked field in the clear
+
+`x-unmask: true` on a **query parameter** of a **single-resource GET** lets a caller ask for named masked fields unmasked. It is a parameter extension, not an `x-entity` key, so `extensions --format json` does not list it.
+
+```yaml
+/customers/{customerId}:
+  get:
+    parameters:
+      - $ref: '#/components/parameters/customerId'
+      - name: unmask
+        in: query
+        required: false
+        x-unmask: true
+        schema:
+          type: array
+          items:
+            type: string
+            enum: [taxId, nickname]   # wire names of masked top-level fields
+```
+
+What the generated C# controller does, measured on a generated fixture:
+
+1. **Normalises** the values — each split on commas, trimmed, empties and duplicates dropped. An empty `unmask` is the same as none: every field stays masked.
+2. **Refuses an unknown name with `400`** *before* the service call. Names are the wire names in the enum, matched case-sensitively.
+3. Loads the resource, then asks **`IFieldUnmaskPolicy.CanUnmaskAsync(principal, entity, fields)`** for the subset the caller may see.
+4. **If any requested field is denied, the whole request is a `403`** — there is no partial grant. The error's `type` is `unmaskForbidden` when the spec's `ErrorType` enum declares that value, otherwise the generic forbidden type (`insufficientPrivileges`).
+5. On a full grant, calls **`RecordUnmaskAsync`** with the granted fields, sets **`Cache-Control: no-store`**, and maps the response with only those fields in the clear.
+
+**Deny by default.** The policy is resolved from DI; a host that registers none gets the generated `DenyAllFieldUnmaskPolicy`, so every unmask request is refused until someone writes the policy. `RecordUnmaskAsync` is where the host writes its audit trail of who saw what. The parameter never reaches a service signature, and a create, update or list response never unmasks.
+
+**Generated with every `apiMapper` group, `x-unmask` or not:** `FieldMask`, `IFieldUnmaskPolicy`, `DenyAllFieldUnmaskPolicy` (in `{apiPackage}.Mappers`). A hand-written type of any of those names collides. Registering a policy in a group whose GETs declare no `x-unmask` changes nothing — the controller is the only caller. Dart and TypeScript clients send the values comma-separated and omit the key when empty; TypeScript types it as a literal union of the enum.
+
+**Diagnostics** (category *Privacy / Law 25*):
+
+| code | severity | fires on |
+|---|---|---|
+| `UNMASK_PARAMETER_ON_LIST` | **ERROR** | `x-unmask` on a non-GET operation, or on a GET whose response is a bare `type: array` |
+| `UNMASK_VALUE_NOT_MASKED` | **ERROR** | an enum value that is not a **top-level** masked field of the response entity — a field masked only inside a nested DTO counts as not masked |
+| `UNMASK_FORBIDDEN_TYPE_NOT_DECLARED` | WARNING | the spec declares `x-unmask`, its `Error.type` is typed by an `ErrorType` enum, and that enum lacks `unmaskForbidden` |
+| `UNMASK_UNDECLARED` | INFO (printed as `SUGGESTION`) | a single-resource GET returns masked fields and declares no `x-unmask` — legitimate when the fields must never be revealed there |
+
+The parameter is exempt from `OPERATION_NON_SEARCHABLE_QUERY_PARAM`.
+
+> **On a list GET returning `{Resource}List`, the jar reports the wrong code.** Measured against `0.14.0`: `x-unmask` on `GET /tenants/{tenantId}/customers` returning `CustomerList` is not `UNMASK_PARAMETER_ON_LIST` but `UNMASK_VALUE_NOT_MASKED` for every enum value (*"masked: []"*), because the validator sees the response with its `$ref` already resolved and cannot recognise the paginated wrapper. The spec is still refused, and the fix is the same — move the parameter to the single-resource GET. See `compatibility.md` §42.
 
 #### `unavailableProperties` — every encrypting entity owes a poisoned-read surface
 
@@ -1331,6 +1409,8 @@ Person:
 At this pin it drives all of that **plus** the persistence path — a ciphertext column per encrypted property, a `FieldEncryptionSaveChangesInterceptor` on the write side, a `FieldDecryptionMaterializationInterceptor` on the read side, and the runtime contracts a host must satisfy.
 
 **If you adopted `atRest: encrypted` on an earlier pin, this bump gives you columns you have never had, and a schema migration with them.**
+
+**`0.14.0` adds the response side.** An encrypted plain string declaring no `masking` now leaves a generated C# API masked by default (`****` plus the last four characters) — see "Masking on the wire, and `x-unmask`" above.
 
 The runtime obligations that come with it — what to register, which failure absorbs and which rethrows, and why an empty value must never stand in for a failed decrypt — are their own page: **`Field_Encryption_Runtime.md`**.
 
@@ -1471,7 +1551,7 @@ A secret-shaped, response-bound property **passes** the rule only if it carries 
 
 - `writeOnly: true` — the field is never serialized onto responses, so there is nothing to leak; or
 - `x-internal-only: true` — the field is stripped from all external response layers (see §1.3); or
-- `x-protection: {atRest: encrypted}` — the serialized value is opaque ciphertext. **Not `x-classification: [encrypted]`**, which `0.7.0` rejects outright (`INVALID_EXTENSION_VALUE`): it stops the rule firing only because the document no longer validates at all; or
+- `x-protection: {atRest: encrypted}` — the column holds ciphertext. On the wire it is the **decrypted** value, masked by a generated C# `apiMapper` from `0.14.0` (`****` plus the last four, unless `masking` says otherwise — "Masking on the wire, and `x-unmask`" above), and in the clear from any server that does not mask. So this exits the rule without keeping the secret off the response: for a true secret, prefer `writeOnly`. **Not `x-classification: [encrypted]`**, which `0.7.0` rejects outright (`INVALID_EXTENSION_VALUE`): it stops the rule firing only because the document no longer validates at all; or
 - `x-classification: [exposed]` — a reviewer has confirmed the field is safe to return as-is.
 
 `x-classification: [sensitive]` alone does **not** satisfy the rule: `sensitive` means *must be masked*, not *may be exposed*. Using `exposed` is an explicit, reviewed override — reach for it only when the secret-shaped name is a false positive, e.g. a public `avatarHash` content-address. Not for a `*Token`: that suffix is not in the heuristic at all, so there is nothing to override.

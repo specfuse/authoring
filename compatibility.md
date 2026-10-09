@@ -1036,15 +1036,15 @@ What it buys, in order of value: (1) **coherence** — every operation's `x-scop
 
 Worth noting for whoever picks this up: `x-scopes` is still read by **nothing** in the generator (follow-up 28), verified again against `0.9.0` — 0 class files reference the key, against 6 for `x-roles` and 6 for `x-domains`. A grants vocabulary keyed on a scope grammar the jar does not parse would be two unread declarations instead of one.
 
-### 39. `PUT` erases fields the client cannot read back (generator `FEAT-2026-0174`, reserved)
+### 39. `PUT` erases fields the client cannot read back (generator `FEAT-2026-0174`, reserved; **built by `FEAT-2026-0196` in `0.14.0`**)
 
-**Status:** kit documents the current behaviour (`API_Handbook.md` §1.4.1). Generator-side ask, **not built**. Raised in `restomanager-specs`' `write-back-semantics-unreadable-fields.md`, 2026-09-16.
+**Status:** **largely shipped in generator `0.14.0`**, under `FEAT-2026-0196` gate 3 rather than the reserved `FEAT-2026-0174`. The generated C# `Replace` now keeps the stored value of every masked and `writeOnly` property its body leaves `null`; the kit documents it at `API_Handbook.md` §1.4.1. One half of the ask was not built as asked (`null` keeps rather than clears), and the rider ships but does not fire at `0.14.0` — see *At `0.14.0`* below and §42. Raised in `restomanager-specs`' `write-back-semantics-unreadable-fields.md`, 2026-09-16.
 
 The consumer found that §1.4's *"missing fields reset to defaults"* erases every `writeOnly` property on a GET → PUT round trip. They adopted a local contract: for a field the client cannot read back (`writeOnly`, masked, or crypto-shredded), **absent = keep, `null` = clear, value = set**. They added a rider that no `New{Resource}` may `require` such a field, and asked the kit to adopt both.
 
 **Not adopted as a contract, because the jar does the opposite.** Generator `0.12.0`'s `csharp/domain/Services/partials/replace.mustache` does `entity = mapper.Map<New{Resource}, {Resource}>(body)` and then restores only `Id` and `CreatedAt`. The AutoMapper profile is a bare `CreateMap<…>().ReverseMap()` with no member conditions. So an absent `writeOnly` property is reset. That was the handbook's literal claim, and it is accurate. Writing "absent = keep" into the kit would describe generated code that does not exist. The rider would also do harm today: requiring the field in `New{Resource}` is the only spec-level guard against the silent erase.
 
-**What the kit says instead:** §1.4.1 states the erase, notes that the generator applies no response masking (`x-protection.masking` reaches only `DataProtectionAudit`), and gives three options. Drop `PUT` for such resources (recommended), require the field so omitting it is rejected, or hand-write the replace.
+**What the kit said through `0.13.0`:** §1.4.1 stated the erase, noted that the generator applied no response masking (`x-protection.masking` reached only `DataProtectionAudit`), and gave three options: drop `PUT` for such resources (recommended), require the field so omitting it is rejected, or hand-write the replace. **Two of those statements stopped being true.** Masking is applied on the wire from `0.14.0` (`Vendor_Extensions.md` §1.5, "Masking on the wire, and `x-unmask`"), and requiring the field was already refused at `0.13.0` — measured, `MASKED_FIELD_WRITE_ONLY_REQUIRED` (ERROR) fires on a `New{Resource}` requiring a `writeOnly` property, and on `0.13.0` it fired for a POST-only body too.
 
 **Generator ask, for whoever picks up FEAT-2026-0174:**
 
@@ -1053,6 +1053,18 @@ The consumer found that §1.4's *"missing fields reset to defaults"* erases ever
 3. Exempt action-request bodies (`*Request`); a required `writeOnly` `pin` there is correct.
 
 **Kit follow-up when it lands:** rewrite §1.4.1 around the new semantics, keep option 1 as advice rather than a requirement, and check the rider's severity in the jar before documenting it.
+
+**At `0.14.0`, measured on a generated fixture** (the generator's own `api-writeback` fixture, regenerated with the released jar):
+
+| ask | shipped as |
+|---|---|
+| 1. keep the stored value of an unreadable field the body omits | **yes** — every masked (declared or default) and every `writeOnly` property is captured before the body is mapped and restored when the mapped value is `null`, on both the aggregate and the related-entity render path. Every other property is still replaced. |
+| 1. `null` clears | **no** — `null` **keeps**. The generated C# body class cannot tell absent from `null`. Clearing is a `PATCH`, where `Entity.Update` applies a `nullable: true` masked/`writeOnly` field through `Optional<T>`. |
+| — echo detection | not asked, not built — a body carrying the read-back mask stores it. The kit recommends a `pattern`. |
+| 2. no `New{Resource}` used as a `PUT` body may require such a field | **ships as ERROR** (`MASKED_FIELD_WRITE_ONLY_REQUIRED` / `MASKED_FIELD_MASKING_REQUIRED`), narrowed to bodies a PUT takes by `$ref` — and **does not fire** at `0.14.0`; see §42. |
+| 3. exempt `*Request` bodies | yes — only `New*` schemas are checked. |
+
+**Kit follow-up done:** §1.4.1 is rewritten around the write-back; option 1 (prefer `PATCH`) stays as advice; the old option 2 ("require the field") is withdrawn, since it is the shape the rider refuses.
 
 ### 40. `x-derived-from` — a declarable cross-row seed (`clabonte/generator#1644`, awaiting design)
 
@@ -1107,6 +1119,16 @@ userRole:
 5. `PILLAR_CROSS_BOUNDARY_REFERENCE` is still ERROR on an undeclared cross-pillar `belongsTo`, and a `holds` + `Read{Entity}` pair still suppresses it.
 
 **Out of scope, still open:** the optional strict-ownership flag (`pillars.requireComplete`) from the issue is a separate generator follow-up; the kit documents nothing for it.
+
+### 42. Three `0.14.0` jar behaviours that contradict the generator's own docs (masking, `x-unmask`, `PUT`)
+
+**Status:** kit documents the jar's behaviour, not the generator docs'; generator-side, **not filed yet**. Found 2026-10-09 while measuring #139 / #140 against the released `0.14.0` jar (sha256 `5cd33122…cbd0`) on a copy of `hello-orders` with a masked, an encrypted and a `writeOnly` property, a `PUT`, and `x-unmask` variants.
+
+1. **`MASKED_FIELD_WRITE_ONLY_REQUIRED` / `MASKED_FIELD_MASKING_REQUIRED` never fire at `0.14.0`.** `MaskedFieldNotRequiredValidationRule` collects PUT bodies by reading each body schema's `$ref`; the validator hands it a spec whose references are already resolved, so it collects none. A `New{Resource}` that a PUT takes by `$ref` and that requires a `writeOnly` property validates `PASSED`, whether validated as a spec or through a project file. `0.13.0` reports the same spec as an ERROR. The CHANGELOG says the narrowing *"fire[s] only for a `New*` that some PUT takes by `$ref`"* — in practice it fires for none. **Kit stance:** `API_Handbook.md` §1.4.1 states the rule and says it is unenforced at this pin.
+2. **`UNMASK_PARAMETER_ON_LIST` misses a `{Resource}List` response.** Same cause: the rule detects a list by a bare `type: array` or a `$ref` to a `*List` schema, and the `$ref` is gone. `x-unmask` on a list GET returning `CustomerList` is reported as `UNMASK_VALUE_NOT_MASKED` once per enum value (*"masked: []"*). The spec is still refused, so nothing generates wrongly; the message points the author at the enum instead of the operation. On a non-GET, and on a GET returning `type: array`, the right code fires. **Kit stance:** `Vendor_Extensions.md` §1.5 names the mis-reported case.
+3. **A generated C# `Replace` does not accept the body `API_Handbook.md` §1.4 prescribes.** `Replace.completeConfiguration` throws `OPERATION_REPLACE_NON_ENTITY` (*"only supports Entity body parameters"*) unless the body is a non-aggregate `x-entity` schema, so a PUT taking `New{Resource}` — or the aggregate's own schema — aborts C# `service` generation. Measured identical on `0.13.0`, so it is not a `0.14.0` regression; the generator's own `api-writeback` fixture uses an entity body to reach the write-back. It also means the rider in item 1 and the write-back in §39 cannot meet in a project that generates a C# `service`: the rider guards a body shape the replace refuses. §39's earlier reading of `replace.mustache` (`mapper.Map<New{Resource}, {Resource}>`) did not survive measurement at these two pins. **Kit stance:** §1.4.1 says which body the generated replace accepts. §1.4's body rule is unchanged here; whether the kit or the generator moves is a decision for whoever files this.
+
+**Generator ask:** run both rules against the unresolved document (or recover the `$ref` names before resolution), and decide whether `Replace` should take `New{Resource}` as §1.4 and the generator's own `MASKED_FIELD_*` rationale assume.
 
 ---
 
