@@ -58,6 +58,11 @@ Language-coupling column: ✱ means the field is honoured only for a specific la
 | `encryption` | object | optional | — | Compliance floors and key scope for the `x-protection` axis. **Absent means no floors are applied and nothing warns** — see §15. |
 | `encryption.profiles[]` | array<string> | optional | — | `law25` \| `pci` \| `soc2`. Composed as a **union of floors, not a ladder**. See §15. |
 | `encryption.keyScope` | string | optional | — | `tenant` \| `global`. Governs `PROTECTION_ENCRYPTED_TENANT_SCOPE_REQUIRED` and the generated `EncryptionProfile.DeclaredKeyScope`. Absent disables both. See §15. |
+| `authorization` | object | optional | ✱ C# runtime; validation for all | Authorization mode and the claims the generated C# runtime reads. Absent is `mode: roles`, byte-identical to before generator `0.14.0`. See §16. |
+| `authorization.mode` | enum | optional | — | `roles` (default) \| `scopes`. `scopes` raises the role/scope coherence WARNINGs to ERROR and gates C# controllers with `[ScopesRequired]`. See §16. |
+| `authorization.shadow` | boolean | optional | ✱ C# only | Emit both gates and log divergence; never decides by scopes. Requires `mode: scopes`. |
+| `authorization.claims.{roles,userId,rolesShape,roleKey}` | string | optional | ✱ C# only | Claim types and shape for the generated `ClaimsPrincipalReader`. Defaults `roles`, `sub`, `name`, `role`. |
+| `authorization.kioskSession.scheme` | string | optional | ✱ C# only | Authentication scheme of a kiosk-session principal. Absent makes `x-kiosk-session` inert. |
 | `groups[]` | array<object> | yes for generation | — | One artifact group per output tree. |
 | `groups[].name` | string | recommended | — | Human-readable group label; used by `--group` and diagnostics. |
 | `groups[].description` | string | optional | — | Free-form description. |
@@ -924,6 +929,9 @@ The project file fails to load when any of the following conditions hold. All er
 | `UNKNOWN_PILLAR_FILTER` | `groups[].pillar` names a pillar `info.x-pillars` does not declare — or the registry is absent or empty. Raised at filter-application time, not at parse time. |
 | `EMPTY_PILLAR_DOMAINS` | `groups[].pillar` names a pillar that owns zero domains. |
 | `UNKNOWN_LANGUAGE` | `groups[].language` not registered. |
+| `UNKNOWN_AUTHORIZATION_MODE` | `authorization.mode` is neither `roles` nor `scopes` (§16). |
+| `AUTHORIZATION_SHADOW_REQUIRES_SCOPES_MODE` | `authorization.shadow: true` with `mode` absent or `roles` (§16). |
+| `UNKNOWN_ROLES_SHAPE` | `authorization.claims.rolesShape` is neither `name` nor `object` (§16). |
 | (cleanScope) | A `cleanScope` entry is absolute or contains `..` segments. |
 | `PERSISTENCE_*` | Persistence-block validation failures. The full list lives in §6.6 alongside the field definitions. |
 
@@ -959,6 +967,19 @@ The full live inventory is available via `java -jar specfuse-generator.jar templ
 `apiMapper`, `apiModel`, `domainModel`, `entity`, `annotatedEntity`, `valueObject`, `valueObjectConverter`, `enum`, `entityTypeConfiguration`, `repository`, `repositoryInterface`, `serviceInterface`, `service`, `dbContext`, `apiController`, `applicationServiceInterface`, `applicationService`, `apiFunctionalTest`, `useCaseInterface`, `entityBuilder`, `newDtoBuilder`, `updateDtoBuilder`, `valueObjectFake`, `apiModelFake`, `testSeed`, `serviceUnitTest`, `autoMapperTest`, `valueObjectTest`, `efConfigTest`, `authMatrixTest`, `eventContractTest`, `infrastructureProject`, `domainProject`, `domainValidation`, `domainExceptions`, `apiProject`, `event` (+ legacy alias `asyncEvent`), `asyncEventHandler`, `asyncJobInterface`, `asyncConsumerRegistration`, `azureFunctionTopicTrigger`, `azureFunctionTimerTrigger`, `eventBuilder`, `tenancyMarker`, `eventRuntime`, `eventRuntimeImpl`, `eventRuntimeFunctions`, `snapshot`, `snapshotContext`, `recipeFixture`, `scenarioFunctionalTest`, `heldEntity`, `heldEntityConfiguration`, `heldEntityHydration`, `heldEntityHydrationTrigger` (generator `0.6.0`, for `holds`, see `Vendor_Extensions.md` §14), `fieldEncryptionConformanceTest` (generator `0.12.0`: known-answer vectors for the generated field-encryption format, with test-only key fakes).
 
 `applicationService` is not printed by `templates` on `0.11.0` or `0.12.0`, though the jar still binds the name. It is kept here until that is confirmed either way.
+
+
+#### Authorization artifacts (generator `0.14.0`)
+
+Three opt-in artifact ids, none in the lists above, which predate them. Each is emitted only when registered, because existing C# consumers own hand-written types of the same names and unconditional emission would break their next regeneration.
+
+| Id | Languages | What it emits |
+|---|---|---|
+| `authorizationRuntime` | C#, TypeScript, Dart, Python | **C#** (API group): the whole gate in `{apiPackage}.Authorization` — `AuthorizedRole`, `RoleRequiredAttribute` / `RoleRequirement` / `RoleAuthorizationHandler` / `RoleAuthorizationFilter`, `ScopesRequiredAttribute` / `ScopeRequirement` / `ScopeAuthorizationHandler` / `ScopeAuthorizationFilter`, `PrincipalRole`, `IPrincipalReader` + `ClaimsPrincipalReader`, `IPrincipalPolicy` (allow-all default), `ITenantResourceCheck`, `IKioskSessionPolicy` + `KioskSessionPolicy`, `IGrantResolver`, `RoleGrants`, `ScopeCatalog`, `GrantMatcher`, and `AddSpecfuseAuthorization()`. **TypeScript, Dart, Python**: `RoleGrants`, `ScopeCatalog` and the grant matcher only (`grantCovers` / `hasGrant`, `grant_covers` / `has_grant`). |
+| `authorizationConformanceTest` | C#, TypeScript, Dart, Python | **C#** (Test group): `AuthorizationConformanceTests`, `FakeTenantResourceCheck`, `RoleClaimsTestPrincipalFactory`, `AuthorizationTestSupport.ForbiddenRoles`. Registering it also moves the generated `WithForbiddenRole` theory onto `ForbiddenRoles`, derived as registry − listed − superuser − implicit with no role hierarchy. **TypeScript, Dart, Python**: one test per grant-matcher known-answer vector, the table every runtime is proved against so no two disagree on a wildcard. |
+| `authorizationMatrix` | Markdown | See §11.5. |
+
+**The C# runtime is the same set of files in either `mode`** — measured: 23 files under `roles` and under `scopes`. `mode` changes the attribute on each controller action (§16), not the runtime. `AddSpecfuseAuthorization()` registers every service with `TryAdd`, so a host registration made before or after it wins, and registers `ITenantResourceCheck` as a **throwing placeholder**: a host that forgets to implement it fails by name on first use. The decision order is `IPrincipalPolicy`, then effective roles (claimed ∪ `implicit`), then a `superuser` role passes without the tenant check, then a listed `implicit` role passes without it, then listed ∩ held — empty is `403` — then `ITenantResourceCheck` with exactly the holding roles. A role not listed in `x-roles` never reaches the tenant check, so a hand-written handler that let a resource check admit unlisted roles does not carry over.
 
 ### 11.2 Python artifacts
 
@@ -1001,7 +1022,7 @@ These ids still generate the same files as their replacement, and each logs a `W
 
 **Snapshot date:** 2026-09-02. **Live source:** `templates --language markdown`.
 
-`scenarioDocument`, `scenarioIndex`, `recipeDocumentation`, `entityDiagram`, `eventCatalog`, `channelTopology`, `docsIndex`, `dataProtectionAudit`.
+`scenarioDocument`, `scenarioIndex`, `recipeDocumentation`, `entityDiagram`, `eventCatalog`, `channelTopology`, `docsIndex`, `dataProtectionAudit`, `authorizationMatrix` (generator `0.14.0`).
 
 #### `dataProtectionAudit` (generator 0.9.0)
 
@@ -1035,6 +1056,11 @@ Emits `data-protection-audit.md` plus a machine-readable companion `data-protect
 The runtime contracts behind these declarations — the key provider, the failure classifier, the poisoned-field tracker — are documented in `Field_Encryption_Runtime.md`.
 
 Key custody, rotation cadence, split knowledge and dual control are runtime properties of the key provider and appear nowhere — the document states that silence explicitly rather than letting an empty section read as a pass.
+
+
+#### `authorizationMatrix` (generator `0.14.0`)
+
+Emits `AUTHORIZATION_MATRIX.md` and a `role-grants.json` companion from `info.x-roles`. The Markdown has one row per operation: its scopes, its declared `x-roles` verbatim, and **`Reachable by`**, the roles whose grants cover every scope it requires. A row where the two role columns differ is exactly the divergence `authorization.mode: scopes` would turn into behaviour, so this is the document to read before switching (§16). The JSON carries, per role, its declared grants, `implicit` / `superuser` / `delegable`, the scopes it covers and the operations it reaches. Opt-in like `dataProtectionAudit`: not emitted unless registered in a Markdown group's `artifacts[]`. Useful only against the mapping form of `info.x-roles` (`Vendor_Extensions.md` §3.1); a sequence declares no grants.
 
 ---
 
@@ -1232,6 +1258,66 @@ Anything other than `tenant` reads as "not tenant scoped" for the first check an
 ### Where the declarations it governs live
 
 The block sets floors; the per-property decisions are `x-classification` and `x-protection` in the OpenAPI document (`Vendor_Extensions.md` §1.5), and the deliverable that renders both is the `dataProtectionAudit` artifact (§11.5). None of the three is reachable from the other two by inspection, which is why each names the others.
+
+---
+
+## 16. Authorization
+
+**From generator `0.14.0`.** A top-level block choosing how generated code decides authorization, and how the generated C# runtime reads the caller's claims. Every key is optional and the block may be absent: absent is `mode: roles`, which produces output **byte-identical** to `0.13.0`.
+
+```json
+{
+  "authorization": {
+    "mode": "scopes",
+    "shadow": true,
+    "claims": {
+      "roles": "roles",
+      "userId": "sub",
+      "rolesShape": "object",
+      "roleKey": "role"
+    },
+    "kioskSession": { "scheme": "KioskSession" }
+  }
+}
+```
+
+| Key | Default | What it does |
+|---|---|---|
+| `mode` | `roles` | `roles` \| `scopes`. Anything else fails the load (`UNKNOWN_AUTHORIZATION_MODE`). See below. |
+| `shadow` | `false` | `true` emits **both** gates and compares them, never deciding by scopes. Requires `mode: scopes`; with `roles` — including an absent `mode` — it fails the load (`AUTHORIZATION_SHADOW_REQUIRES_SCOPES_MODE`). |
+| `claims.roles` | `roles` | The role-claim type the generated `ClaimsPrincipalReader` reads. |
+| `claims.userId` | `sub` | The user-id claim type. |
+| `claims.rolesShape` | `name` | `name` (the claim value is the role name) \| `object` (the value is a JSON object carrying the role name under `roleKey`). Anything else fails the load (`UNKNOWN_ROLES_SHAPE`). |
+| `claims.roleKey` | `role` | Under `rolesShape: object`, the property holding the role name. Typed tenant ids are read through `tenancy` (§4), not here; every other key of the object is kept on the principal's role as an attribute. |
+| `kioskSession.scheme` | none | The authentication scheme a kiosk-session principal signs in under. Absent, `x-kiosk-session` is inert (`Vendor_Extensions.md` §3.3). |
+
+`claims` and `kioskSession` are read only by the generated runtime; `mode` and `shadow` also change validation and controllers.
+
+### `mode`
+
+**It changes three things, and nothing on the wire.** No DTO, database column or event contract moves.
+
+- **Severity.** The role/scope coherence rules (`Vendor_Extensions.md` §3.1) and `OPERATION_SCOPE_UNBOUND` are WARNING under `roles` and **ERROR** under `scopes`. `ROLE_DEAD_GRANT`, `SCOPE_UNHELD` and `OPERATION_SCOPE_SHAPE_INVALID` stay WARNING in both. Measured on a mapping-form copy of `hello-orders`: four coherence WARNINGs under the default became four ERRORs, and `validate` went from `PASSED` to `FAILED`, with only `"authorization": {"mode": "scopes"}` added.
+- **The controller gate.** A generated C# controller action carries `[ScopesRequired("<scope>", …)]` from its `x-scopes` instead of `[RoleRequired(AuthorizedRole.X, …)]` from its `x-roles`. Measured on the same copy.
+- **Test derivation.** An operation declaring only `x-scopes` gets its roles derived — the roles whose grants cover every declared scope — for `AuthorizationMatrixTest`, the functional-test theories and recipe-fixture role selection, which used to read `x-roles` only.
+
+**Switch only on a coherent registry.** `scopes` admits whichever roles' grants cover an operation's scopes, whatever its `x-roles` lists, so every `OPERATION_ROLE_UNLISTED` WARNING under `roles` is a role that `scopes` lets in. Read the `authorizationMatrix` artifact (§11.5) first, or run `shadow` in production before switching.
+
+**The attribute is not the runtime.** `mode: scopes` changes the attribute on the controller whether or not the group registers `authorizationRuntime` — measured: without it, the controllers still carry `[ScopesRequired]` and import `{apiPackage}.Authorization`, which then has to supply that type. Register `authorizationRuntime` (§11.1), or own a hand-written `ScopesRequiredAttribute` in that namespace.
+
+### `shadow`
+
+For moving from roles to scopes without betting a release on it. Each action carries both `[RoleRequired]` and `[ScopesRequired(…, OperationId = "…")]`. **The role decision always governs the request.** The generated `ScopeAuthorizationFilter` evaluates the scope requirement alongside it, and when the two disagree it logs a structured event and increments the counter `authorization.divergence{operationId, decidedBy}` on the meter `Specfuse.Authorization`. A scope evaluation that throws is logged and never rethrown, so a defect on the scope side cannot fail a live request. Measured: both attributes and the counter are emitted.
+
+### Where it is checked
+
+| Code | Fires when |
+|---|---|
+| `UNKNOWN_AUTHORIZATION_MODE` | `mode` is neither `roles` nor `scopes`. |
+| `AUTHORIZATION_SHADOW_REQUIRES_SCOPES_MODE` | `shadow: true` with `mode` absent or `roles`. |
+| `UNKNOWN_ROLES_SHAPE` | `claims.rolesShape` is neither `name` nor `object`. |
+
+All three fail `Project.Load`. The CLI prints the message, not the code (`Validation failed: Authorization mode 'bogus' is not recognized. Valid modes: roles | scopes.`).
 
 ---
 

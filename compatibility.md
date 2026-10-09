@@ -640,6 +640,8 @@ This is the `0.7.0` erratum (follow-up 18) inverted. There the jar **rejected** 
 
 ### 28. `x-scopes` grammar rewritten to `<domain>[.Entity].<operation>`
 
+> **Superseded in part — see §43.** *"`x-scopes` is read by nothing"* was true of the jars it was measured on (`0.5.8`, re-verified on `0.9.0`). Generator `0.11.0` added a shape check and `0.14.0` a registry check, role/scope coherence and a scope-gated runtime. The grammar decisions below stand; the reasoning that the kit cannot be stricter than the jar does not.
+
 **Status:** kit-side work **done** (`Vendor_Extensions.md` §3.2, `API_Handbook.md` §14 and §"Authorization", three Spectral rules replacing one, `schemas/spectral/fixtures/scope-grammar.yaml`, a both-directions CI step, `examples/hello-orders/` and `samples/endpoint-samples.yaml` migrated). One generator-side item.
 
 **`x-scopes` is read by nothing.** Zero occurrences across the generator source, against controls in the same search finding `x-roles` in 8 files and `x-public` in 3. The kit's Spectral rules are the only enforcement this vocabulary has ever had, and a project enforcing scopes at runtime is doing it in hand-written middleware. Third unread extension found in this batch, after `x-ai-safe` (follow-up 25) and `x-content` (follow-up 27) — **generator action** (`clabonte/generator#1195`): parse `x-scopes`, or say it will not, so the kit knows whether it is documenting a contract or a convention.
@@ -965,6 +967,8 @@ The boolean-flag rule has been live since the pin the kit carried at `0.12.0`, s
 
 ### 37. `info.x-roles` was referenced twice, defined nowhere, and contradicted by §3.1 — and the kit's own scaffold disabled the check
 
+> **Since `0.14.0`:** the *"Not adopted: roles carrying grants"* paragraph at the end of this section is overtaken. The generator built it (§38, §43); the array form remains fully supported.
+
 **Status:** kit-side **ADOPTED** (this change), including the scaffold. Reported in the consumer handoff `role-as-grant-bundle.md` item 1; item 2 is recorded below as a generator-side follow-up and is **not** built here.
 
 `Vendor_Extensions.md` named `info.x-roles` twice as an existing registry — §3.2 (*"generator-enforced and validated against `info.x-roles`"*) and §14.2 (*"the third registry of the same family as `info.x-domains` and `info.x-roles`"*) — while §3.1, the section a reader actually goes to, said the opposite:
@@ -1016,7 +1020,7 @@ Measured on `examples/hello-orders`, errors `0` throughout: **warnings 21 → 19
 
 ### 38. `info.x-roles` entries cannot declare what a role may do (`clabonte/generator`, not yet filed)
 
-**Status:** generator-side ask, **not built**. Raised in `role-as-grant-bundle.md` item 2.
+**Status:** **built — generator `0.14.0`** (`FEAT-2026-0198`, with `FEAT-2026-0200` adding the scope-gated runtime). Documented in `Vendor_Extensions.md` §3.1 and `Project_File.md` §16; see §43. The text below is the original ask, kept as written. Raised in `role-as-grant-bundle.md` item 2.
 
 A role is a bare name. `x-scopes` (§3.2) defines what a grant looks like, `x-roles` (§3.1) names who may call an operation, and nothing states **which grants a role holds** — so the two halves cannot be checked against each other. An operation may require `payroll.PayrollRun.write` and list `x-roles: [Employee]`, and no rule in the kit or the generator can notice that `Employee` was never meant to hold payroll write.
 
@@ -1129,6 +1133,44 @@ userRole:
 3. **A generated C# `Replace` does not accept the body `API_Handbook.md` §1.4 prescribes** (`clabonte/generator#2371`, filed as a question: which side moves). `Replace.completeConfiguration` throws `OPERATION_REPLACE_NON_ENTITY` (*"only supports Entity body parameters"*) unless the body is a non-aggregate `x-entity` schema, so a PUT taking `New{Resource}` — or the aggregate's own schema — aborts C# `service` generation. Measured identical on `0.13.0`, so it is not a `0.14.0` regression; the generator's own `api-writeback` fixture uses an entity body to reach the write-back. It also means the rider in item 1 and the write-back in §39 cannot meet in a project that generates a C# `service`: the rider guards a body shape the replace refuses. §39's earlier reading of `replace.mustache` (`mapper.Map<New{Resource}, {Resource}>`) did not survive measurement at these two pins. **Kit stance:** §1.4.1 says which body the generated replace accepts. §1.4's body rule is unchanged here; whether the kit or the generator moves is a decision for whoever files this.
 
 **Generator ask:** run both rules against the unresolved document (or recover the `$ref` names before resolution), and decide whether `Replace` should take `New{Resource}` as §1.4 and the generator's own `MASKED_FIELD_*` rationale assume.
+
+### 43. Authorization at generator `0.14.0` — roles with grants, `x-scopes` read three ways, and a runtime the CHANGELOG half-describes (#140)
+
+**Status:** kit-side **done** — `Vendor_Extensions.md` §3.1 (mapping form, grant matching, the nine coherence codes), §3.2 (what reads `x-scopes`), new §3.3 (`x-kiosk-session`); `Project_File.md` new §16 (`authorization`), Quick Reference, §9, §11.1 and §11.5 (three new artifact ids). Every claim measured on a copy of `hello-orders` against the released `0.14.0` jar (sha256 `5cd33122…cbd0`), 2026-10-09.
+
+**What `0.14.0` ships, and where it is recorded.**
+
+| feature | generator | in the `0.14.0` CHANGELOG? |
+|---|---|---|
+| `info.x-roles` mapping form, `GrantMatcher`, nine coherence codes, `authorizationMatrix` | `FEAT-2026-0198` | yes |
+| `authorization: { mode, shadow }`, `[ScopesRequired]`, divergence counter, `ARAZZO_ACTOR_LACKS_SCOPE` | `FEAT-2026-0200` | yes |
+| `authorizationRuntime`, `authorizationConformanceTest`, `x-kiosk-session`, `authorization.claims`, `authorization.kioskSession` | `FEAT-2026-0199` | **no** |
+
+**`FEAT-2026-0199` is in the jar and absent from its CHANGELOG.** The `0.14.0` entry mentions `authorizationRuntime` and `authorizationConformanceTest` only in passing, inside the `FEAT-2026-0200` bullet, as if they already existed; `0.13.0` does not have them (`templates` on the two jars differs by exactly these two ids plus `authorizationMatrix`). Its only description is the generator's `docs/FEAT-2026-0199-authorization-runtime-migration.md`. A consumer reading the CHANGELOG to plan an upgrade would not learn that a 23-file C# authorization runtime, an operation key and two project-file blocks arrived. Worth a generator-side CHANGELOG fix; the kit documents them from the jar.
+
+**Measured** (mapping-form copy of `hello-orders`, `validate` on the project file unless noted):
+
+1. **Membership is unchanged by the mapping form.** An operation listing an undeclared `Ghost` is `OPERATION_UNKNOWN_ROLE` (ERROR) in both shapes. This is what §3.1's old warning was about: on `0.13.0` a map read as *no registry*. That warning now applies only below `0.14.0`.
+2. **Coherence fires at WARNING by default, ERROR under `mode: scopes`.** Four findings (`OPERATION_ROLE_LACKS_SCOPE` ×2, `OPERATION_ROLE_UNLISTED` ×2): `PASSED` with 4 WARNINGs, then `FAILED` with 4 ERRORs once `"authorization": {"mode": "scopes"}` was added and nothing else.
+3. **`order.*` is `ROLE_GRANT_INVALID` (ERROR)**; `billing.read` (unregistered domain) and `customer.Ghost.read` (not an `x-entity`) are `ROLE_GRANT_UNBOUND`; all three also `ROLE_DEAD_GRANT`.
+4. **Project-file refusals:** `mode: bogus` → `UNKNOWN_AUTHORIZATION_MODE`; `shadow: true` with `mode: roles` **or with no `mode`** → `AUTHORIZATION_SHADOW_REQUIRES_SCOPES_MODE`; `rolesShape: array` → `UNKNOWN_ROLES_SHAPE`. All fail `Project.Load`; the CLI prints the message without the code.
+5. **On the sequence form:** `hello-orders` itself gains **no** authorization diagnostic on `0.14.0`. A scratch scope in an unregistered domain is still `OPERATION_SCOPE_UNBOUND` — the one rule that runs on either shape — WARNING by default, ERROR under `scopes`. A scope ending `.admin` is `OPERATION_SCOPE_SHAPE_INVALID`, **WARNING in both modes**.
+6. **Generation** (C# API group with `authorizationRuntime`, plus a Markdown group with `authorizationMatrix`): `roles` → `[RoleRequired(AuthorizedRole.Admin, …)]`; `scopes` → `[ScopesRequired("customer.Customer.read")]`; `scopes` + `shadow` → both, with `OperationId`, and `ScopeAuthorizationFilter` registering the `authorization.divergence` counter. The runtime is 23 files in either mode. **Without `authorizationRuntime`, `scopes` still emits `[ScopesRequired]`**, importing `{apiPackage}.Authorization` — the consumer must then own that type.
+7. **`x-kiosk-session`:** with no `authorization.kioskSession.scheme`, `KioskSessionPolicy.IsAllowed` is `return true`; with `scheme: KioskSession`, `RoleAuthorizationFilter` tests `AuthenticationType == "KioskSession"` and the allowlist holds exactly the declaring operation's route.
+8. **`OPERATION_SCOPE_SHAPE_INVALID` predates `0.14.0`:** present in the `0.11.0`, `0.12.0` and `0.13.0` jars, absent from `0.9.0` (`0.10.0` was never pinned).
+
+**The kit is now stricter than the jar on `x-scopes`, and that is recorded, not changed.** §28 justified error-severity rules on the ground that the jar had no opinion. It now has one, at WARNING by default:
+
+| kit rule | kit | jar, `mode: roles` | jar, `mode: scopes` |
+|---|---|---|---|
+| `specfuse-auth-scopes-shape` | error, checks casing | `OPERATION_SCOPE_SHAPE_INVALID` WARNING, no casing | WARNING |
+| `specfuse-auth-scopes-registry` | error | `OPERATION_SCOPE_UNBOUND` WARNING | ERROR |
+
+The kit keeps both at `error`. The kit's grammar is the authoritative one (the jar's own doc says it follows `Vendor_Extensions.md` §3.2), the rules have shipped at `error` since kit `0.9.0` behind `spectral-ratchet.py`, and loosening a lint because the jar is lenient by default would turn a migration aid into permission. A project that wants the jar's posture overrides the severity in its own ruleset. Revisit if the generator promotes either code to ERROR in its default mode.
+
+**The kit's Spectral says nothing about the mapping form**, by design — every coherence rule needs the registry and every operation at once, which is the generator's cross-spec validator (§38's original argument). Measured: the kit ruleset lints the mapping-form bundle with 0 errors. The `example-regen` CI step that asserts `hello-orders`' registry covers its roles takes `set(registry)`, which over a mapping yields its keys, so it keeps working if the example ever adopts the mapping form.
+
+**Deliberately not done here:** `hello-orders` stays on the sequence form (its role set is a teaching example, and the coherence demo would need its `x-roles` reshaped); `x-unmask` and response masking are #139 / §42; `authorization.grantsEndpoint`, tolerated by the parser and owned by a later generator feature, is not documented because nothing reads it.
 
 ---
 
