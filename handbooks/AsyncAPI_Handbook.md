@@ -1065,7 +1065,7 @@ x-ai:
 | `entities` | When `enabled: true` | object | Declares every entity the worker reads/writes (see below) |
 | `model` | No | string | Preferred model (informational) |
 | `promptTemplate` | No | string | Path relative to `prompts/` |
-| `capabilities` | No | array | One or more of: `structuredOutput`, `toolUse`, `rag`, `vision`, `streaming`, `multiTurn`, `batchProcessing` |
+| `capabilities` | No | array | One or more of: `structuredOutput`, `toolUse`, `rag`, `vision`, `streaming`, `multiTurn`, `batchProcessing`. **Informational, read by nothing** — `streaming` and `multiTurn` generate no streaming transport or conversation state |
 | `estimatedTokens` | No | object | `{input, output}` |
 | `maxLatency` | No | string (duration) | Max acceptable latency for the AI call |
 | `fallback` | No | string | `skip`, `queue`, `default`. Default: `queue` |

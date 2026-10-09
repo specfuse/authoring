@@ -30,6 +30,8 @@ This handbook defines authoritative rules for designing REST APIs and OpenAPI sp
   - Never inline inside a model. Define as a separate schema named `{Resource}{EnumName}` (e.g., `OrderStatus`).
   - Enum values are **camelCase**.
   - Clients must tolerate new/unknown enum values.
+  - **Reuse before you define.** Check the shared enum files (`common/enums.yaml`, and the enums of the domain you are in) before adding one. An enum that is identical across domains belongs in `common/` with `x-domain: common`, defined once. Identical values with a different meaning stay separate: a cost scale and a confidence scale can both be `low/medium/high` and are still two enums.
+  - **Reading `ENUM_VALUE_SET_DUPLICATE`.** The generator compares every pair of enums and reports those whose value sets overlap with a Jaccard ratio of 0.5 or more, ranked higher when the two names share a word, and capped at 50 findings. The message shows the ratio, e.g. `(Jaccard 0.67, shared name token)`. **Jaccard 1.00** means identical value sets: consolidate, unless the meanings differ as above. **Below 1.00** is usually two different enums that share some values; leave them. It is a SUGGESTION, never a build failure. AsyncAPI's equivalent guidance is `AsyncAPI_Handbook.md` §6.5 *Shared Enums*.
 
 ---
 
@@ -3122,29 +3124,9 @@ parameters:
 
 Advanced patterns for enterprise-scale AI integration:
 
-#### 8. Webhook Subscriptions
-**Purpose**: Real-time notifications for AI agents.
+#### 8. Webhooks — not yet specified
 
-```yaml
-components:
-  schemas:
-    WebhookSubscription:
-      type: object
-      properties:
-        id: { type: string, format: uuid }
-        url: { type: string, format: uri }
-        events:
-          type: array
-          items:
-            enum: ["customer.created", "customer.updated", "order.submitted"]
-        secret: { type: string, description: "For signature verification" }
-        active: { type: boolean, default: true }
-        filters:
-          type: object
-          properties:
-            tenantId: { type: string }
-            customerId: { type: string }
-```
+Webhooks have no Specfuse vocabulary yet: nothing in the kit or the generator declares, validates or generates them. Tracked in `clabonte/generator#2169` (inbound) and `clabonte/generator#2170` (outbound); until they land, do not model a webhook surface in the spec.
 
 #### 9. Transaction Support
 **Purpose**: Multi-step operations with rollback capability.

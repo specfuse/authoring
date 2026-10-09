@@ -74,8 +74,8 @@ Error:                  # shared shape, no owning domain
 
 - **Exempt:** `x-entity` schemas, pure `$ref` aliases, and the derived shapes of an entity (`New{E}`, `Basic{E}`, `Update{E}`, `{E}List`) — the generator resolves those to their main model's domain.
 - **`common` is reserved.** It means *shared, no owning domain*, and it MUST NOT itself be registered in `info.x-domains` — registering it is `SCHEMA_DOMAIN_UNREGISTERED` against the registry.
-- **What counts is `components.schemas` after bundling.** A shape you only `$ref` from an operation file is hoisted there by `redocly bundle`, so it needs the key in its source file even though no hand-written `components` block names it.
-- A schema that references a schema owned by **another** domain is reported as `SCHEMA_DOMAIN_CROSS_REFERENCED` (WARNING) — a boundary hint, not a failure; `common` is never a cross-reference.
+- **What counts is `components.schemas` after bundling.** A shape you only `$ref` from an operation file is hoisted there by `redocly bundle`, so it needs the key in its source file even though no hand-written `components` block names it. The bundle is the contract: folder layout does not survive bundling, so a schema's `domains/{domain}/` location says nothing to the generator, and the key is the only record of its owner that does.
+- A schema that references a schema owned by **another** domain is reported as `SCHEMA_DOMAIN_CROSS_REFERENCED` (WARNING) — a boundary hint, not a failure; `common` is never a cross-reference. **Entity projections are exempt**: a `Basic{E}` (or other derived shape of a registered entity) embedded in another domain's schema — a work item holding a `BasicUser` summary — is normal DDD and is not reported. Referencing the full entity, or a domain-owned enum or value shape, across the boundary is.
 
 **Spec-author action on the `0.13.0` pin.** Run `validate` on a fresh bundle and add `x-domain` to every schema it names. This rule shipped in `0.13.0` and the kit missed it at that pin bump (`compatibility.md`, `v0.20.0` row); the kit's own example and new-project scaffold both failed it until the fix that added this paragraph. No kit Spectral mirror yet — the derived-shape exemption needs the entity set, which a schema-local rule does not have.
 
@@ -1899,24 +1899,26 @@ The disambiguation is the generator's own (`ProtectionDefinition.isSubKey` over 
 
 The trap is the word *effective*: the set is the usage site's `queryable` **if it declares one**, and the definition's `defaultQueryable` otherwise. So a usage site that declares no `queryable` at all inherits one and fails, and the fix is to declare `queryable: []` explicitly rather than to remove the key.
 
-**The value object's own schema is a second declaration site, and the usage site wins outright.** From generator `0.13.0` an `x-protection` on the `x-value-object` definition emits the same columns the usage-site form does. Where both declare, **the embed's block is discarded in full — not layered underneath**:
+**The embed property is a second declaration site, and the usage site wins outright.** From generator `0.13.0` an `x-protection` on the entity's own embed property — `components.schemas.<Entity>.properties.<prop>`, where `x-classification` already sits — emits the same columns the usage-site form does. (A `protection` key under `x-value-object` on the value object's own schema is not one of the sites: the generator does not read it.) Where both declare, **the embed's block is discarded in full — not layered underneath**:
 
 ```yaml
-PostalAddress:
-  x-value-object:
-    defaultStorage: flatten
-    protection:                       # definition site
-      line1: { atRest: hashed, rationale: ... }
-      city:  { atRest: none,  rationale: ... }
-
 Person:
   x-entity:
     valueObjects:
       residenceAddress:
         protection: { atRest: encrypted, rationale: ... }   # usage site — this one wins
+  properties:
+    residenceAddress:                 # embed — second declaration site
+      allOf: [ { $ref: '#/components/schemas/PostalAddress' } ]
+      x-classification: [pii]
+      x-protection:
+        line1: { atRest: hashed, rationale: ... }
+        city:  { atRest: none,  rationale: ... }
 ```
 
-Measured: every member is `encrypted`. The definition's per-member map does not survive, and **nothing warns**. So a usage site declaring a scalar over an embed that declared per-member nuance silently discards it — and can *weaken* protection at a site whose author believed they were inheriting. A warning for the both-declared case is filed as `clabonte/generator#1995`; the precedence itself is settled and intentional.
+Every member is `encrypted`; the embed's per-member map does not survive. So a usage site declaring a scalar over an embed that declared per-member nuance discards it — and can *weaken* protection at a site whose author believed they were inheriting. From generator `0.13.0` this is reported as `VALUE_OBJECT_PROTECTION_DECLARED_TWICE` (WARNING): declare protection at one site. The precedence itself is settled and intentional.
+
+**Prefer the usage site even when it is the only declaration.** The embed form alone — `x-classification` plus `x-protection: { atRest: encrypted }` on an `allOf` embed of a value object whose members all have a sound canonical round-trip — **is** encrypted per member at generator `0.14.0`, but it is missing from `data-protection-audit.md` entirely (`clabonte/generator#2417`). Until that lands, `x-entity.valueObjects.<prop>.protection` is the form to use: it is the one the audit sees.
 
 > **The audit is coarser than the storage, deliberately.** A value object protected by a scalar usage-site declaration appears as **one row keyed by the embed property name** in both section 1 and the section 2 matrix of `data-protection-audit.md`, while `0.13.0` encrypts **per member**. An assessor reading `residenceAddress | encrypted` is seeing a summary of several columns, not one.
 
@@ -2426,6 +2428,12 @@ Outside enum schemas, prefer the standard `default` keyword on its own. Use `x-d
 
 **Scope**: Applied to operation objects (GET, POST, PUT, PATCH, DELETE)
 
+> **⚠ `codeGenHints` is read by nothing. Do not rely on it.**
+>
+> The generator parses all four hints — `cacheable`, `auditRequired`, `eventEmission`, `transactional` (plus the undocumented `async`) — into fields on its operation definition, and the category defaults below are applied the same way, but **no generator code or template reads those fields**. Declaring `cacheable: true` caches nothing, `auditRequired: true` logs nothing, `eventEmission: true` emits nothing and `transactional: true` opens no transaction; the spec lints and validates clean either way. Treat the block as a note to human readers. Caching design is tracked in `clabonte/generator#2173`.
+>
+> **Only four categories exist**: `aggregate`, `coordination`, `resource`, `query`. `reference`, `admin` and `discovery` were removed in generator `0.5.4` and are now a hard error (`compatibility.md`, kit `v0.5.4` row); they are kept below, struck through, only so older specs can be read. The "Code Generation" and "Patterns" lists describe design intent, not generated artifacts: what the category actually drives is operation resolution, whether an application service is generated, and the `QUERY_MUST_BE_GET` / `COORDINATION_NOT_GET` checks.
+
 **Schema**:
 ```yaml
 x-operation:
@@ -2434,9 +2442,9 @@ x-operation:
   properties:
     category:
       type: string
-      enum: [aggregate, reference, coordination, resource, admin, discovery, query]
+      enum: [aggregate, coordination, resource, query]  # reference, admin, discovery: removed in generator 0.5.4
       description: Operation category for code generation patterns
-    codeGenHints:
+    codeGenHints:   # read by nothing — see the banner above
       type: object
       properties:
         cacheable:
@@ -2464,9 +2472,7 @@ x-operation:
   - Patterns: CommandHandler, EventSourcing, UnitOfWork
   - Examples: `POST /tenants/{tenantId}/customers`, `PATCH /tenants/{tenantId}/settings`
 
-- **`reference`**: Read-only operations on system-wide reference data
-  - Code Generation: Repository, CacheLayer, ReadOnlyService
-  - Patterns: QueryHandler, CacheAside, ReadThrough
+- ~~**`reference`**: Read-only operations on system-wide reference data~~ — **removed in generator `0.5.4`; use `query` (a GET).** No cache layer or read-through pattern was ever generated for it.
   - Examples: `GET /catalogs`, `GET /catalogs/{catalogId}`
 
 - **`coordination`**: Operations that coordinate across multiple aggregates
@@ -2479,35 +2485,29 @@ x-operation:
   - Patterns: CRUD, ResourceManager, AccessControl
   - Examples: `GET /attachments/{attachmentId}`, `PATCH /attachments/{attachmentId}`
 
-- **`admin`**: Administrative operations with elevated permissions
+- ~~**`admin`**: Administrative operations with elevated permissions~~ — **removed in generator `0.5.4`**; gate the operation with `x-roles`/`x-scopes` instead
   - Code Generation: AdminService, AuditLogger, ElevatedPermissions
   - Patterns: AdminCommand, SystemOperation, ComplianceTracking
   - Examples: `POST /admin/templates`, `DELETE /admin/templates/{templateId}`
 
-- **`discovery`**: Public-facing discovery and search operations
+- ~~**`discovery`**: Public-facing discovery and search operations~~ — **removed in generator `0.5.4`; use `query`**
   - Code Generation: QueryService, SearchEngine, PublicAPI
   - Patterns: ReadModel, SearchIndex, PublicEndpoint
   - Examples: `GET /catalogs/items?category=foo`, `GET /tenants?region=us-east`
 
 - **`query`**: Computational operations that process input parameters to generate derived data
-  - Code Generation: QueryProcessor, ComputationEngine, CacheableService
+  - Code Generation: QueryProcessor, ComputationEngine (nothing is cached — see the banner)
   - Patterns: QueryHandler, Calculator, Preview, Projection
   - Examples: `GET /templates/preview`, `GET /reports/analytics`, `GET /calculations/pricing`
 
-**Default Values by Category**:
+**Default Values by Category** (applied to fields nothing reads — see the banner):
 ```yaml
 aggregate:
   cacheable: false, auditRequired: true, eventEmission: true, transactional: true
-reference:
-  cacheable: true, auditRequired: false, eventEmission: false, transactional: false
 coordination:
   cacheable: false, auditRequired: true, eventEmission: true, transactional: true
 resource:
   cacheable: false, auditRequired: true, eventEmission: false, transactional: true
-admin:
-  cacheable: false, auditRequired: true, eventEmission: true, transactional: true
-discovery:
-  cacheable: true, auditRequired: false, eventEmission: false, transactional: false
 query:
   cacheable: true, auditRequired: false, eventEmission: false, transactional: false
 ```
@@ -2534,15 +2534,15 @@ The code generator will automatically categorize operations using the following 
 # Minimal specification (uses defaults)
 get:
   x-operation:
-    category: reference
-  # Defaults applied: cacheable=true, auditRequired=false, eventEmission=false, transactional=false
+    category: query
+  # Defaults recorded: cacheable=true, auditRequired=false, eventEmission=false, transactional=false (read by nothing)
 
 # Override specific hints
 post:
   x-operation:
     category: coordination
     codeGenHints:
-      cacheable: true  # Override default for this read-heavy coordination operation
+      cacheable: true  # Accepted, read by nothing — this caches nothing
 
 # Automatic categorization (no x-operation specified)
 patch:
@@ -2555,7 +2555,6 @@ patch:
 
 **Integration with Existing Extensions**:
 - Works with `x-entity` metadata for aggregate/entity detection
-- Respects `x-roles` and `x-scopes` for admin operation identification
 - Leverages HTTP verb semantics for read-only operation detection
 
 ---
@@ -3571,7 +3570,7 @@ x-ai:
     deletes: []                  # Entities the worker deletes (must have aiAccess with 'delete')
 ```
 
-Valid `capabilities`: `structuredOutput`, `toolUse`, `rag`, `vision`, `streaming`, `multiTurn`, `batchProcessing`.
+Valid `capabilities`: `structuredOutput`, `toolUse`, `rag`, `vision`, `streaming`, `multiTurn`, `batchProcessing`. **Informational only — `capabilities` is read by nothing**: no generator code reads the array and no kit rule checks it. In particular `streaming` and `multiTurn` generate no streaming transport and no conversation state; the worker is generated the same with or without them.
 
 **`entities` field** (required when `enabled: true`):
 
