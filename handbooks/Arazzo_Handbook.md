@@ -348,7 +348,7 @@ The role values are project-specific. The project declares its closed role set i
 - it compares grants, so it means something only against the mapping form; a `superuser: true` role and a step whose operation declares no `x-scopes` are skipped;
 - it checks scopes, not membership: whether the actor's role is in the operation's `x-roles` is not checked by anything (`clabonte/generator#2414`).
 
-Measured against the released `0.14.0` jar on a mapping-form copy of `hello-orders` under `mode: scopes`, with a `Customer` whose grants miss the scenario's `order.*` scopes, it did **not** fire, while `OPERATION_ROLE_LACKS_SCOPE` reported the same gap on the operations. Do not count on it as the check that catches an under-granted actor yet.
+Measured against the released `0.14.0` jar on a mapping-form copy of `hello-orders` under `mode: scopes`, with a `Customer` whose grants miss the scenario's `order.*` scopes, it did **not** fire, while `OPERATION_ROLE_LACKS_SCOPE` reported the same gap on the operations. Do not count on it as the check that catches an under-granted actor yet (`clabonte/generator#2418`).
 
 **Recommended convention:** projects that distinguish pre-business-role flows (e.g., self-service signup, invitation acceptance, where the user has a valid auth token but no assigned role yet) should include an `Authenticated` role for that case.
 
@@ -952,7 +952,7 @@ This means:
 | Event `{Entity}.{Action}` exists | `x-async.emit` / `x-async.await` | AsyncAPI message `x-label` | Error |
 | Status code assertions don't contradict OpenAPI response codes | `successCriteria` | OpenAPI operation responses | Error |
 | Actor `role` in closed set (`ARAZZO_INVALID_ACTOR_ROLE`) | `x-actors.*.role` | Project's OpenAPI `info.x-roles` registry | Error |
-| Actor role's grants cover the step operation's `x-scopes` (`ARAZZO_ACTOR_LACKS_SCOPE`) | `x-actors.*.role` + step `operationId` | Mapping-form `info.x-roles` grants, operation `x-scopes` | Error, under `authorization.mode: scopes` only (§4.6) |
+| Actor role's grants cover the step operation's `x-scopes` (`ARAZZO_ACTOR_LACKS_SCOPE`) | `x-actors.*.role` + step `operationId` | Mapping-form `info.x-roles` grants, operation `x-scopes` | Error, under `authorization.mode: scopes` only; does not fire at `0.14.0` (§4.6, `clabonte/generator#2418`) |
 | `x-domain` value valid | `x-domain` | Project's active domain list + `cross-domain` | Error |
 | `cross-domain` only in `scenarios/cross-domain/` | File path + `x-domain` | Directory structure | Error |
 | `$setup.outputs.X` resolves | Expression | Recipe `outputs` map | Error |

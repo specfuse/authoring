@@ -1201,6 +1201,40 @@ Each finding was reported first by a consumer adopting the vocabulary.
 
 **At the next pin bump:** re-run the §14.10 matrix (two pillars on `hello-orders`, generate each group) and retire rows as `#2392`/`#2393`/`#2394`/`#2400` close. When `#2397` ships, rewrite §14.11 around `resolve: remote` and add a Spectral rule for the object form of `x-references`.
 
+### 45. RestoManager handoff batch 2026-10-09: what the kit corrected, what it forwarded
+
+**Status:** kit side **done** for every item that needed no generator design (`AsyncAPI_Handbook.md` §0.8 and §6.3, `Arazzo_Handbook.md` `x-actors` and §4.6, `API_Handbook.md` §8, §14 and Enums, `Vendor_Extensions.md` §3.1, §5.1, §6.1, `x-domain`, `x-ai`, value-object protection; new Spectral rule `specfuse-subscription-filter-sys-label`). Every generator claim was checked against the released `0.14.0` jar or its release commit `bd96ddeaf`, not against the SNAPSHOT a handoff named. Five of the nine handoffs rested on stale generator behaviour.
+
+**Corrected in the kit because they were wrong at the pin:**
+- **Subscription filters used a bare `Label`.** Service Bus reads that as `user.Label`, so it matches nothing. The generator has emitted `sys.Label` since at least `0.11.0`.
+- **`x-actors.<name>.ref` was described as a domain entity.** It is minted into the principal's `claims.userId` claim.
+- **§6.1 forbade `x-emits: []`.** Both the kit rule and the generator accept it, so it is now defined as a deliberately silent write.
+- **`delegable` was described as read by the runtime.** It is only published in `role-grants.json`; enforcement is planned (`#2180`, FEAT-2026-0203).
+- **`codeGenHints` (all five keys) and `x-ai.capabilities` are parsed and read by nothing.** Three §5.1 categories removed in `0.5.4` were still listed as live.
+- **The second value-object protection site was given as `x-value-object.protection`.** It is the embed property's `x-protection`; the generator never reads protection on a value object's own schema.
+
+**Forwarded:**
+- `clabonte/generator#2414` — warn when an actor `ref` is not the principal identity, or the actor's role is not in the step operation's `x-roles`.
+- `#2415` — a `WRITE_OPERATION_DECLARED_SILENT` census for `x-emits: []`.
+- `#2416` — split `ENUM_VALUE_SET_DUPLICATE` (SUGGESTION) into identical and overlapping, and report identical groups once.
+- `#2417` — the data-protection audit omits an encrypted value-object embed property; the usage-site form is reported correctly.
+- `#2418` — **`ARAZZO_ACTOR_LACKS_SCOPE` never fires at `0.14.0`.** Under `mode: scopes`, with an actor whose grants miss its steps' scopes, the scenario got no finding while `OPERATION_ROLE_LACKS_SCOPE` reported the same gap ×5. §43 lists the code as shipped; it is in the jar but inert.
+
+**Deferred, waiting on unscheduled generator design:**
+- caching: `x-cache` and `x-entity.cache` (`#2173`–`#2177`);
+- streaming: `x-stream`, `client-stream`, webhooks (`#2163`, `#2164`, `#2167`, `#2169`, `#2170`);
+- client-side grants (`#2180`);
+- a durable-run convention, which waits on `#2164`.
+
+None of these is settled enough to document ahead of the pin (§24 precedent).
+
+**Open questions:**
+- Whether a read-only `:search` POST may omit `x-emits`. A category-based exemption cannot work, because `query` on POST is `QUERY_MUST_BE_GET` (ERROR).
+- `examples/hello-orders` binds `x-actors.*.ref` to the `createCustomer` domain id (`place-order.arazzo.yaml:51`). That is the shape the handbook now calls wrong. The example has no identity entity to bind to, so fixing it is a modelling change, not a rename.
+- Two `Vendor_Extensions.md` lines found during the batch and not yet checked against the generator: §5.1 "Automatic Categorization" says an uncategorisable operation is an error, while the code defaults it to `Resource`; and the value-object section says protection keys "exist at both levels".
+
+**At the next pin bump:** re-test `ARAZZO_ACTOR_LACKS_SCOPE` (`#2418`), then drop the "does not fire" notes in `Arazzo_Handbook.md` §4.6 and §9.2.
+
 ---
 
 ## Outstanding kit-side work
