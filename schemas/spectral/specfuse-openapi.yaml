@@ -606,11 +606,17 @@ rules:
   # tied nothing to a registry, so a scope could name a domain that did not
   # exist and lint clean forever.
   #
-  # `x-scopes` is read by NOTHING in the generator (0 files, against `x-roles`
-  # in 8) — see compatibility.md §28. That is why these rules can be authored
-  # freely: there is no jar position to contradict and no way to be stricter
-  # than a jar that has no opinion. It is also why they are the only enforcement
-  # this vocabulary has.
+  # When these rules were written (kit 0.9.0, pinned generator 0.5.8;
+  # re-verified on 0.9.0) `x-scopes` was read by NOTHING in the generator —
+  # compatibility.md §28 — so they could be authored freely. That is no
+  # longer true. Generator 0.11.0 added a shape
+  # check (OPERATION_SCOPE_SHAPE_INVALID, WARNING, no casing check) and 0.14.0
+  # a registry check (OPERATION_SCOPE_UNBOUND, WARNING, ERROR under
+  # project.json `authorization.mode: scopes`) plus role/scope coherence over
+  # the mapping form of info.x-roles. These rules are now STRICTER than the
+  # pinned jar on two points, deliberately: `-shape` is an error and checks
+  # casing; `-registry` is an error where the jar warns by default. See
+  # compatibility.md §43 before changing either severity.
   #
   # Severity is `error` on shape and registry, `warn` on the `all` usage rule.
   # Existing specs predating the grammar are expected to fail; that is what

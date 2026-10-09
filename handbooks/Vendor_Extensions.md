@@ -2054,18 +2054,6 @@ itself off and reports a WARNING; a typo'd or invented role then passes
 registry — nothing reads it for this purpose, and if no property is typed by it
 the generator additionally reports it as `SCHEMA_UNREFERENCED` dead code.
 
-> **⚠ Do not author the object form of `info.x-roles` on this pin.** A newer
-> generator accepts a map form — `Admin: { superuser: true, grants: [...] }` —
-> for roles that carry grants (authoring #128). **Generator `0.13.0` does not.**
-> It reads a map as *no registry at all*: `OPERATION_ROLE_REGISTRY_MISSING`
-> (WARNING), and `OPERATION_UNKNOWN_ROLE` switches off. Measured on hello-orders:
-> an operation listing an undeclared role `Ghost` is an ERROR under the list
-> form and passes under the map form. The kit's Spectral is silent on the map
-> form too. That makes it the "absence is not safety" failure above, reached
-> by writing *more* configuration. Keep the list form until the kit pins a
-> generator that reads the map; the pin-bump row in `compatibility.md` will
-> say so.
-
 **Registry family.** `info.x-roles` is one of three `info`-level registries, all
 closed universes checked against by name: `info.x-domains` (§1.1, entity
 domains), `info.x-roles` (here), and `info.x-pillars` (§14.2, pillar
@@ -2090,6 +2078,102 @@ paths:
       x-roles: [Admin]
 ```
 
+#### The mapping form — roles that declare their grants
+
+**From generator `0.14.0`**, `info.x-roles` has two authored shapes. The
+sequence above names the roles and nothing else. A **mapping** of role name to
+metadata names them *and* says which grants each one holds, so an operation's
+`x-roles` can be checked against its `x-scopes` (§3.2):
+
+```yaml
+info:
+  x-roles:
+    Admin:         { superuser: true, grants: ["*"], description: Platform operator }
+    Manager:       { grants: [customer.all, order.all] }
+    Customer:      { grants: [order.read, customer.Customer.read, order.OrderLine.write] }
+    Authenticated: { implicit: true, grants: [] }
+```
+
+| Key | Type | Meaning |
+|---|---|---|
+| `grants` | string[] | Scopes this role holds, in §3.2's grammar, or `"*"`. |
+| `implicit` | boolean | Every authenticated principal holds this role without a claim. The scope-model counterpart of the `Authenticated` convention below. |
+| `superuser` | boolean | Passes every coherence and runtime check regardless of its grants — a declared fact, replacing an `Admin`-by-name short-circuit. |
+| `delegable` | boolean | A role another role may grant. Read by the generated authorization runtime, not by any validation rule. |
+| `description` | string | Free text. Read by nothing. |
+
+Every key is optional. **Membership validation is identical in both shapes**:
+measured on a mapping-form copy of `hello-orders`, an operation listing an
+undeclared `Ghost` is still `OPERATION_UNKNOWN_ROLE` (ERROR). The two shapes
+differ only in what the mapping can additionally be checked for. A sequence is
+not an error and is not deprecated; it simply declares no grants, so there is
+nothing to compare.
+
+> **Before `0.14.0`, do not author the mapping form.** Generator `0.13.0` and
+> earlier read a map as *no registry at all*: `OPERATION_ROLE_REGISTRY_MISSING`
+> (WARNING), and `OPERATION_UNKNOWN_ROLE` switches off — the "absence is not
+> safety" failure above, reached by writing *more* configuration. See
+> `compatibility.md` §43.
+
+**How a grant covers a scope.** One shared `GrantMatcher` decides it, in
+validation and in every generated runtime:
+
+- a **domain** grant (`order.read`) covers every entity in that domain, including `order.Order.read`;
+- an **entity** grant (`order.Order.read`) covers only that entity — never the domain-level scope `order.read`;
+- `all` covers `read`, `write` and `delete`; **`delete` is disjoint from `write`**, as in §3.2;
+- `"*"` is the only wildcard and covers everything. `<domain>.*` is **not** a second spelling of `<domain>.all` — it is refused as `ROLE_GRANT_INVALID` (ERROR);
+- segments match **case-insensitively**, because identity providers normalise scope case at introspection.
+
+A principal's effective roles at runtime are its claimed roles plus every
+`implicit: true` role.
+
+**The coherence rules.** Nine codes, all category `DDD`. Their severity is set
+by the project file's `authorization.mode` (`Project_File.md` §16): `scopes`
+raises every WARNING row except the last two to ERROR.
+
+| Code | Fires when | `roles` (default) | `scopes` |
+|---|---|---|---|
+| `ROLE_REGISTRY_SHAPE_INVALID` | `info.x-roles` is neither a sequence nor a mapping of role objects | ERROR | ERROR |
+| `ROLE_GRANT_INVALID` | a grant is not `"*"` and not a well-shaped scope — `<domain>.*` included | ERROR | ERROR |
+| `ROLE_GRANT_UNBOUND` | a grant's domain is not in `info.x-domains`, or its entity segment is not an `x-entity` of that domain | WARNING | ERROR |
+| `OPERATION_SCOPE_UNBOUND` | the same, for an operation's `x-scopes` entry | WARNING | ERROR |
+| `OPERATION_ROLE_LACKS_SCOPE` | a role in an operation's `x-roles` does not cover every scope that operation requires | WARNING | ERROR |
+| `OPERATION_SCOPE_NOT_GRANTED` | an operation's scope that no role in its `x-roles` covers | WARNING | ERROR |
+| `OPERATION_ROLE_UNLISTED` | a role **not** in an operation's `x-roles` (and neither superuser nor implicit) whose grants cover every scope the operation requires — admitted under `scopes`, refused under `roles`. Skipped when the operation's `x-roles` lists an implicit role | WARNING | ERROR |
+| `ROLE_DEAD_GRANT` | a grant that covers no scope any operation requires | WARNING | WARNING |
+| `SCOPE_UNHELD` | a required scope no non-superuser role covers (a superuser's `"*"` does not count; an operation listing only superuser roles is exempt) | WARNING | WARNING |
+
+Every rule except `OPERATION_SCOPE_UNBOUND` is **inert on a sequence-form
+registry** — no grants declared, nothing to compare — so adopting `0.14.0` adds
+no coherence diagnostic to a sequence-form spec. Measured on `hello-orders`
+(sequence form): no new authorization diagnostic, before or after the pin bump.
+`OPERATION_SCOPE_UNBOUND` reads only `x-scopes` and `info.x-domains`, so it runs
+on either shape, and it overlaps the kit's `specfuse-auth-scopes-registry`
+(§3.2). Arazzo carries the same check for actors: `ARAZZO_ACTOR_LACKS_SCOPE`
+mirrors `OPERATION_ROLE_LACKS_SCOPE`.
+
+`OPERATION_ROLE_UNLISTED` is the one to read twice. The coherence target is
+that an operation's `x-roles` **equals** the set of roles whose grants cover its
+`x-scopes`. A listed role lacking a scope is one half of that; a role that holds
+every scope but is not listed is the other, and it is exactly the divergence
+switching to `mode: scopes` would turn into a behaviour change — under `roles`
+the role is refused, under `scopes` it is admitted.
+
+**Adopting it.** Author the mapping, keep `authorization.mode` at its default,
+and work the WARNINGs down. Mark the operator role `superuser: true` and the
+pre-business-role `implicit: true` before you regenerate an authorization
+runtime: the generated handler passes a superuser — and an implicit role the
+operation lists — **without** the tenant-resource check, which is what a
+hand-written `Admin` short-circuit did. Skip it and the operator loses that
+pass-through on regeneration, as a behaviour change rather than a build failure.
+The generated `authorizationMatrix` Markdown artifact (`Project_File.md` §11.5)
+renders, per operation, the declared roles beside the roles the grants say may
+call it — the diff to read before turning `scopes` on.
+
+The kit's Spectral says nothing about the mapping form; every check above is
+the generator's, because each needs both registries and every operation at
+once.
+
 ### 3.2 x-scopes
 
 **Purpose**: Declares the OAuth scopes an operation requires.
@@ -2101,7 +2185,13 @@ paths:
 x-scopes: string[]  # Array of scope names, each matching the grammar below
 ```
 
-> **Read by nothing in the generator today.** `x-scopes` appears in **0** generator source files, against `x-roles` in 8 and `x-public` in 3. The kit's Spectral rules are the only enforcement this vocabulary has — no generated code reads it, and a project enforcing scopes at runtime is doing so in hand-written middleware. That also means the kit owns this grammar outright: there is no jar position to reconcile against. See `compatibility.md` §28.
+> **What reads it.** The kit's Spectral rules below own the grammar. The generator reads `x-scopes` in three ways, and all three are **WARNING-first unless the project opts into `authorization.mode: scopes`** (`Project_File.md` §16):
+>
+> 1. **Shape**, from generator `0.11.0`: `OPERATION_SCOPE_SHAPE_INVALID` (WARNING in either mode) checks segment count and the closed operation set, parsed right to left. It deliberately does **not** check casing.
+> 2. **Registry binding and role coherence**, from `0.14.0`: `OPERATION_SCOPE_UNBOUND` (a domain outside `info.x-domains`, or an entity segment that is not an `x-entity` of that domain), and — when `info.x-roles` is in the mapping form — the coherence rules of §3.1, which check an operation's `x-roles` against the roles whose grants cover its scopes.
+> 3. **Runtime**, from `0.14.0`: under `authorization.mode: scopes` a generated C# controller carries `[ScopesRequired("<scope>", …)]` instead of `[RoleRequired(…)]`. Under the default `roles` mode `x-scopes` changes no generated code.
+>
+> Through `0.13.0` only (1) existed, and `compatibility.md` §28's *"read by nothing"* was measured on `0.5.8` and `0.9.0`, before it. The kit is **stricter than the jar** on two points and that is deliberate: `specfuse-auth-scopes-shape` is an `error` and checks casing; `specfuse-auth-scopes-registry` is an `error` where `OPERATION_SCOPE_UNBOUND` is a WARNING under the default mode. See `compatibility.md` §43.
 
 #### The grammar
 
@@ -2157,7 +2247,7 @@ x-scopes: [template.Template.write]
 | `specfuse-auth-scopes-registry` | error | the domain segment is a member of `info.x-domains`; the entity segment names an `x-entity` schema **whose `x-entity.domain` equals the domain segment** |
 | `specfuse-auth-scopes-all-on-operation` | warn | `all` required at an endpoint, and `all` declared alongside a narrower sibling |
 
-The second half of the registry rule is the one that pays. A scope that keeps naming the domain an entity used to live in stays syntactically perfect and silently wrong; nothing else in the toolchain notices, because nothing else reads `x-scopes` at all.
+The second half of the registry rule is the one that pays. A scope that keeps naming the domain an entity used to live in stays syntactically perfect and silently wrong. From generator `0.14.0`, `OPERATION_SCOPE_UNBOUND` reports the same case at generate time, as a WARNING unless the project runs `authorization.mode: scopes`; the lint is the one that fails the build in the editor.
 
 Unlike `x-roles`, this needs **no project overlay**: both registries the grammar references — `info.x-domains` and `components.schemas` — live in the spec, so the kit can enforce the whole contract on its own.
 
@@ -2183,6 +2273,23 @@ paths:
 ```
 
 **Migrating an existing project.** Every value changes: the old convention keyed the first segment on a **tag** (`customers.read`), and tags are many-to-one against domains, so an old scope cannot be mechanically resolved to an owner — `customers.read` does not tell you whether the domain is `customer` or `crm`. Rewrite them against `info.x-domains` rather than by find-and-replace. For a large corpus, turn the rules on with `scripts/spectral-ratchet.py` (see `schemas/README.md`) so inherited violations do not block every PR while the sweep runs.
+
+### 3.3 x-kiosk-session
+
+**Purpose**: Declares that an operation is reachable by a **kiosk-session principal** — a shared device signed in under its own authentication scheme rather than as a person.
+
+**Scope**: Applied to OpenAPI operations. Read by the generated C# authorization runtime only (`authorizationRuntime`, `Project_File.md` §11.1), from generator `0.14.0`. No validation rule reads it, and `extensions --format json` does not list it, since it publishes `x-entity` and `info`-level keys only.
+
+**Schema**:
+```yaml
+x-kiosk-session: true   # boolean; absent means false
+```
+
+**What it does.** The generated `KioskSessionPolicy` is an allowlist of the route templates of every operation declaring `x-kiosk-session: true`. `RoleAuthorizationFilter` (and, in `scopes` mode, `ScopeAuthorizationFilter`) checks it **before** the role or scope check: a principal whose `ClaimsIdentity.AuthenticationType` equals `authorization.kioskSession.scheme` (`Project_File.md` §16), calling a route outside the allowlist, gets `403`, fail-closed.
+
+**It is inert until the scheme is declared.** With no `authorization.kioskSession.scheme`, no principal is ever recognised as a kiosk session, and the generated policy allows every route. Measured on a `hello-orders` copy with `x-kiosk-session: true` on `getCustomer`: without the scheme `KioskSessionPolicy.IsAllowed` returns `true` unconditionally; with `scheme: KioskSession` the filter tests `AuthenticationType == "KioskSession"` and the allowlist holds exactly that operation's route.
+
+**Not a role.** It narrows what a kiosk session can reach; it grants nothing. The operation still needs `x-roles` (and `x-scopes`) that admit the kiosk principal's role. A kiosk-status check (a deactivated device) belongs in a host-implemented `IPrincipalPolicy`, which the generated runtime evaluates before any role logic.
 
 ---
 
