@@ -1660,6 +1660,8 @@ x-references: Customer      # target entity name (PascalCase), or the literal `n
 
 **`x-references: none`** marks a `format: uuid` property that is **not a foreign key at all** — a correlation id, an idempotency token, an externally-minted identifier. Because this suppresses relationship classification entirely, it MUST be accompanied by a `description` justifying why the value is opaque. An unjustified `none` is indistinguishable from an author who did not want to think about the relationship.
 
+`none` is also the current form for **an id owned by another pillar that this pillar reads through the owner's API and does not replicate**. The value is a real foreign key in the business sense, but it cannot be a database FK across pillar databases. The `description` then names the owner pillar, the entity, and how the value is resolved. See §14.11. At generator `0.14.0`, `none` on a property named after an entity (`customerId`) still binds it to that entity by name (`clabonte/generator#2400`). No relationship is built either way. But in a pillar-bound group that does not own the entity, generation fails.
+
 **Every FK-shaped property must be classified.** Since the retirement of implicit `{Entity}Id` → `belongsTo` inference (kit `0.5.4`), a `format: uuid` property named after an entity carries no relationship meaning on its own. Exactly one classification applies:
 
 | Intent | Declaration |
@@ -4169,6 +4171,10 @@ info:
 3. Holding an entity in a domain the pillar **already owns** is redundant, not wrong: it is a warning, not an error.
 4. **`holds` does not silence the cross-boundary census on its own.** What it does is make the crossing *resolvable*: a reference whose target the consuming pillar declared under `holds` resolves to that target's `Read{Entity}` replica instead of failing. An **undeclared** foreign edge still fails with the same code and the same remediation as before.
 
+**A hold means a persisted, event-fed replica, and it changes the holder's generated code.** It is not only a validation declaration. In a group bound with `groups[].pillar`, every reference to a held entity is rebound to its `Read{Entity}` replica. That applies to an `x-references` FK and to the FK column of a `belongsTo`. The holder's EF model then carries a non-owning relationship to a replica **table in the holder's own database**, kept current by the owner's snapshot events (§14.5). The group has to register the artifacts that emit that table and its feed: `heldEntity` and `heldEntityConfiguration`, and `heldEntityHydration` and `heldEntityHydrationTrigger` wherever the events are consumed (`Project_File.md` §11.1). Otherwise the rebound navigation is typed against a class nothing emits. A group with no `pillar` holds nothing and rebinds nothing.
+
+So `holds` is the right declaration only when the holder really keeps a copy. A pillar that reads a neighbour's entity through the owner's API and keeps no copy should not declare a hold; see §14.11.
+
 ### 14.4 `Read{Entity}`
 
 **Purpose**: declare exactly what slice of `{Entity}` a foreign pillar may keep as a persisted replica.
@@ -4235,6 +4241,8 @@ A replica is fed by the owner's events, so declaring one puts requirements on th
 
 `project.json` gains `groups[].pillar`, which binds a group to a pillar name in `info.x-pillars`; the pillar's owned domains expand into the ordinary include-filter that `groups[].domains` writes by hand. `pillar` and `domains` are **mutually exclusive**. See `Project_File.md` §8.13.2.
 
+Only a pillar-bound group applies holds (§14.3). At `0.14.0`, several cross-pillar shapes fail to generate in a pillar-bound group, and no C# group with `domainProject` compiles while the spec declares `Read{Entity}` schemas. See §14.10.
+
 ### 14.7 One bundle or many — the choice this vocabulary does *not* make for you
 
 **The generator does not subset one spec per pillar.** It reads the spec it is given. `info.x-pillars` is a *declaration*, not a build step, and it leaves two viable topologies:
@@ -4257,6 +4265,9 @@ Adoption is opt-in and the checks are gated on a declaration, so there is no for
 3. **Rank replication targets by how many domains reference them**, and author the `Read{Entity}` schemas for the top handful first. Reference graphs are heavily concentrated: on that same bundle four target entities carried **127 of 168** crossing edges between them, each referenced from nearly every domain. Re-derive the ranking rather than inheriting one — it has already shifted once between two measurements two days apart.
 4. **Then declare `holds`** on the pillars that need each target, and fix what the pairing rules report.
 5. **Re-run validation and use its output as the work list.** Do not plan from a count someone measured against an older bundle — the ranking moves.
+6. **Validate the project file, then generate every pillar.** `validate` on a bundled spec runs the pillar rules in §14.9. Some failures only appear when a group's context is built for one pillar: `validate <project>.json` builds it, while spec-level `validate` and the Spectral layers do not. A spec can be green at the spec level and still fail to generate for every pillar. Give the project file one group per pillar, each with `groups[].pillar`, and validate that file.
+
+   Even that is not the whole bar. At `0.14.0`, a child-create operation nested under a held parent's path passed project-level `validate` and still failed `generate` (§14.10). Run `generate` for each pillar-bound group before calling the topology done. §14.10 lists the shapes that fail at generator `0.14.0`.
 
 ### 14.9 Kit Spectral rules and their generator counterparts
 
@@ -4279,9 +4290,66 @@ The kit lints this vocabulary in the editor; the generator validates it at gener
 
 `PILLAR_REGISTRY_MISSING` (warn) · `PILLAR_DOMAIN_UNOWNED` (warn) · `PILLAR_HOLDS_OWNED_ENTITY` (warn) · `PILLAR_CROSS_BOUNDARY_REFERENCE` · `PILLAR_BOUNDARY_OWNER_UNKNOWN` (warn) · `READ_MODEL_MISSING_TENANT_KEY` · `READ_MODEL_NOT_HYDRATABLE` · `READ_MODEL_SNAPSHOT_MISSING_KEY` · `READ_MODEL_NO_SNAPSHOT` (warn) · `READ_MODEL_NO_CREATE_EVENT` · `READ_MODEL_NO_UPDATE_EVENT` · `READ_MODEL_NO_REMOVAL_EVENT` · `READ_MODEL_EVENT_PAYLOAD_NOT_SNAPSHOT` · `READ_MODEL_SNAPSHOT_VERSION_DRIFT` (ERROR when the read model's field survives only in a deprecated snapshot version; warn when the canonical snapshot still carries it) · `READ_MODEL_NO_ORDERING_KEY` (warn) · `READ_MODEL_DUPLICATE_CONSUMER`
 
-**`PILLAR_CROSS_BOUNDARY_REFERENCE` is the one finding that can turn a green `validate` red.** It reports every reference whose target is owned by a different pillar and is not covered by a `Read{Entity}` + `holds` pair. It fires **only** on a spec that declares `info.x-pillars`, so it cannot affect a project that has not adopted the vocabulary — but once you do adopt, it is an ERROR, not a warning, and it is satisfiable only by authoring the pairs.
+**`PILLAR_CROSS_BOUNDARY_REFERENCE` is the one finding that can turn a green `validate` red.** It reports every reference whose target is owned by a different pillar and is not covered by a `Read{Entity}` + `holds` pair. It fires **only** on a spec that declares `info.x-pillars`, so it cannot affect a project that has not adopted the vocabulary — but once you do adopt, it is an ERROR, not a warning. It is satisfiable by authoring the pairs, or by declaring the reference opaque with `x-references: none` (§1.7), which the census skips (§14.11).
 
-**See also**: §1.1 (`x-entity.delete`), §1.9 (`x-expand-of` / `x-projection`), §12.2 (`x-label`), `Project_File.md` §8.13 (`groups[].domains` / `groups[].pillar`), `compatibility.md` §24.
+**Passing this census does not mean every pillar generates.** The census accepts every edge kind a hold covers, including some that pillar-bound generation then rejects. See §14.10.
+
+### 14.10 Cross-pillar edges at generator `0.14.0`: what generates
+
+Everything below was measured against the released `0.14.0` jar, on a copy of `examples/hello-orders` split into two pillars:
+
+- `core` owns `tenant` and `customer`;
+- `sales` owns `order` and holds `Tenant` and `Customer`;
+- `Order` refers to `Tenant` and `Customer`;
+- the nested `/customers/{customerId}/orders` routes were flattened to `/orders` (see the third bullet below).
+
+"Holder" is `sales`, the child's pillar. "Owner" is `core`, the parent's pillar. Each verdict is `generate` for one C# group bound to that pillar, with `entity`, `valueObject`, `enum`, `domainModel`, `domainProject`, `heldEntity` and `heldEntityConfiguration` registered. The project-level `validate` reported the same failure on every row. It did **not** report the nested-route failure in the third bullet below (§14.8 step 6).
+
+| how `Order` refers to its parent | holder's group | owner's group |
+|---|---|---|
+| `belongsTo`, parent held, **and** the owner declares the reverse `hasMany: [Order]` | **fails**, `PROPERTY_DUPLICATE` on `Order.CustomerId` (`clabonte/generator#2393`) | **fails**, `CROSS_DOMAIN_ENTITY_REFERENCE` (`#2394`) |
+| `belongsTo`, parent held, **no** reverse edge | generates; the FK binds to `Read{Parent}` | **fails**, `CROSS_DOMAIN_ENTITY_REFERENCE`: the owner's group builds the inverse navigation from the child's `belongsTo` itself (`#2394`) |
+| `x-references: <Parent>`, parent held | generates; the FK binds to `Read{Parent}` | generates |
+| `x-references: none` on a property named `{parent}Id` (`tenantId`), no hold | **fails**, `CROSS_DOMAIN_ENTITY_REFERENCE`: the name still binds the property to the entity (`clabonte/generator#2400`) | generates |
+| `x-references: none` on a property named otherwise (`tenantRef`), no hold | generates; opaque uuid column | generates |
+
+What follows from the table:
+
+- **Never declare a reverse `hasMany`/`hasOne` across a pillar boundary.** A parent cannot navigate to children stored in another pillar's database, and declaring the reverse edge breaks both groups. When the child's pillar holds the parent, `RELATIONSHIP_SYMMETRY` does not require the reverse edge, so dropping it is legal.
+- **The one form that generates on both sides at `0.14.0` is `x-references: <Parent>` plus a hold.** It keeps the relationship declared. It gives up composition semantics (§1.7), which cannot hold across pillar databases anyway. A cross-pillar `belongsTo` generates only in the holder's group until `#2394` is fixed. The generator's own `#2250` regression fixture fails the same way when generated from the owner's side.
+- **Do not nest a child's routes under a parent owned by another pillar.** With `POST /customers/{customerId}/orders` in place, the holder's group failed to resolve `createOrder`: "rooted under aggregate 'Customer' which does not own 'Order'". The owner's group failed the same way once the `belongsTo` was gone, because operations are resolved for the whole spec, not only the pillar's domains. Put the child's create and list operations at the child's own path, with the parent id in the body or as a query filter.
+- **The tenancy root has no safe form at `0.14.0`.** The `I{Tenant}Scoped` marker follows `belongsTo` only (`Project_File.md` §4.1). A child in another pillar therefore needs a `belongsTo` to its tenant, and that `belongsTo` breaks the tenant owner's group. A split bundle (§14.7) keeps the child out of the owner's bundle, which should avoid the inverse, but this is unmeasured. A multi-pillar tenancy otherwise waits on `#2394`.
+- **No C# group with `domainProject` compiles while the spec declares `Read{Entity}` schemas** (`clabonte/generator#2392`). The Domain `AutoMapperProfile.g.cs` maps every `Read{Entity}` to its entity. An unbound group emits no `Read{Entity}` type. A holder's group emits the replica but not the owner's entity it is mapped to. Either way the result is `CS0246`. Dart and TypeScript groups emit an unused `Read{Entity}` client type.
+
+These verdicts are tied to `0.14.0`; re-measure them at every pin bump (`compatibility.md` §44).
+
+### 14.11 A pillar that reads without keeping a copy
+
+`holds` describes one consistency model: the owner publishes, and the holder keeps an eventually-consistent replica. A topology where each pillar owns one database and no pillar stores another's data is the opposite model. There, a pillar reads a neighbour's entity through the owner's API, often behind a cache filled on a miss. The owner then owes a published API contract, not an event feed.
+
+**Do not declare a hold for that.** A hold brings the replica table, the FK rebinding (§14.3), the hydration artifacts and the event-feed rules in §14.5. `READ_MODEL_NO_ORDERING_KEY` and its siblings would then describe hazards of a table that does not exist.
+
+The vocabulary has no declaration for this model yet; `clabonte/generator#2397` proposes `x-references: { entity: <Parent>, resolve: remote }`. Until it ships, the intended form is an **opaque** id:
+
+```yaml
+customerId:
+  type: string
+  format: uuid
+  description: >
+    Customer id, owned by the core pillar. Read through the owner's
+    getCustomer operation and cached; there is no local foreign key.
+  x-references: none
+```
+
+- `PILLAR_CROSS_BOUNDARY_REFERENCE` skips `none`, so no hold or `Read{Entity}` is needed.
+- The `description` is required (§1.7 rule 4). Name the owner pillar, the entity and how the value is resolved. Until `#2397` ships, that sentence is the only record of the relationship, and no diagram or audit will show it.
+- Drop any cross-pillar `belongsTo`, `hasMany` or `hasOne` for the same link; under this model none of them can exist.
+- **At `0.14.0` this form only generates when the property is not named after the entity.** A `none` on `customerId` still binds to `Customer` by name, and the holder's group fails (§14.10, `clabonte/generator#2400`). Renaming the property changes the wire contract, so for an existing API the realistic choices are:
+  - wait for `#2400`;
+  - or use `x-references: <Parent>` plus a hold, the form that generates on both sides (§14.10), and accept the replica artifacts until `#2397`.
+- **Caveat: the tenancy root.** Dropping a `belongsTo` to the tenant drops the `I{Tenant}Scoped` marker and the tenant filter with it. See the tenancy bullet in §14.10.
+
+**See also**: §1.1 (`x-entity.delete`), §1.7 (`x-references`), §1.9 (`x-expand-of` / `x-projection`), §12.2 (`x-label`), `Project_File.md` §8.13 (`groups[].domains` / `groups[].pillar`), `compatibility.md` §24 and §44.
 
 ---
 

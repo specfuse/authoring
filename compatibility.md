@@ -1174,6 +1174,33 @@ The kit keeps both at `error`. The kit's grammar is the authoritative one (the j
 
 **Deliberately not done here:** `hello-orders` stays on the sequence form (its role set is a teaching example, and the coherence demo would need its `x-roles` reshaped); `x-unmask` and response masking are #139 / §42; `authorization.grantsEndpoint`, tolerated by the parser and owned by a later generator feature, is not documented because nothing reads it.
 
+### 44. Cross-pillar edges at `0.14.0`: `validate` green, pillars ungeneratable (#144)
+
+**Status:** kit documents the jar's behaviour (`Vendor_Extensions.md` §14.3, §14.8 step 6, new §14.10 and §14.11, a note in §1.7; `Project_File.md` §8.13.2). Generator side **filed**: `clabonte/generator#2392`, `#2393`, `#2394`, `#2400` (bugs) and `#2397` (feature). Measured 2026-10-09 against the released `0.14.0` jar (sha256 `5cd33122…cbd0`) on a copy of `hello-orders`:
+
+- `info.x-pillars`: `core` owns `tenant` and `customer`; `sales` owns `order` and holds `Tenant` and `Customer`;
+- flat `Read{Entity}` schemas;
+- `delete: hard` on the sources;
+- one C# group per pillar.
+
+Each finding was reported first by a consumer adopting the vocabulary.
+
+1. **`Read{Entity}` breaks the C# Domain AutoMapper profile** (`#2392`). `domain/AutoMapperProfile.mustache` maps every derived model, and `Read` is a derived-model prefix, so the profile gets `CreateMap<Read{Entity}, {Entity}>()`:
+   - in an **unbound** group, no `Read*` type is emitted at all;
+   - in a **holder's** group, `Read{Entity}` is emitted, but the owner's `{Entity}` is not.
+
+   Either way the build fails with `CS0246`.
+2. **A held `belongsTo` parent duplicates its FK when the owner declares the reverse `hasMany`** (`#2393`). The holder's group fails with `PROPERTY_DUPLICATE` on `Order.CustomerId`. Removing `Customer.hasMany: [Order]` clears it. Holding or not holding the child, a `tenancy` block, `x-fk-for` and the list form of `belongsTo` make no difference.
+3. **The owner's group fails on any cross-pillar `belongsTo` to one of its entities** (`#2394`), with or without a declared `hasMany`. The inverse navigation is synthesised from the child's `belongsTo`, and `checkNoCrossDomainEntityReferences` rejects it. The generator's own `#2250` fixture fails this way from the owner's side; its regression test generates only the holder.
+4. **`x-references: none` does not stop name derivation** (`#2400`). On `tenantId` the property is still bound to `Tenant`, and the holder's group fails `CROSS_DOMAIN_ENTITY_REFERENCE`. Renamed to `tenantRef`, both groups generate.
+5. **A child-create nested under a held parent's route fails `generate` after a clean project-level `validate`**: `createOrder` at `/customers/{customerId}/orders` throws `OperationResolutionException` ("rooted under aggregate 'Customer' which does not own 'Order'"). Flattening the route to `/orders` clears it. Not filed separately; it follows from the parent being a replica in that group.
+6. **`RELATIONSHIP_SYMMETRY` does not require the reverse edge when the child's pillar holds the parent.** Dropping a cross-pillar `hasMany` is therefore legal. The original consumer report said the opposite.
+7. **Project-level `validate` reports items 2–4; spec-level `validate` does not.** The consumer had validated the spec layers only. Item 5 slips past both.
+
+**What generates on both sides at `0.14.0`:** `x-references: <Parent>` with a hold, or `x-references: none` on a property not named after an entity, and no cross-pillar reverse edges. This is subject to item 1 for any group with `domainProject`. A multi-pillar **tenancy** has no working form, because the tenancy marker needs `belongsTo` and item 3 breaks the tenant owner's group.
+
+**At the next pin bump:** re-run the §14.10 matrix (two pillars on `hello-orders`, generate each group) and retire rows as `#2392`/`#2393`/`#2394`/`#2400` close. When `#2397` ships, rewrite §14.11 around `resolve: remote` and add a Spectral rule for the object form of `x-references`.
+
 ---
 
 ## Outstanding kit-side work
