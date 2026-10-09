@@ -3236,7 +3236,7 @@ x-label:
   action: Submitted    # PascalCase past-tense action verb
 ```
 
-The runtime Label is exactly two segments: `{entity}.{action}` (e.g., `Order.Submitted`). **Tenancy never appears in the label** — `tenantId`, and any other tenant routing fields live in envelope ApplicationProperties. Subscription filters use `Label = '{Entity}.{Action}'` for single-action subscribers, `Label LIKE '{Entity}.%'` for wildcard-on-entity, or AND-merge `user.tenantId = '<guid>'` for tenant-scoped subscribers (see `x-subscription.requiredHeaders`).
+The runtime Label is exactly two segments: `{entity}.{action}` (e.g., `Order.Submitted`). **Tenancy never appears in the label** — `tenantId`, and any other tenant routing fields live in envelope ApplicationProperties. Subscription filters use `sys.Label = '{Entity}.{Action}'` for single-action subscribers, `sys.Label LIKE '{Entity}.%'` for wildcard-on-entity, or AND-merge `user.tenantId = '<guid>'` for tenant-scoped subscribers (see `x-subscription.requiredHeaders`).
 
 **Action must be past-tense PascalCase.** `Created`, `Approved`, `Submitted`, `Archived`, `LinkedToNewTenant`, `QueuedForEmail`. Imperative verbs (`Create`, `Approve`) are not events — they are commands, which v2 architecture does not support.
 
@@ -3386,7 +3386,7 @@ properties:
     x-envelope-promote: true
 ```
 
-**Why**: Filter granularity benefits from a small set of indexable headers (e.g., `channel` for `NotificationJob.*` events lets one channel-specific worker subscribe with `Label = 'NotificationJob.Created' AND user.channel = 'email'`). Without `x-envelope-promote`, the dispatcher would need entity-specific code to know which fields to promote — a leaky abstraction. With it, the generator emits generic stamping logic from the declaration.
+**Why**: Filter granularity benefits from a small set of indexable headers (e.g., `channel` for `NotificationJob.*` events lets one channel-specific worker subscribe with `sys.Label = 'NotificationJob.Created' AND user.channel = 'email'`). Without `x-envelope-promote`, the dispatcher would need entity-specific code to know which fields to promote — a leaky abstraction. With it, the generator emits generic stamping logic from the declaration.
 
 **Rules:**
 - Only scalar properties may be promoted (string, int, bool, enum, UUID). Objects and arrays are forbidden.
@@ -3489,17 +3489,19 @@ x-subscription:
 | `lockDuration` | No | duration | Lock duration during processing. Default: 30s. |
 | `requiresSession` | No | boolean | Set `true` when the referenced message has `x-partition-key`. Default: false. |
 
-**Filters are derived, not authored.** The generator computes the SQL filter from the operation's `messages:` list as an OR-chain over `Label` equality (or `LIKE` for wildcard-on-entity patterns). The legacy `filter` field is **forbidden** — Spectral rejects it. Three modes:
+**Filters are derived, not authored.** The generator computes the SQL filter from the operation's `messages:` list as an OR-chain over `sys.Label` equality (or `LIKE` for wildcard-on-entity patterns). The legacy `filter` field is **forbidden** — Spectral rejects it. Three modes:
 
 | Mode | Author writes | Generator emits |
 |---|---|---|
-| **Derived (default)** | `messages: [E1.Created.yaml, E2.Updated.yaml]` only | `Label = 'E1.Created' OR Label = 'E2.Updated'` |
+| **Derived (default)** | `messages: [E1.Created.yaml, E2.Updated.yaml]` only | `sys.Label = 'E1.Created' OR sys.Label = 'E2.Updated'` |
 | **`requiredHeaders`** | `messages:` list + `requiredHeaders: { channel: email }` | `<derived> AND user.channel = 'email'` |
 | **`filterOverride`** | Raw SQL + mandatory `description` justification | The override verbatim |
 
 `requiredHeaders` and `filterOverride` are mutually exclusive — Spectral rejects both on one operation.
 
-**Filter cap**: a single filter may reference at most 10 distinct entity patterns (counting derived `Label = 'X.Y'` clauses or `LIKE 'X.` prefixes in an override). More than 10 is a smell; the worker likely needs splitting along a natural seam. Enforced by `asyncapi-subscription-filter-entity-cap` at error severity.
+**A `filterOverride` must write the label as `sys.Label`**, never a bare `Label`: a bare identifier is `user.` scope and silently matches nothing. See the scope rule in `AsyncAPI_Handbook.md §0.8`; Spectral rule `specfuse-subscription-filter-sys-label` warns.
+
+**Filter cap**: a single filter may reference at most 10 distinct entity patterns (counting derived `sys.Label = 'X.Y'` clauses or `LIKE 'X.` prefixes in an override). More than 10 is a smell; the worker likely needs splitting along a natural seam. Enforced by `asyncapi-subscription-filter-entity-cap` at error severity.
 
 **Subscription name = operation file stem.** Spectral rule `specfuse-async-subscription-name-mismatch` validates this. Free-form kebab-case naming is no longer permitted.
 

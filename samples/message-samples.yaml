@@ -279,7 +279,7 @@ _eventHandlerOperation:
   x-subscription:                                  # REQUIRED on event-topic receivers
     name: on-order-submitted                       # MUST equal the operation file stem
     # NO 'filter' field — filters are derived from the messages: list above.
-    # The generator emits: Label = 'Order.Submitted'
+    # The generator emits: sys.Label = 'Order.Submitted'
     # AND-merge tenant/channel scoping via requiredHeaders (see sample 5c below).
 
 # =============================================================================
@@ -318,7 +318,7 @@ _eventHandlerWithEmits:
     alertOnDlq: true
   x-subscription:
     name: on-customer-created-for-enrichment       # MUST equal operation file stem
-    # NO 'filter' — derived from messages: → Label = 'Customer.Created'
+    # NO 'filter' — derived from messages: → sys.Label = 'Customer.Created'
 
 # =============================================================================
 # 5c. CHANNEL-AWARE EVENT HANDLER (uses requiredHeaders + x-envelope-promote)
@@ -360,12 +360,12 @@ _channelAwareHandler:
     name: on-notification-job-dispatch-email       # MUST equal operation file stem
     requiredHeaders:                               # Declarative — AND-merged with derived label filter
       channel: email
-    # Generator emits: Label = 'NotificationJob.Created' AND user.channel = 'email'
+    # Generator emits: sys.Label = 'NotificationJob.Created' AND user.channel = 'email'
 
 # Alternative for forward-compat or unusual SQL predicates:
 #   x-subscription:
 #     name: on-...
-#     filterOverride: "Label LIKE 'Customer.%' OR Label LIKE 'Order.%'"
+#     filterOverride: "sys.Label LIKE 'Customer.%' OR sys.Label LIKE 'Order.%'"
 # Requires `description` ≥ 40 chars on the operation justifying why derivation is insufficient.
 # Mutually exclusive with requiredHeaders.
 
@@ -475,7 +475,7 @@ _aiPoweredOperation:
     alertOnDlq: true
   x-subscription:
     name: on-customer-created-for-enrichment       # MUST equal operation file stem
-    # NO 'filter' — derived from messages: → Label = 'Customer.Created'
+    # NO 'filter' — derived from messages: → sys.Label = 'Customer.Created'
   x-ai:                                           # Marks this as AI-powered
     enabled: true
     task: generation                               # generation | classification | extraction | etc.

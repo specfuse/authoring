@@ -635,6 +635,40 @@ jobs:
           [ $fail -eq 0 ] || exit 1
           echo "==> snapshot guardrails verified in both directions."
 
+      # A bare `Label` in a Service Bus SQL filter is `user.` scope and matches
+      # nothing; the label is `sys.Label`. The generator copies a filterOverride
+      # verbatim and never checks it, so this warn rule is the only net
+      # (RestoManager handoff). Assert it fires on every bare form AND stays
+      # silent on qualified filters — a rule that flags `sys.Label` is noise.
+      - name: filterOverride sys.Label scope (regression)
+        run: |
+          set +e
+          set -uo pipefail
+          REPORT="${RUNNER_TEMP}/sys-label.txt"
+          spectral lint --ruleset schemas/spectral/specfuse-asyncapi.yaml \
+            schemas/spectral/fixtures/subscription-filter-sys-label.yaml >"$REPORT" 2>&1
+          STATUS=$?
+          cat "$REPORT"
+          [ $STATUS -ge 2 ] && { echo "::error::Spectral crashed on the sys.Label fixture" >&2; exit 1; }
+
+          fail=0
+          for bad in on-bare-equality on-bare-or-chain on-bare-like on-mixed; do
+            if ! grep "specfuse-subscription-filter-sys-label" "$REPORT" \
+                | grep -q "operations\.$bad\.x-subscription\.filterOverride"; then
+              echo "::error::specfuse-subscription-filter-sys-label did not flag $bad." >&2
+              fail=1
+            fi
+          done
+          for clean in on-sys-label on-sys-label-header; do
+            if grep "specfuse-subscription-filter-sys-label" "$REPORT" \
+                | grep -q "operations\.$clean\.x-subscription\.filterOverride"; then
+              echo "::error::$clean qualifies the label as sys.Label but was flagged." >&2
+              fail=1
+            fi
+          done
+          [ $fail -eq 0 ] || exit 1
+          echo "==> sys.Label scope rule verified in both directions."
+
       # A bootstrapped project must validate cleanly with the scripts the kit
       # hands it. Until now CI only linted examples/hello-orders/, so defects
       # fixed there could survive in the template it came from — and did: every
