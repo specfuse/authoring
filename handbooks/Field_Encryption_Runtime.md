@@ -150,6 +150,31 @@ diagnose from first principles.
 
 ---
 
+## 7. The response is masked, and revealing it is a policy you write
+
+From generator `0.14.0`, a decrypted value does not leave a generated API in the clear. An
+encrypted plain string is masked on every response by default (`****` plus its last four
+characters) unless its `masking` declares otherwise. That part needs nothing from you.
+
+Revealing it does. A single-resource GET that declares an `x-unmask` query parameter asks an
+**unmask policy** which of the requested fields the caller may see, and records each grant
+through the same contract. Unlike the key contracts in §1, this one is **not** a throwing
+placeholder: when nothing is registered, the generated code falls back to a **deny-all**
+policy, so every unmask request is refused with a `403` and the host still boots and serves
+masked responses. The safe failure is the default; the cost of forgetting is a feature that
+never works, not a leak.
+
+| Contract | Who provides it | When absent |
+|---|---|---|
+| **unmask policy** — decide, then record | you, only if a GET declares `x-unmask` | deny-all: every unmask request is a `403` |
+
+The record call is the audit trail — *who saw which field of which row, in the clear* — and it
+is the only place the generated code tells you that happened. A granted response also carries
+`Cache-Control: no-store`, so the clear value is not cached on the way back. Authoring side,
+codes and status semantics: `Vendor_Extensions.md` §1.5, "Masking on the wire, and `x-unmask`".
+
+---
+
 ## Checklist — you have adopted `atRest: encrypted`
 
 1. Call the field-encryption registration from your composition root. Nothing calls it for you.
@@ -160,3 +185,4 @@ diagnose from first principles.
 6. Decide whether an unwritten provider should stop the host at startup; if so, call the assertion helper once the container is built.
 7. Register interceptors **once**, not per scope.
 8. Before renaming an encrypted property, an entity, or anything that rewrites a row's primary key — read `Vendor_Extensions.md` §1.5. It is a data migration, not a rename.
+9. Expect encrypted strings to leave the API masked (generator `0.14.0`). If any GET declares `x-unmask`, implement and register an **unmask policy** that decides and records; until you do, every unmask request is refused.

@@ -244,18 +244,36 @@ NewCustomer:
 
 #### 1.4.1 Fields the client cannot read back
 
-"Missing fields reset" is literal, and it covers fields a client **could not have echoed**. The generated replace path maps the body onto a fresh entity and carries over only `id` and `createdAt`, so every other property takes the body's value, or its default when the body omits it. There is no per-field exception. As of generator `0.12.0` that erases:
+"Missing fields reset" is literal for every ordinary field. It is **not** literal, from generator `0.14.0`, for the fields a client **could not have echoed**: those a GET never returns (`writeOnly`) and those it returns masked (`Vendor_Extensions.md` §1.5, "Masking on the wire, and `x-unmask`").
 
-- **`writeOnly` properties.** They are never returned, so a GET → edit → PUT round trip cannot include them, and the PUT clears them. A password, a badge id or an API secret on `New{Resource}` is gone after any ordinary replace.
-- **Masked values, where a project masks responses itself.** Echoing a masked value writes the mask over the real one. The generator does not mask responses: `x-protection.masking` feeds the data-protection audit, not the response serializer. So this applies only to hand-written masking, but it is silent there.
+**What the generated C# `Replace` service does at `0.14.0`.** It loads the stored row, captures the stored value of every **masked** property (a declared `x-protection.masking`, or the default mask an `atRest: encrypted` string gets) and every **`writeOnly`** property, maps the body over the entity, and restores each captured value **when the mapped value is `null`**. `id` and `createdAt` are carried over as before; every other property takes the body's value. Measured on a generated fixture, the emitted service says so in its own comment: *"a null in the body keeps the stored value instead of erasing it. To clear one, send a PATCH."*
 
-`PATCH` does not have this problem: §1.5's tri-state leaves an absent property untouched. Pick one of these, per resource:
+| the PUT body carries, for a masked or `writeOnly` field | result |
+|---|---|
+| nothing (absent) | **keeps** the stored value |
+| `null` | **keeps** the stored value — not "clears" |
+| a value | sets it |
+| the mask it read, e.g. `****6789` | **stores that literal string** — see below |
 
-1. **Do not expose `PUT`** on a resource whose `New{Resource}` carries a `writeOnly` property. Offer `PATCH` for edits, and set the secret through `POST` or a dedicated action. This is the default recommendation.
-2. **Keep `PUT`, and make the client resend the field.** List the `writeOnly` property in `New{Resource}.required`, so the contract rejects a replace that omits it instead of silently erasing the value. This matches what the generator does today. It only works when the client still holds the value, which is rarely true of a credential.
-3. **Hand-write the replace** (`x-manual`, or override the generated service method) to keep stored values for absent unreadable fields, and say so in the operation's `description`.
+Through `0.13.0` the same replace erased all of these: an absent `writeOnly` property was reset to its default, and a project that masked responses by hand had the mask written over the real value.
 
-**"Absent means keep" on `PUT` is not the generated behaviour.** A consumer has proposed it as a contract: for a field the client cannot read back, absent = keep, `null` = clear, a value = set, plus a rule that `New{Resource}` must not require such a field. The generator implements neither half. Declaring it in a spec does not change the generated code, and the "must not require" rule removes option 2, the only guard available today. It is tracked as a generator ask in `compatibility.md` §39. Until it ships, write option 1 or 2.
+Three things the write-back does **not** do, each of which a spec author still owns:
+
+- **It does not detect an echoed mask.** A client that reads `****6789` and sends it back in the PUT body writes `****6789` into the column; the generator adds no echo check. Either give the field a `pattern` the mask cannot match (an SSN `pattern: '^[0-9]{9}$'` rejects `****6789` at the contract), or state in the property's `description` that clients omit unchanged masked fields. The first is enforceable; the second is not.
+- **It cannot clear such a field.** `null` keeps, because the generated C# body class cannot tell an absent property from an explicit `null`. Clearing is a **PATCH**: §1.5's tri-state applies a masked or `writeOnly` field only when the body carries it, so absent keeps, a value sets, and `null` clears where the property is `nullable: true`.
+- **It covers only the generated C# `Replace`.** Dart and TypeScript clients neither mask nor keep anything — they are clients, and the server decides. A hand-written replace (`x-manual`, or an overridden service method) gets none of this and must keep the values itself. Neither do other targets' generated servers.
+
+`PATCH` has never had this problem: §1.5's tri-state leaves an absent property untouched. So, per resource:
+
+1. **Prefer `PATCH` for edits** on a resource carrying a `writeOnly` or masked property, and set a secret through `POST` or a dedicated action. This is still the default recommendation: it is correct for every target, and it is the only way to clear such a field.
+2. **Keep `PUT` on a C# server generated at `0.14.0` or later** and rely on the write-back. Add a `pattern` to each masked field a client might echo.
+3. **Hand-write the replace** for any server that is not a generated C# `Replace`, keeping stored values for absent unreadable fields, and say so in the operation's `description`.
+
+**Do not `require` a masked or `writeOnly` property in a `New{Resource}` a PUT takes as its body.** It makes "absent means keep" inexpressible: the contract would reject the very body the write-back exists for. The generator's rule for it is `MASKED_FIELD_WRITE_ONLY_REQUIRED` / `MASKED_FIELD_MASKING_REQUIRED` (ERROR, both) — the earlier advice to list a `writeOnly` field in `required` as a guard is withdrawn. A `New{Resource}` used only as a `POST` body is out of the rule's scope, since a create has nothing stored to keep.
+
+> **Measured against the `0.14.0` jar, that rule does not fire.** It reads each PUT body's `$ref`, and the jar's validator sees the spec with references already resolved, so it finds no PUT body to check: a `New{Resource}` that a PUT takes by `$ref` and that requires a `writeOnly` field validates `PASSED`. `0.13.0` reports it as an ERROR on the same spec (and, before the rule was narrowed, on a POST-only `New{Resource}` too). Treat the rule as unenforced at this pin and keep such fields out of `required` yourself. See `compatibility.md` §42.
+
+> **Which body a generated C# `Replace` accepts.** Measured against `0.13.0` and `0.14.0`, a PUT whose request body is `New{Resource}` — or the aggregate's own schema — aborts C# `service` generation with `OPERATION_REPLACE_NON_ENTITY` (*"only supports Entity body parameters"*); the generated replace is emitted only when the body is a non-aggregate `x-entity` schema. This contradicts §1.4's body rule and is recorded in `compatibility.md` §42. The write-back above applies wherever the replace is generated.
 
 Action requests (`*Request` bodies on `POST …:action`) are not replace bodies and are unaffected: a required `writeOnly` `pin` or `pairingCode` there is correct.
 
@@ -1334,7 +1352,7 @@ All write operations (POST/PUT/PATCH/DELETE) must support the `validateOnly` que
 - **CRITICAL (filterableProperties)**: All fields usable in OData `filter` expressions MUST be declared in `filterableProperties` (except generic parameters: page, pageSize, sort, search, filter, expand, validateOnly).
 - **CRITICAL (searchableProperties)**: All fields included in free-text `search` MUST be declared in `searchableProperties`. For BilingualText fields, reference subfields (e.g., `title.en`, `title.fr`).
 - Encryption is declared **per property**, not in `x-entity`: `x-protection: {atRest: encrypted}` on the property schema, with `x-protection.masking: {first, last}` for how many characters survive masking on reads. `x-entity.encryptedProperties` was retired in generator 0.7.0 and fails with `ENTITY_INVALID_CONFIG`. See `Vendor_Extensions.md` §1.5.
-- Writes accept plaintext; privileged reads may return unmasked (implementation-level).
+- Writes accept plaintext. From generator `0.14.0` a C# API group registering `apiMapper` returns every masked field masked, on every response; an `atRest: encrypted` string with no declared `masking` reads back as `****` plus its last four characters. A read returns a field in the clear only through a declared `x-unmask` query parameter on the single-resource GET, behind a deny-by-default policy the host implements. See `Vendor_Extensions.md` §1.5, "Masking on the wire, and `x-unmask`", and §1.4.1 above for what a PUT does with a field it read masked.
 - `aiAccess` (required on every `x-entity`): declares the AI agent access policy enforced by generated repositories. Absence triggers a validator WARN (`ENTITY_AIACCESS_MISSING`); for entities the AI must not touch, use the canonical Tier 0 form `operations: []` with `reason`. `operations` lists allowed verbs from `[read, create, update, delete]`; an empty array is the Tier 0 declaration. Write verbs require `writableProperties` and a `reason`. Fields declaring `x-protection: {atRest: encrypted}` are excluded from implicit read access and must be listed explicitly in `readableProperties` to be AI-readable. Full schema and examples: see `Vendor_Extensions.md` §1.1.1.
 
 ---
