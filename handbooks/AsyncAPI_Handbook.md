@@ -1304,6 +1304,31 @@ post:
       description: Emitted when the order is submitted
 ```
 
+##### Deliberately silent writes: `x-emits: []`
+
+A write that publishes nothing **by design** declares an empty list, with a YAML comment saying why:
+
+```yaml
+post:
+  operationId: logCallNote
+  # Deliberately silent: CRM writes are recorded in the in-transaction audit
+  # table, not published (see the crm domain's architecture decision).
+  x-emits: []
+```
+
+`x-emits: []` and an absent `x-emits` mean different things. `[]` is a decision: this write publishes no event, and a reviewer has seen it. Absence is an authoring gap: nobody has said what the write publishes. The accompanying YAML comment is mandatory, as for `x-self-scoped` (`API_Handbook.md` §10.7): it is the only record of why the write is silent, so a reviewer can verify the declaration is warranted. Nothing checks that the comment is there.
+
+What reads it today:
+
+| | absent `x-emits` | `x-emits: []` | `x-manual: true` |
+|---|---|---|---|
+| Kit Spectral `specfuse-emits-required-on-writes` (`error`, `truthy` on the field) | error | passes (an empty list is truthy) | still checked — no exemption |
+| Generator `WRITE_OPERATION_MISSING_X_EMITS` (`0.14.0`) | WARNING | passes (it checks the key is present, not its length) | skipped |
+
+Neither side lists or counts the `[]` declarations, so a silent write is visible only in review. A generator-side census of declared-silent writes is requested in `clabonte/generator#2415`. A project that wants `[]` confined to a known set of operations can add its own rule; see `schemas/README.md` → "What the project must provide".
+
+**Read-only `POST`s are an open question.** A `:search` `POST` is a write to both checks above, so it needs `x-emits` — `[]` is the honest value for one that publishes nothing. It cannot be exempted by declaring `x-operation.category: query`: a `query` on anything but `GET` is `QUERY_MUST_BE_GET` (ERROR). Whether the kit or the generator should exempt such operations, and how, is undecided.
+
 #### AsyncAPI → AsyncAPI (async receive operations)
 
 Every `on-*` receive operation that publishes events via `emit-*` send operations declares `x-emits` to link them:

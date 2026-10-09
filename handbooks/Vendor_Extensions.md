@@ -2101,7 +2101,7 @@ info:
 | `grants` | string[] | Scopes this role holds, in §3.2's grammar, or `"*"`. |
 | `implicit` | boolean | Every authenticated principal holds this role without a claim. The scope-model counterpart of the `Authenticated` convention below. |
 | `superuser` | boolean | Passes every coherence and runtime check regardless of its grants — a declared fact, replacing an `Admin`-by-name short-circuit. |
-| `delegable` | boolean | A role another role may grant. Read by the generated authorization runtime, not by any validation rule. |
+| `delegable` | boolean | A role another role may grant. **Declared, not enforced** at `0.14.0`: it is published per role in the `role-grants.json` companion of `authorizationMatrix` (`Project_File.md` §11.5), and read by no validation rule and none of the generated C# `Authorization/` runtime files. Enforcement is planned generator-side (`FEAT-2026-0203`, `clabonte/generator#2180`). |
 | `description` | string | Free text. Read by nothing. |
 
 Every key is optional. **Membership validation is identical in both shapes**:
@@ -2152,7 +2152,8 @@ no coherence diagnostic to a sequence-form spec. Measured on `hello-orders`
 `OPERATION_SCOPE_UNBOUND` reads only `x-scopes` and `info.x-domains`, so it runs
 on either shape, and it overlaps the kit's `specfuse-auth-scopes-registry`
 (§3.2). Arazzo carries the same check for actors: `ARAZZO_ACTOR_LACKS_SCOPE`
-mirrors `OPERATION_ROLE_LACKS_SCOPE`.
+mirrors `OPERATION_ROLE_LACKS_SCOPE`, under `authorization.mode: scopes` only
+(`Arazzo_Handbook.md` §4.6 records its limits).
 
 `OPERATION_ROLE_UNLISTED` is the one to read twice. The coherence target is
 that an operation's `x-roles` **equals** the set of roles whose grants cover its
@@ -2567,7 +2568,7 @@ patch:
 
 **Scope**: All write operations (POST, PUT, PATCH, DELETE)
 
-**Required**: Yes — every write operation must declare at least one event.
+**Required**: Yes — every write operation declares `x-emits`. A write that deliberately publishes nothing declares `x-emits: []`, with a YAML comment saying why (below).
 
 ```yaml
 post:
@@ -2596,6 +2597,19 @@ x-emits:
   - event: Order.ItemsLocked
     description: All line items in the order are locked from edits
 ```
+
+**Deliberately silent writes**: An empty list declares that the write publishes nothing, on purpose:
+```yaml
+post:
+  operationId: logCallNote
+  # Deliberately silent: recorded in the in-transaction audit table, not published.
+  x-emits: []
+```
+- `x-emits: []` is a decision; an absent `x-emits` is an undeclared write. They are not interchangeable.
+- The accompanying YAML comment is mandatory: it documents why the write is silent so a reviewer can verify the declaration, as for `x-self-scoped` (§7.6). Nothing enforces its presence.
+- Kit Spectral `specfuse-emits-required-on-writes` is an `error` using `truthy` on the field: an empty list passes, and `x-manual: true` is not exempt.
+- Generator `WRITE_OPERATION_MISSING_X_EMITS` (`0.14.0`) is a WARNING that checks only that the key is present, so `[]` passes; it skips `x-manual: true` operations. It has no exemption by `x-operation.category` or path, and it does not report how many writes are declared silent (requested: `clabonte/generator#2415`).
+- See `AsyncAPI_Handbook.md` §6.3 for the open question on read-only `POST`s such as `:search`.
 
 **Code generation impact**:
 - The code generator wires up event publishing in the API layer (outbox pattern)

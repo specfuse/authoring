@@ -2781,7 +2781,16 @@ The role set is project-defined; declare it in `info.x-roles` (see `Vendor_Exten
   - `x-roles`: privileged + administrative roles
   - `x-scopes`: `[<domain>.<Entity>.write]`, or `[<domain>.<Entity>.delete]` for a DELETE — `delete` is a distinct action, not a subset of `write`
 
-> These extensions document intent for reviewers and generators; enforcement occurs in implementation and/or gateway policy.
+**Roles can declare their grants.** From generator `0.14.0`, `info.x-roles` may be a mapping of role name to `{ grants, implicit, superuser, delegable, description }` instead of a list of names (`Vendor_Extensions.md` §3.1). With grants declared, the templates above stop being a convention to remember: the generator checks each operation's `x-roles` against the roles whose grants cover its `x-scopes`, and the `authorizationMatrix` artifact shows where the two differ (`Project_File.md` §11.5). A list stays valid; it declares no grants, so there is nothing to compare.
+
+**What is enforced, at generator `0.14.0`:**
+
+- **`x-roles`** — membership in `info.x-roles` (`OPERATION_UNKNOWN_ROLE`, ERROR) in either shape; and, under the default `authorization.mode: roles`, the generated C# controller gate (`[RoleRequired(…)]`).
+- **`x-scopes`** — the kit's Spectral rules own the grammar (`error`). The generator checks shape and registry binding, and, against a mapping-form registry, role/scope coherence: WARNING by default, ERROR under `authorization.mode: scopes` (`Vendor_Extensions.md` §3.2).
+- **`authorization.mode: scopes`** (`Project_File.md` §16) moves the generated controller gate from roles to scopes (`[ScopesRequired(…)]`), and `shadow` runs both while the role decision still governs. The generated runtime is the opt-in `authorizationRuntime` artifact.
+- **`delegable`** is declared and published, not enforced (`Vendor_Extensions.md` §3.1).
+
+What the generator does not emit — gateway policy, an identity provider's role assignment, the tenant-resource check behind the generated `ITenantResourceCheck` seam — remains the implementation's.
 
 ---
 

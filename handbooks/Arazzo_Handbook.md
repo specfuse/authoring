@@ -208,11 +208,11 @@ x-actors:
   customer:
     role: Customer
     description: "The customer who placed the original order"
-    ref: $setup.outputs.customerId
+    ref: $setup.outputs.customerUserId
   agent:
     role: SupportAgent
     description: "The support agent who reviews the refund request"
-    ref: $setup.outputs.agentId
+    ref: $setup.outputs.agentUserId
 
 x-setup:
   recipe: completed-order-with-customer
@@ -301,22 +301,22 @@ x-doc:
 
 ### 4.6 `x-actors` (required on scenario workflows, forbidden on recipes)
 
-Declares the actors who perform steps in the scenario. Each actor is bound to a role from the project's closed role set and optionally to an entity seeded by a setup recipe.
+Declares the actors who perform steps in the scenario. Each actor is bound to a role from the project's closed role set and optionally to the principal identity a setup recipe provisions.
 
 ```yaml
 x-actors:
   customer:
     role: Customer
     description: "The customer who placed the order"
-    ref: $setup.outputs.customerId
+    ref: $setup.outputs.customerUserId
   agent:
     role: SupportAgent
     description: "The support agent reviewing the request"
-    ref: $setup.outputs.agentId
+    ref: $setup.outputs.agentUserId
   manager:
     role: SupportManager
     description: "The support manager who oversees escalations"
-    ref: $setup.outputs.managerId
+    ref: $setup.outputs.managerUserId
 ```
 
 | Field | Required | Type | Description |
@@ -324,15 +324,35 @@ x-actors:
 | `<actorKey>` | — | object | Unique key within the workflow (camelCase) |
 | `.role` | Yes | string | Role from the project's closed role set (see below) |
 | `.description` | No | string | Human-readable description |
-| `.ref` | No | expression | Binds the actor to a recipe-seeded entity via `$setup.outputs.X` |
+| `.ref` | No | expression | The actor's **principal identity**, via `$setup.outputs.X`: the id the project's tokens carry as the `authorization.claims.userId` claim (default `sub`, `Project_File.md` §16). Never the id of a domain row the principal is associated with. |
+
+**`ref` is who the step runs as, not what it acts on.** The generated C# scenario tests (`scenarioFunctionalTest`, generator `0.14.0`) mint each actor as a principal whose user-id claim — the claim type `authorization.claims.userId` names — is the `ref` value, verbatim. Bind it to a domain row (a `Customer`, an `Employee`) and every self-scoped step — a `/me/*` route, an `x-self-scoped` operation (`API_Handbook.md` §10.7) — runs as a principal the API cannot resolve, and answers `403` or `404` on a happy path. Nothing reports the binding: Spectral, the Arazzo validator and the cross-spec linker all accept any `$setup.outputs.X` that resolves.
+
+The recipe pattern that makes the kind visible:
+
+1. Create the identity (the user, account or device the auth system knows) and link it to the domain row — `NewCustomer.userId`, say.
+2. Expose the identity id and the domain id as **separate** outputs: `customerUserId` for `ref`, `customerId` for the path parameters, bodies and event matches that need the domain row.
+3. Name the outputs by kind. `*UserId` in `ref`, `*Id` everywhere else, makes a wrong binding visible in review.
+
+When the principal is a **device** — a kiosk, a terminal signed in as itself — `ref` is that device's identity id, and the actor's `role` is the device role the operation's `x-roles` lists. A person's actor on a device-only route fails the role gate instead.
+
+A single `ref` carries one id. A token whose role claim also carries a domain id (an `employeeId` inside an object-shaped roles claim) is not minted from `ref`; that shape is a generator question (`clabonte/generator#2352`). Checking that a `ref` output traces back to the identity entity, and that an actor's `role` is in each of its steps' operation `x-roles`, is a generator ask (`clabonte/generator#2414`); until it lands, review both by hand.
 
 **Role enum (project-defined, closed set):**
 
 The role values are project-specific. The project declares its closed role set in the OpenAPI `info.x-roles` registry (see `Vendor_Extensions.md` §3.1), and the Arazzo validator enforces that every `x-actors.*.role` is a member of that set. The illustrative roles used throughout this handbook (`Customer`, `SupportAgent`, `SupportManager`, `Admin`, `Authenticated`) are examples only -- replace them with your project's actual role values.
 
+**Actor grants (`ARAZZO_ACTOR_LACKS_SCOPE`, generator `0.14.0`).** When `info.x-roles` declares grants (the mapping form, `Vendor_Extensions.md` §3.1), the generator's cross-spec validator can check that an actor's role covers the `x-scopes` of every operation it calls: a step whose actor's role grants miss one of them is an ERROR naming the uncovered scopes. It is the Arazzo counterpart of `OPERATION_ROLE_LACKS_SCOPE`, with three limits:
+
+- it runs only under `authorization.mode: scopes` (`Project_File.md` §16); under the default `roles` it never runs;
+- it compares grants, so it means something only against the mapping form; a `superuser: true` role and a step whose operation declares no `x-scopes` are skipped;
+- it checks scopes, not membership: whether the actor's role is in the operation's `x-roles` is not checked by anything (`clabonte/generator#2414`).
+
+Measured against the released `0.14.0` jar on a mapping-form copy of `hello-orders` under `mode: scopes`, with a `Customer` whose grants miss the scenario's `order.*` scopes, it did **not** fire, while `OPERATION_ROLE_LACKS_SCOPE` reported the same gap on the operations. Do not count on it as the check that catches an under-granted actor yet.
+
 **Recommended convention:** projects that distinguish pre-business-role flows (e.g., self-service signup, invitation acceptance, where the user has a valid auth token but no assigned role yet) should include an `Authenticated` role for that case.
 
-**Why recipes don't have `x-actors`:** recipes execute as an implicit `$system` actor mapped to the project's highest-privileged role (typically `Admin`), which has broad enough permissions to create any fixture the API permits. Scenarios authenticate their own actors against recipe-seeded entities via `x-actors.<name>.ref: $setup.outputs.X`. This is the only coupling between recipe execution identity and scenario execution identity.
+**Why recipes don't have `x-actors`:** recipes execute as an implicit `$system` actor mapped to the project's highest-privileged role (typically `Admin`), which has broad enough permissions to create any fixture the API permits. Scenarios authenticate their own actors as recipe-provisioned identities via `x-actors.<name>.ref: $setup.outputs.X`. This is the only coupling between recipe execution identity and scenario execution identity.
 
 **Scheduled-job (system-initiated) scenarios:** Cron-triggered scenarios have no human actor that initiates the workflow -- the job runs as the system. These scenarios still require `x-actors`, but the actor serves as an **observer** who verifies the outcome after the job runs, not as an initiator. Use a role with sufficient read access to inspect results. Apply `x-as: $observer` on the verification steps.
 
@@ -840,8 +860,8 @@ Each project defines a small set of foundational recipes that form the base of i
 | Recipe | Provides | Extends |
 |--------|----------|---------|
 | `minimal-tenant` | `tenantId`, `adminUserId` | (none) |
-| `minimal-customer` | `customerId` + parent outputs | `minimal-tenant` |
-| `basic-orders` | `orderId1`, `orderId2`, `agentId` + parent outputs | `minimal-customer` |
+| `minimal-customer` | `customerId`, `customerUserId` + parent outputs | `minimal-tenant` |
+| `basic-orders` | `orderId1`, `orderId2`, `agentUserId` + parent outputs | `minimal-customer` |
 
 Domain-specific recipes extend foundational ones to add domain fixtures (e.g., `submitted-order` extends `basic-orders` and finalizes one of the orders).
 
@@ -931,7 +951,8 @@ This means:
 | `operationId` exists | Arazzo step | OpenAPI `operationId` | Error |
 | Event `{Entity}.{Action}` exists | `x-async.emit` / `x-async.await` | AsyncAPI message `x-label` | Error |
 | Status code assertions don't contradict OpenAPI response codes | `successCriteria` | OpenAPI operation responses | Error |
-| Actor `role` in closed set | `x-actors.*.role` | Project's OpenAPI `info.x-roles` registry | Error |
+| Actor `role` in closed set (`ARAZZO_INVALID_ACTOR_ROLE`) | `x-actors.*.role` | Project's OpenAPI `info.x-roles` registry | Error |
+| Actor role's grants cover the step operation's `x-scopes` (`ARAZZO_ACTOR_LACKS_SCOPE`) | `x-actors.*.role` + step `operationId` | Mapping-form `info.x-roles` grants, operation `x-scopes` | Error, under `authorization.mode: scopes` only (§4.6) |
 | `x-domain` value valid | `x-domain` | Project's active domain list + `cross-domain` | Error |
 | `cross-domain` only in `scenarios/cross-domain/` | File path + `x-domain` | Directory structure | Error |
 | `$setup.outputs.X` resolves | Expression | Recipe `outputs` map | Error |
@@ -1042,7 +1063,7 @@ These files are the authoritative templates for new scenarios and recipes. When 
 - **Do** use `{Entity}.{Action}` PascalCase format for event references in `x-async`, matching AsyncAPI `x-label`.
 - **Do** declare `x-version` on every workflow with an accurate `status`.
 - **Do** include `x-as` on every scenario step to identify the acting user.
-- **Do** bind actors to recipe-seeded entities via `x-actors.<name>.ref: $setup.outputs.X`.
+- **Do** bind actors to recipe-provisioned principal identities via `x-actors.<name>.ref: $setup.outputs.X` — the user id the tokens carry, not a domain row's id (§4.6).
 - **Do** assert at least one observable outcome (event or REST state) for critical-path AI worker flows.
 - **Do** use the `critical-path` tag on scenarios that must block PR merges.
 - **Do** follow the Mermaid diagram test (Section 2.2) when deciding whether to split or merge scenarios.
@@ -1154,7 +1175,7 @@ Arazzo-generated tests sit at the **top of the testing pyramid** -- integration/
 
 - **Tenant isolation:** fresh disposable tenant provisioned per CI session. No shared state between runs.
 - **Setup:** recipes use real OpenAPI operations to create fixtures. No database seeding or backdoors.
-- **Actor auth:** seeded via the identity API using recipe-provisioned user entities.
+- **Actor auth:** each actor runs as the recipe-provisioned identity its `x-actors.<name>.ref` names (§4.6).
 
 ### 15.3 CI Integration
 
