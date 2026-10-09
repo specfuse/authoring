@@ -739,6 +739,24 @@ rules:
     then:
       function: asyncSubscriptionFilterEntityCap
 
+  # The event label is the broker's system property: a Service Bus SQL filter
+  # reads it as `sys.Label`. A bare identifier defaults to `user.` scope, so a
+  # bare `Label = 'X'` names an application property no producer sets — the
+  # filter is accepted and the subscription silently receives nothing. The
+  # generator always emits `sys.Label` for derived filters but copies a
+  # filterOverride verbatim and does not check it, so this rule has no generator
+  # counterpart. Warn, not error: the override is the author's escape hatch.
+  # See AsyncAPI_Handbook.md §0.8.
+  specfuse-subscription-filter-sys-label:
+    description: "x-subscription.filterOverride must reference the label as sys.Label; a bare Label is user scope and matches nothing."
+    message: "filterOverride uses an unqualified 'Label', which Service Bus reads as the application property user.Label and so matches nothing. Write sys.Label."
+    severity: warn
+    given: $.operations[*].x-subscription.filterOverride
+    then:
+      function: pattern
+      functionOptions:
+        notMatch: "(^|[^.A-Za-z_])Label\\b"
+
   specfuse-async-subscription-trigger-mode-values:
     description: "x-trigger-mode must be: auto or explicit"
     message: "x-trigger-mode '{{value}}' is not valid. Must be 'auto' (default — generator-emitted dispatcher) or 'explicit' (typed service method, required when payload.context is present)."

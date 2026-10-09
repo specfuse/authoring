@@ -43,7 +43,7 @@ Active domains in this project:
 
 - `{initial-domain}` — (one-line description of what this domain owns)
 
-Add new domains here as the project grows. The Spectral validator loads this list to enforce `x-domain` values on AsyncAPI channels and Arazzo workflows.
+Add new domains here as the project grows. The Spectral validator loads this list to enforce `x-domain` values on AsyncAPI channels and Arazzo workflows. On OpenAPI, the generator enforces the `info.x-domains` registry in `api/specs/v1/openapi.yaml` (keep it in step with this list) on schemas too: every non-entity schema in `components.schemas` declares `x-domain` with a registered key or `common` (`SCHEMA_DOMAIN_REQUIRED` / `SCHEMA_DOMAIN_UNREGISTERED`, ERROR since generator 0.13.0), and every entity's `x-entity.domain` must be registered.
 
 ### Role registry
 

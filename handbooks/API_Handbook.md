@@ -30,6 +30,8 @@ This handbook defines authoritative rules for designing REST APIs and OpenAPI sp
   - Never inline inside a model. Define as a separate schema named `{Resource}{EnumName}` (e.g., `OrderStatus`).
   - Enum values are **camelCase**.
   - Clients must tolerate new/unknown enum values.
+  - **Reuse before you define.** Check the shared enum files (`common/enums.yaml`, and the enums of the domain you are in) before adding one. An enum that is identical across domains belongs in `common/` with `x-domain: common`, defined once. Identical values with a different meaning stay separate: a cost scale and a confidence scale can both be `low/medium/high` and are still two enums.
+  - **Reading `ENUM_VALUE_SET_DUPLICATE`.** The generator compares every pair of enums and reports those whose value sets overlap with a Jaccard ratio of 0.5 or more, ranked higher when the two names share a word, and capped at 50 findings. The message shows the ratio, e.g. `(Jaccard 0.67, shared name token)`. **Jaccard 1.00** means identical value sets: consolidate, unless the meanings differ as above. **Below 1.00** is usually two different enums that share some values; leave them. It is a SUGGESTION, never a build failure. AsyncAPI's equivalent guidance is `AsyncAPI_Handbook.md` §6.5 *Shared Enums*.
 
 ---
 
@@ -2781,7 +2783,16 @@ The role set is project-defined; declare it in `info.x-roles` (see `Vendor_Exten
   - `x-roles`: privileged + administrative roles
   - `x-scopes`: `[<domain>.<Entity>.write]`, or `[<domain>.<Entity>.delete]` for a DELETE — `delete` is a distinct action, not a subset of `write`
 
-> These extensions document intent for reviewers and generators; enforcement occurs in implementation and/or gateway policy.
+**Roles can declare their grants.** From generator `0.14.0`, `info.x-roles` may be a mapping of role name to `{ grants, implicit, superuser, delegable, description }` instead of a list of names (`Vendor_Extensions.md` §3.1). With grants declared, the templates above stop being a convention to remember: the generator checks each operation's `x-roles` against the roles whose grants cover its `x-scopes`, and the `authorizationMatrix` artifact shows where the two differ (`Project_File.md` §11.5). A list stays valid; it declares no grants, so there is nothing to compare.
+
+**What is enforced, at generator `0.14.0`:**
+
+- **`x-roles`** — membership in `info.x-roles` (`OPERATION_UNKNOWN_ROLE`, ERROR) in either shape; and, under the default `authorization.mode: roles`, the generated C# controller gate (`[RoleRequired(…)]`).
+- **`x-scopes`** — the kit's Spectral rules own the grammar (`error`). The generator checks shape and registry binding, and, against a mapping-form registry, role/scope coherence: WARNING by default, ERROR under `authorization.mode: scopes` (`Vendor_Extensions.md` §3.2).
+- **`authorization.mode: scopes`** (`Project_File.md` §16) moves the generated controller gate from roles to scopes (`[ScopesRequired(…)]`), and `shadow` runs both while the role decision still governs. The generated runtime is the opt-in `authorizationRuntime` artifact.
+- **`delegable`** is declared and published, not enforced (`Vendor_Extensions.md` §3.1).
+
+What the generator does not emit — gateway policy, an identity provider's role assignment, the tenant-resource check behind the generated `ITenantResourceCheck` seam — remains the implementation's.
 
 ---
 
@@ -3113,29 +3124,9 @@ parameters:
 
 Advanced patterns for enterprise-scale AI integration:
 
-#### 8. Webhook Subscriptions
-**Purpose**: Real-time notifications for AI agents.
+#### 8. Webhooks — not yet specified
 
-```yaml
-components:
-  schemas:
-    WebhookSubscription:
-      type: object
-      properties:
-        id: { type: string, format: uuid }
-        url: { type: string, format: uri }
-        events:
-          type: array
-          items:
-            enum: ["customer.created", "customer.updated", "order.submitted"]
-        secret: { type: string, description: "For signature verification" }
-        active: { type: boolean, default: true }
-        filters:
-          type: object
-          properties:
-            tenantId: { type: string }
-            customerId: { type: string }
-```
+Webhooks have no Specfuse vocabulary yet: nothing in the kit or the generator declares, validates or generates them. Tracked in `clabonte/generator#2169` (inbound) and `clabonte/generator#2170` (outbound); until they land, do not model a webhook surface in the spec.
 
 #### 9. Transaction Support
 **Purpose**: Multi-step operations with rollback capability.

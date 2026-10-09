@@ -163,32 +163,34 @@ Where:
 **Why two-segment labels:**
 
 1. **Stable public contract.** Labels never carry tenant identity, so a message published in 2026 still routes correctly when the tenant is migrated, deleted, or merged.
-2. **Filters become predicates over `Label = '<E.A>'`** (or `Label LIKE '<E>.%'` for entity-wildcard) — no `LIKE 'X.%.%'` traps, no SQL-LIKE-vs-dots confusion.
+2. **Filters become predicates over `sys.Label = '<E.A>'`** (or `sys.Label LIKE '<E>.%'` for entity-wildcard) — no `LIKE 'X.%.%'` traps, no SQL-LIKE-vs-dots confusion.
 3. **Per-tenant subscribers are header-based**, not label-based — easier to add, remove, or deactivate without changing message metadata.
 
 **Subscription filter patterns:**
 
 ```sql
 -- Standard: single-action subscriber
-Label = 'Order.Submitted'
+sys.Label = 'Order.Submitted'
 
 -- All actions for one entity
-Label LIKE 'Order.%'
+sys.Label LIKE 'Order.%'
 
 -- Multi-action subscriber (subset of one entity's actions)
-Label = 'Order.Submitted' OR Label = 'Order.Cancelled'
+sys.Label = 'Order.Submitted' OR sys.Label = 'Order.Cancelled'
 
 -- Multi-entity subscriber (one worker covering several aggregates)
-Label LIKE 'Customer.%' OR Label LIKE 'Order.%' OR Label LIKE 'Refund.%'
+sys.Label LIKE 'Customer.%' OR sys.Label LIKE 'Order.%' OR sys.Label LIKE 'Refund.%'
 
 -- Tenant-scoped subscriber (header-driven, AND-merged with derived label filter)
-Label = 'Order.Submitted' AND user.tenantId = '550e8400-e29b-41d4-a716-446655440000'
+sys.Label = 'Order.Submitted' AND user.tenantId = '550e8400-e29b-41d4-a716-446655440000'
 
 -- Channel-aware subscriber for promoted-header values (see x-envelope-promote)
-Label = 'NotificationJob.Created' AND user.channel = 'email'
+sys.Label = 'NotificationJob.Created' AND user.channel = 'email'
 ```
 
-**Authors do not write filters.** The generator derives the filter from the operation's `messages:` list as an OR-chain over `Label =` (or `LIKE '<E>.%'` for entity-wildcard patterns), then AND-merges any `requiredHeaders` declared on `x-subscription`. The legacy authored `filter` field is forbidden — see `Vendor_Extensions.md §12.3`.
+**Filter scope: the label is `sys.Label`, headers are `user.<name>`.** The event label travels as the broker's system property (the native `Subject`), which a Service Bus SQL filter reads as `sys.Label`. Envelope headers (`tenantId`, promoted fields) are application properties, read as `user.<name>`. A bare identifier defaults to `user.` scope, so a bare `Label = 'Order.Submitted'` asks for an application property named `Label` that no producer sets: the filter is accepted, raises no error, and the subscription silently receives nothing. The generator has always emitted `sys.Label`; write it the same way anywhere you hand-author a filter (`x-subscription.filterOverride`, provisioning scripts, IaC topology). The kit Spectral rule `specfuse-subscription-filter-sys-label` warns on an unqualified `Label` in `filterOverride`.
+
+**Authors do not write filters.** The generator derives the filter from the operation's `messages:` list as an OR-chain over `sys.Label =` (or `LIKE '<E>.%'` for entity-wildcard patterns), then AND-merges any `requiredHeaders` declared on `x-subscription`. The legacy authored `filter` field is forbidden — see `Vendor_Extensions.md §12.3`.
 
 ### 0.9 v2.1 Design Summary
 
@@ -268,7 +270,7 @@ Explain to the user *why* the simpler model is insufficient for the specific sce
 
 Every event message is published to the single shared topic `{project}.events` (§0.7). There is no per-aggregate or per-domain event topic. Consumers subscribe with SQL-like filters over the `Label` property (§0.8) to receive only the events they care about.
 
-**Multi-entity subscribers are a first-class pattern.** A single `on-*` operation can list multiple message `$ref`s and compose an OR-chain SQL filter (e.g., `Label LIKE 'Customer.%' OR Label LIKE 'Order.%' OR Label LIKE 'Refund.%'`). This is preferred over splitting the same logical worker into multiple sibling operations; it keeps cross-aggregate logic (projection rebuilds, sync workers, notification orchestrators) in one cohesive handler with one subscription, one DLQ, and one retry budget.
+**Multi-entity subscribers are a first-class pattern.** A single `on-*` operation can list multiple message `$ref`s and compose an OR-chain SQL filter (e.g., `sys.Label LIKE 'Customer.%' OR sys.Label LIKE 'Order.%' OR sys.Label LIKE 'Refund.%'`). This is preferred over splitting the same logical worker into multiple sibling operations; it keeps cross-aggregate logic (projection rebuilds, sync workers, notification orchestrators) in one cohesive handler with one subscription, one DLQ, and one retry budget.
 
 **Rationale:**
 
@@ -979,7 +981,7 @@ x-subscription:
 
 | Mode | Author writes | Generator emits |
 |---|---|---|
-| **Derived (default)** | `messages: [E1.Created.yaml, E2.Updated.yaml]` only | `Label = 'E1.Created' OR Label = 'E2.Updated'` |
+| **Derived (default)** | `messages: [E1.Created.yaml, E2.Updated.yaml]` only | `sys.Label = 'E1.Created' OR sys.Label = 'E2.Updated'` |
 | **`requiredHeaders`** | `messages:` list + `requiredHeaders: { channel: email }` | `<derived> AND user.channel = 'email'` |
 | **`filterOverride`** | Raw SQL + `description` justification | The override verbatim |
 
@@ -987,11 +989,11 @@ x-subscription:
 
 | Subscriber shape | What you write | Resulting filter |
 |---|---|---|
-| Single-action subscriber | `messages: [OrderSubmitted.yaml]` | `Label = 'Order.Submitted'` |
-| Wildcard-all-actions on one entity | `messages: [*.yaml for that entity]` (or `filterOverride: "Label LIKE 'Order.%'"`) | `Label LIKE 'Order.%'` |
-| Multi-entity subscriber | `messages:` list spanning entities | `Label LIKE 'Customer.%' OR Label LIKE 'Order.%' OR ...` |
+| Single-action subscriber | `messages: [OrderSubmitted.yaml]` | `sys.Label = 'Order.Submitted'` |
+| Wildcard-all-actions on one entity | `messages: [*.yaml for that entity]` (or `filterOverride: "sys.Label LIKE 'Order.%'"`) | `sys.Label LIKE 'Order.%'` |
+| Multi-entity subscriber | `messages:` list spanning entities | `sys.Label LIKE 'Customer.%' OR sys.Label LIKE 'Order.%' OR ...` |
 | Tenant-scoped subscriber | `messages:` list + `requiredHeaders: { tenantId: '<guid>' }` | `<derived> AND user.tenantId = '<guid>'` |
-| Channel-aware subscriber (uses `x-envelope-promote`) | `messages: [NotificationJobCreated.yaml]` + `requiredHeaders: { channel: email }` | `Label = 'NotificationJob.Created' AND user.channel = 'email'` |
+| Channel-aware subscriber (uses `x-envelope-promote`) | `messages: [NotificationJobCreated.yaml]` + `requiredHeaders: { channel: email }` | `sys.Label = 'NotificationJob.Created' AND user.channel = 'email'` |
 
 **Multi-entity subscribers compose an OR chain** — there is no shorter form. Keep under the cap in §4.5.
 
@@ -1063,7 +1065,7 @@ x-ai:
 | `entities` | When `enabled: true` | object | Declares every entity the worker reads/writes (see below) |
 | `model` | No | string | Preferred model (informational) |
 | `promptTemplate` | No | string | Path relative to `prompts/` |
-| `capabilities` | No | array | One or more of: `structuredOutput`, `toolUse`, `rag`, `vision`, `streaming`, `multiTurn`, `batchProcessing` |
+| `capabilities` | No | array | One or more of: `structuredOutput`, `toolUse`, `rag`, `vision`, `streaming`, `multiTurn`, `batchProcessing`. **Informational, read by nothing** — `streaming` and `multiTurn` generate no streaming transport or conversation state |
 | `estimatedTokens` | No | object | `{input, output}` |
 | `maxLatency` | No | string (duration) | Max acceptable latency for the AI call |
 | `fallback` | No | string | `skip`, `queue`, `default`. Default: `queue` |
@@ -1135,7 +1137,7 @@ Consumers using `requiresSession: true` see the same prefixed session IDs. Autho
 
 #### 4.5.2 Subscription filter entity-pattern cap
 
-The effective filter on a subscription (derived from the operation's `messages:` list, plus any `requiredHeaders` / `filterOverride`) may reference **at most 10 distinct entity patterns** — counted as distinct `Label = '<Entity>.'` clauses in the derived OR-chain or distinct `LIKE '<Entity>.` prefixes inside a `filterOverride`. More than 10 is a smell: the worker is probably doing too much and should be split along a natural seam. The cap also keeps filters well under the transport's filter-size limit (e.g., 2048 chars on ASB).
+The effective filter on a subscription (derived from the operation's `messages:` list, plus any `requiredHeaders` / `filterOverride`) may reference **at most 10 distinct entity patterns** — counted as distinct `sys.Label = '<Entity>.'` clauses in the derived OR-chain or distinct `LIKE '<Entity>.` prefixes inside a `filterOverride`. More than 10 is a smell: the worker is probably doing too much and should be split along a natural seam. The cap also keeps filters well under the transport's filter-size limit (e.g., 2048 chars on ASB).
 
 Recall that authors do NOT write a raw `filter` field directly (forbidden — see §4.3); the rule operates on the derived filter the generator produces.
 
@@ -1301,6 +1303,31 @@ post:
     - event: Order.Submitted
       description: Emitted when the order is submitted
 ```
+
+##### Deliberately silent writes: `x-emits: []`
+
+A write that publishes nothing **by design** declares an empty list, with a YAML comment saying why:
+
+```yaml
+post:
+  operationId: logCallNote
+  # Deliberately silent: CRM writes are recorded in the in-transaction audit
+  # table, not published (see the crm domain's architecture decision).
+  x-emits: []
+```
+
+`x-emits: []` and an absent `x-emits` mean different things. `[]` is a decision: this write publishes no event, and a reviewer has seen it. Absence is an authoring gap: nobody has said what the write publishes. The accompanying YAML comment is mandatory, as for `x-self-scoped` (`API_Handbook.md` §10.7): it is the only record of why the write is silent, so a reviewer can verify the declaration is warranted. Nothing checks that the comment is there.
+
+What reads it today:
+
+| | absent `x-emits` | `x-emits: []` | `x-manual: true` |
+|---|---|---|---|
+| Kit Spectral `specfuse-emits-required-on-writes` (`error`, `truthy` on the field) | error | passes (an empty list is truthy) | still checked — no exemption |
+| Generator `WRITE_OPERATION_MISSING_X_EMITS` (`0.14.0`) | WARNING | passes (it checks the key is present, not its length) | skipped |
+
+Neither side lists or counts the `[]` declarations, so a silent write is visible only in review. A generator-side census of declared-silent writes is requested in `clabonte/generator#2415`. A project that wants `[]` confined to a known set of operations can add its own rule; see `schemas/README.md` → "What the project must provide".
+
+**Read-only `POST`s are an open question.** A `:search` `POST` is a write to both checks above, so it needs `x-emits` — `[]` is the honest value for one that publishes nothing. It cannot be exempted by declaring `x-operation.category: query`: a `query` on anything but `GET` is `QUERY_MUST_BE_GET` (ERROR). Whether the kit or the generator should exempt such operations, and how, is undecided.
 
 #### AsyncAPI → AsyncAPI (async receive operations)
 

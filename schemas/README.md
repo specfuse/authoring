@@ -57,6 +57,7 @@ The kit's rules are deliberately **structural** for values that are project-defi
 | Domain list | `specfuse-arazzo-domain-shape` (Arazzo), `specfuse-async-channel-domain-kebab` (AsyncAPI), `specfuse-async-operation-tag-pascal` (AsyncAPI) | An enumeration rule constraining `x-domain` (kebab-case) and the AsyncAPI operation tag (PascalCase) to the project's declared domain list. |
 | Channel address prefix | `specfuse-async-channel-address-format` (shape only) | A pattern rule pinning the prefix (e.g., `^myproject\.events$` for the shared event topic, `^myproject\.scheduling\.[a-z-]+$` for scheduled triggers). |
 | Path-pattern action endpoints | `specfuse-post-201-location` (excludes `/bulk/` and `/_system/` only) | Optional: exclusions for the project's bespoke action verbs (e.g., `/dismiss`, `/process`). |
+| Deliberately silent writes | `specfuse-emits-required-on-writes` (`truthy`: `x-emits: []` passes) | Optional: a `length` rule confining `x-emits: []` to the operations the project allows to be silent (below). |
 
 A minimal project overlay looks like:
 
@@ -86,6 +87,24 @@ rules:
       functionOptions:
         match: "^myproject\\.events$"
 ```
+
+### Optional: confining `x-emits: []`
+
+`x-emits: []` declares a write that deliberately publishes nothing (`AsyncAPI_Handbook.md` §6.3). The kit rule accepts it anywhere, because which writes may be silent is a project decision. A project that has made that decision for a known set of routes can reject `[]` everywhere else. Scope the `given` to your own allowlist — the `/crm/` prefix here is an example, not a convention:
+
+```yaml
+rules:
+  myproject-emits-empty-only-where-allowed:
+    description: "x-emits: [] (a deliberately silent write) is allowed only under /crm/"
+    severity: error
+    given: $.paths[?(!@property.match("^/crm/"))][post,put,patch,delete].x-emits
+    then:
+      function: length
+      functionOptions:
+        min: 1
+```
+
+Measured with Spectral against a three-operation spec: one error, on the `[]` outside `/crm/`; none on the `[]` under it, or on a non-empty list.
 
 ## Running Spectral so a crash cannot pass as clean
 

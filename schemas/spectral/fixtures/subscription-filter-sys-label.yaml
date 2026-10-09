@@ -1,0 +1,71 @@
+# =============================================================================
+# Regression fixture: filterOverride must write the label as sys.Label
+# =============================================================================
+# In a Service Bus SQL filter a bare identifier is `user.` (application
+# property) scope. The event label is the system property `sys.Label`, so a
+# bare `Label = 'X'` names a property no producer sets and the subscription
+# silently receives nothing. The generator emits `sys.Label` for derived filters
+# but copies a filterOverride verbatim, so specfuse-subscription-filter-sys-label
+# is the only check (RestoManager handoff, restomanager-specs #433).
+#
+#   on-bare-equality     flagged: Label = 'X'
+#   on-bare-or-chain     flagged: (Label = 'X' OR Label = 'Y')
+#   on-bare-like         flagged: Label LIKE 'X.%'
+#   on-mixed             flagged: one sys.Label clause, one bare Label clause
+#   on-sys-label         clean — sys.Label = / OR / LIKE
+#   on-sys-label-header  clean — sys.Label AND user.<header>
+#
+# The rule must fire on the first four AND stay silent on the last two, or it
+# is either inert or noise. Not a Specfuse-conformant example — do not copy.
+# =============================================================================
+asyncapi: 3.0.0
+info:
+  title: Subscription filter sys.Label fixture
+  version: "1.0.0"
+channels:
+  domainEvents:
+    address: domain-events
+    messages: {}
+operations:
+  on-bare-equality:
+    action: receive
+    description: Fixture override; exists only to exercise the sys.Label scope rule in CI.
+    channel: { $ref: '#/channels/domainEvents' }
+    x-subscription:
+      name: on-bare-equality
+      filterOverride: "Label = 'Order.Submitted'"
+  on-bare-or-chain:
+    action: receive
+    description: Fixture override; exists only to exercise the sys.Label scope rule in CI.
+    channel: { $ref: '#/channels/domainEvents' }
+    x-subscription:
+      name: on-bare-or-chain
+      filterOverride: "(Label = 'Order.Submitted' OR Label = 'Order.Cancelled')"
+  on-bare-like:
+    action: receive
+    description: Fixture override; exists only to exercise the sys.Label scope rule in CI.
+    channel: { $ref: '#/channels/domainEvents' }
+    x-subscription:
+      name: on-bare-like
+      filterOverride: "Label LIKE 'Order.%'"
+  on-mixed:
+    action: receive
+    description: Fixture override; exists only to exercise the sys.Label scope rule in CI.
+    channel: { $ref: '#/channels/domainEvents' }
+    x-subscription:
+      name: on-mixed
+      filterOverride: "sys.Label = 'Order.Submitted' OR Label = 'Order.Cancelled'"
+  on-sys-label:
+    action: receive
+    description: Fixture override; exists only to exercise the sys.Label scope rule in CI.
+    channel: { $ref: '#/channels/domainEvents' }
+    x-subscription:
+      name: on-sys-label
+      filterOverride: "(sys.Label = 'Order.Submitted' OR sys.Label = 'Order.Cancelled') OR sys.Label LIKE 'Refund.%'"
+  on-sys-label-header:
+    action: receive
+    description: Fixture override; exists only to exercise the sys.Label scope rule in CI.
+    channel: { $ref: '#/channels/domainEvents' }
+    x-subscription:
+      name: on-sys-label-header
+      filterOverride: "sys.Label = 'NotificationJob.Created' AND user.channel = 'email'"
