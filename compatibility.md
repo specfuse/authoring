@@ -471,6 +471,8 @@ This independently corroborates the consumer reports behind `clabonte/generator#
 
 ### 24. `info.x-services`, `holds`, `Read{Entity}` — kit documents and lints ahead of the pin
 
+> **Renamed since.** The registry is now `info.x-pillars`, the finding ids `PILLAR_*`, the kit rules `specfuse-pillars-*`, and the fixture `pillar-topology.yaml` — see §41. This section keeps the names as they were when it was written.
+
 **Status:** kit-side work **done** (`Vendor_Extensions.md` §14, `Project_File.md` §8.13.2, nine Spectral rules, `schemas/spectral/fixtures/service-topology.yaml`, a both-directions CI step). Generator-side it **shipped in `0.6.0`** (first jar containing `ServiceTopologyValidationRule`). **Re-verified against `0.12.0` on 2026-09-17:** every §14.9 severity matches the jar except `SERVICE_REGISTRY_UNREADABLE` (WARNING in the jar, `error` in the kit, on purpose; §14.9 now says why). `READ_MODEL_SNAPSHOT_VERSION_DRIFT` is ERROR or WARNING depending on whether the canonical snapshot still carries the field. `SERVICE_CROSS_BOUNDARY_REFERENCE` is still ERROR and still suppressed by a declared hold. Defect 2 below is fixed: `extensions --format json` publishes `info` since `0.11.0`. The rest of this entry is the history of the pre-`0.6.0` state and is kept as the precedent for documenting ahead of a pin.
 
 **The pin state, measured rather than assumed.** `java -jar ~/.specfuse/jars/specfuse-generator-0.5.8.jar extensions --format json` reports `x-entity` keys only — no `x-services`, and no `info`-level extension of any kind. The feature (generator `FEAT-2026-0102`, PRs `#1158` / `#1160` / `#1162`) is on generator `main` at `0.5.9-SNAPSHOT`. So on kit `0.8.0`'s pin the vocabulary is **inert**: declaring it changes nothing that is generated and produces no generator finding.
@@ -1077,6 +1079,35 @@ userRole:
 
 **Kit follow-up when it lands:** document the key beside `x-references` / `x-expand-of` in `Vendor_Extensions.md`. Add it to the property-level shape guard in both directions **in the pin-bump PR**, since the vocabulary gate will flag it. Add the third exit to `API_Handbook.md` §1.9. Read every severity off the jar, not the issue.
 
+### 41. `info.x-services` → `info.x-pillars`, outright (authoring#136, generator `FEAT-2026-0208`)
+
+**Status:** **done — shipped in kit `0.23.0`, pinning generator `0.14.0`** (generator `FEAT-2026-0208`, #2334). The kit half (#137) and the pin bump (#138) land in the same release, because the `0.13.0` jar read `x-services` and had never heard of `x-pillars`: a kit linting `x-pillars` against it would have steered every author to a key the jar silently ignored.
+
+**Why the rename.** The unit the registry describes is a group of whole domains that deploys as one unit and owns one database. "Service" reads as one API, class or endpoint, is overloaded in most codebases, and usually already names the legacy system a project is migrating off. "Pillar" reads as something that holds domains: pillar ⊃ domain ⊃ entity.
+
+**No alias, on either plane.** The issue asked for `x-services` as a one-release deprecated alias. The generator dropped that: no real spec or project file declares `info.x-services` or `groups[].service` (§29 recorded the one consumer that measured it as available-and-declined), and the only users found were the kit's own ruleset, its fixture and `examples/hello-orders/specfuse-findings.json`, all of which change in this release. So:
+
+| surface | before | after |
+|---|---|---|
+| spec registry | `info.x-services` | `info.x-pillars` — a leftover `x-services` is refused by name, `PILLAR_REGISTRY_LEGACY_KEY` (ERROR), even beside `x-pillars` |
+| project file | `groups[].service` | `groups[].pillar` — a leftover `service` fails `Project.Load` naming `pillar` |
+| config failures | `INVALID_SERVICE_FILTER`, `UNKNOWN_SERVICE_FILTER`, `EMPTY_SERVICE_DOMAINS` | `INVALID_PILLAR_FILTER`, `UNKNOWN_PILLAR_FILTER`, `EMPTY_PILLAR_DOMAINS` |
+| findings | 14 × `SERVICE_*` | 14 × `PILLAR_*`, same severities; the generator CHANGELOG carries the old → new table |
+| kit rules | `specfuse-services-{registry-shape,domain-single-owner,domain-registered,holds-pairing}` | `specfuse-pillars-*`, same suffixes, plus the new `specfuse-pillars-legacy-key` (error) mirroring `PILLAR_REGISTRY_LEGACY_KEY` |
+| kit files | `functions/openapiServiceRegistry.js`, `fixtures/service-topology.yaml` | `functions/openapiPillarRegistry.js`, `fixtures/pillar-topology.yaml` |
+
+**Not in `rule-renames.yaml`.** That map is the legacy `rm-*` → `specfuse-*` migration and its consumers read it as one. A project whose Spectral baseline counts a `specfuse-services-*` id re-keys those four lines by hand; with zero adopters, no such baseline is known to exist.
+
+**Verified against the released `0.14.0` jar** (sha256 `5cd33122…cbd0`), on #137 merged into #138, 2026-10-09:
+
+1. `extensions --format json` lists `x-pillars` and not `x-services`.
+2. `examples/hello-orders` validates `PASSED` with 0 errors, and the `specfuse-findings.json` the jar writes is identical to the one committed here (`PILLAR_REGISTRY_MISSING`, message and location).
+3. A spec carrying both keys gets `PILLAR_REGISTRY_LEGACY_KEY` at ERROR — the severity `specfuse-pillars-legacy-key` claims — and the kit rule fires on the same spec.
+4. A project file with `groups[].service` fails to load: `"service" is no longer a group key — it was renamed to "pillar"` (`INVALID_PILLAR_FILTER` in the source).
+5. `PILLAR_CROSS_BOUNDARY_REFERENCE` is still ERROR on an undeclared cross-pillar `belongsTo`, and a `holds` + `Read{Entity}` pair still suppresses it.
+
+**Out of scope, still open:** the optional strict-ownership flag (`pillars.requireComplete`) from the issue is a separate generator follow-up; the kit documents nothing for it.
+
 ---
 
 ## Outstanding kit-side work
@@ -1106,22 +1137,22 @@ Surfaced during the schemas import (commits `78abc31`..`b146efa`) when verifying
 
 **Severity:** the handbooks make these promises today; until the rules ship, the promises are unenforced. New projects bootstrapped from the kit can violate these contracts and not know it. Worth landing before Phase 7 (smoke test of an imminent second project).
 
-### A per-service bundle splitter — decide whether the kit ships one
+### A per-pillar bundle splitter — decide whether the kit ships one
 
 **Status:** open decision, deliberately not taken while adopting follow-up 24's vocabulary.
 
-The generator does **not** subset one spec per service. It reads the bundle it is handed. `info.x-services` therefore leaves two viable topologies, both documented in `Vendor_Extensions.md` §14.7:
+The generator does **not** subset one spec per service. It reads the bundle it is handed. `info.x-pillars` therefore leaves two viable topologies, both documented in `Vendor_Extensions.md` §14.7:
 
-- **single bundle, many groups** — one master spec; each service repo binds its group with `groups[].service`. Needs no new tooling, because N project files already work.
-- **split bundles** — a specs-side splitter derives a per-service bundle from the master spec, using `info.x-services` as its manifest.
+- **single bundle, many groups** — one master spec; each pillar repo binds its group with `groups[].pillar`. Needs no new tooling, because N project files already work.
+- **split bundles** — a specs-side splitter derives a per-pillar bundle from the master spec, using `info.x-pillars` as its manifest.
 
-Only the second needs anything built, and if the kit builds it, `info.x-services` is its input — which is the reason to decide before the registry accumulates consumers who have assumed one topology or the other.
+Only the second needs anything built, and if the kit builds it, `info.x-pillars` is its input — which is the reason to decide before the registry accumulates consumers who have assumed one topology or the other.
 
 **Argument for not shipping it yet:** the kit is a spec-authoring contract, deliberately not a CI product — the same line drawn for `spectral-ratchet.py`, which ships as a reference implementation a project copies and owns. A splitter is further from authoring than a ratchet is, and it has a harder correctness bar: a bundle that drops a shared enum or a `Read{Entity}`'s value object produces code that does not compile, in a repo whose author cannot see why. The single-bundle mode has neither problem and is the cheaper way to find out whether a topology is right at all.
 
 **Argument for shipping it eventually:** every consumer that goes split writes the same closure walk, and getting it wrong is silent until compile time in someone else's repository.
 
-**Do not decide this from the kit side alone** — decide it after the first consumer adopts `info.x-services` and reports which mode it actually ran. No consumer has declared the registry yet.
+**Do not decide this from the kit side alone** — decide it after the first consumer adopts `info.x-pillars` and reports which mode it actually ran. No consumer has declared the registry yet.
 
 ### `x-action-class` non-introduction
 

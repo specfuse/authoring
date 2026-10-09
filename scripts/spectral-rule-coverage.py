@@ -46,7 +46,7 @@
 # zero-match from the batch pass is re-probed ALONE before it is believed.
 #
 # A `given` can also legitimately select nothing because the corpus contains no
-# instance of the construct it targets (no DELETE operations, no `info.x-services`).
+# instance of the construct it targets (no DELETE operations, no `info.x-pillars`).
 # Those are declared in a coverage allowlist with a reason. The allowlist is
 # checked in BOTH directions: an undeclared zero-match fails the build, and so
 # does a declared entry that now matches, so the allowlist cannot quietly rot
