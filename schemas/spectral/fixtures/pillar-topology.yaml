@@ -1,7 +1,7 @@
 # =============================================================================
-# Regression fixture: info.x-services, holds, and Read{Entity}
+# Regression fixture: info.x-pillars, holds, and Read{Entity}
 # =============================================================================
-# Pins the nine service-topology rules in specfuse-openapi.yaml. Every rule is
+# Pins the ten pillar-topology rules in specfuse-openapi.yaml. Every rule is
 # asserted in BOTH directions — it fires on its violation AND stays silent on
 # the clean case sitting beside it. A rule that fires on everything and a rule
 # that works are indistinguishable if you only count findings.
@@ -11,14 +11,15 @@
 # entry rather than giving up on the first bad one.
 #
 #   REGISTRY
-#   catalog-service    holds Ghost, which is not an entity   -> holds (unknown)
-#   booking-service    claims `catalog`, already claimed     -> duplicateOwner
+#   catalog-pillar     holds Ghost, which is not an entity   -> holds (unknown)
+#   booking-pillar     claims `catalog`, already claimed     -> duplicateOwner
 #                      holds Restaurant, ReadRestaurant exists -> CLEAN
-#   billing-service    claims `shipping`, not in x-domains   -> domainRegistered
+#   billing-pillar     claims `shipping`, not in x-domains   -> domainRegistered
 #                      holds Invoice, no ReadInvoice exists  -> holds (no model)
-#   warehouse-service  one registered domain, holds nothing  -> CLEAN
-#   ghost-service      `hold:` typo for `holds:`             -> registryShape
+#   warehouse-pillar   one registered domain, holds nothing  -> CLEAN
+#   ghost-pillar       `hold:` typo for `holds:`             -> registryShape
 #                      also re-claims `warehouse`            -> duplicateOwner
+#   info.x-services    the pre-rename key, left behind       -> legacyKey
 #
 #   READ MODELS
 #   ReadRestaurant     id + deletedAt (soft source) + enum ref, held  -> CLEAN
@@ -36,32 +37,38 @@
 # =============================================================================
 openapi: 3.0.3
 info:
-  title: Service topology fixture
+  title: Pillar topology fixture
   version: "1.0.0"
   x-domains: [catalog, booking, billing, warehouse]
-  x-services:
-    catalog-service:
+  x-pillars:
+    catalog-pillar:
       domains: [catalog]
       # `Ghost` is not a schema in this document at all.
       holds: [Ghost]
-    booking-service:
-      # `catalog` is catalog-service's. Two owners is the headline failure the
+    booking-pillar:
+      # `catalog` is catalog-pillar's. Two owners is the headline failure the
       # registry exists to detect.
       domains: [booking, catalog]
       holds: [Restaurant]
-    billing-service:
+    billing-pillar:
       # `shipping` is not a member of info.x-domains above.
       domains: [billing, shipping]
       # `Invoice` IS an entity here, but no `ReadInvoice` schema exists — the
       # holder declared its half and the owner never authored theirs.
       holds: [Invoice]
-    warehouse-service:
+    warehouse-pillar:
       domains: [warehouse]
-    ghost-service:
+    ghost-pillar:
       domains: [warehouse]
       # Singular. The closed guard is what turns this from a silently ignored
       # key into a finding.
       hold: [Restaurant]
+  # The registry's pre-rename key, left beside the new one. The generator never
+  # reads it and refuses it by name (PILLAR_REGISTRY_LEGACY_KEY), so a spec that
+  # renamed half its registry cannot pass for one that renamed all of it.
+  x-services:
+    stale-service:
+      domains: [catalog]
 
 paths:
   /users/{userId}:
@@ -179,7 +186,7 @@ components:
     # ---- Replicas -----------------------------------------------------------
 
     # Correct. Primary key present, soft-delete source's deletion state
-    # carried, an enum reference (not an entity), held by booking-service, and
+    # carried, an enum reference (not an entity), held by booking-pillar, and
     # nowhere on the wire. NO FINDING EXPECTED from any rule in this group.
     ReadRestaurant:
       type: object

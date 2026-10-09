@@ -227,9 +227,9 @@
     },
     {
       "severity": "WARNING",
-      "code": "SERVICE_REGISTRY_MISSING",
-      "message": "info.x-services is absent or empty; service ownership is not being validated (permissive fallback)",
-      "location": "info.x-services",
+      "code": "PILLAR_REGISTRY_MISSING",
+      "message": "info.x-pillars is absent or empty; pillar ownership is not being validated (permissive fallback)",
+      "location": "info.x-pillars",
       "category": "DDD"
     }
   ]

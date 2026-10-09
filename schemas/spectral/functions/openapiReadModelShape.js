@@ -4,7 +4,7 @@
 //
 // A `Read{Entity}` is the fourth member of the `New*` / `Update*` / `Basic*`
 // derived-model family, and it is the one that is NOT a wire shape. It declares
-// exactly what slice of `{Entity}` a foreign service may keep as a persisted
+// exactly what slice of `{Entity}` a foreign pillar may keep as a persisted
 // read-only replica. Every check here defends that distinction.
 //
 // Do not read "read model" as either of the two things that phrase already
@@ -12,14 +12,14 @@
 // `Basic*` (a lightweight response projection). `Read{Entity}` is a STORE
 // shape. `Basic*` was deliberately not reused for it, because `Basic*` carries
 // expandable refs and lives in the Api layer — reusing it would weld a
-// consuming service's database table to another team's response DTO.
+// consuming pillar's database table to another team's response DTO.
 //
 // Checks (selected by functionOptions.check, one rule id each):
 //
 //   primaryKey    no `id` and no `{Source}Id`. A replica row with no key has
 //                 nothing for an inbox handler to upsert on.
 //   nested        a property embedding another entity or a `Basic*`. That
-//                 re-welds the cross-service edge the replica exists to cut.
+//                 re-welds the cross-pillar edge the replica exists to cut.
 //                 Remediation is to flatten to the FK. Enum- and value-object-
 //                 typed properties are fine and never trip this.
 //   wireType      used as a request body, a response, or a projection embed.
@@ -27,7 +27,7 @@
 //                 resolves to `hard` by fallback, which is not a fact a replica
 //                 can be built on), or declares `soft` while the replica omits
 //                 the deletion-state property — in which case every holding
-//                 service serves rows the owner considers gone.
+//                 pillar serves rows the owner considers gone.
 //
 // See handbooks/Vendor_Extensions.md §14.
 //
@@ -204,7 +204,7 @@ function checkWireType(schemas, doc, basePath) {
     results.push({
       message:
         `'${name}' appears in ${where}. A Read{Entity} is a store shape, not a wire shape — ` +
-        `putting it on the wire welds a consuming service's replica table to this API's ` +
+        `putting it on the wire welds a consuming pillar's replica table to this API's ` +
         `payloads. Use the entity or its 'Basic' projection there.`,
       path: [...basePath, name],
     });
@@ -252,7 +252,7 @@ function checkSourceDelete(schemas, basePath) {
       message:
         `'${source}' declares \`x-entity.delete: soft\` but its replica '${name}' has no ` +
         `\`deletedAt\` property. Soft removal is a field change — without it the replica can ` +
-        `never represent an archived row, and every holding service serves data the owner ` +
+        `never represent an archived row, and every holding pillar serves data the owner ` +
         `considers gone.`,
       path: [...basePath, name],
     });

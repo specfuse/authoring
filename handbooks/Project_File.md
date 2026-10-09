@@ -70,8 +70,8 @@ Language-coupling column: ✱ means the field is honoured only for a specific la
 | `groups[].cleanGenerated` | boolean | optional | — | Wipe generated subtree before emitting. Default `false`. |
 | `groups[].cleanScope[]` | array<string> | optional | — | Explicit relative paths to wipe instead of the language default. |
 | `groups[].filter` | object | optional | — | Predicate tree — **AsyncAPI workers only (v1)**. Other artifact types ignore it. |
-| `groups[].domains` | object | optional | — | Scope the group to a subset of domains: exactly one of `include` / `exclude`. Mutually exclusive with `service`. See §8.13.1. |
-| `groups[].service` | string | optional | ✱ generator ≥ 0.6.0 | Service in `info.x-services` whose owned domains scope this group. Mutually exclusive with `domains`. See §8.13.2. |
+| `groups[].domains` | object | optional | — | Scope the group to a subset of domains: exactly one of `include` / `exclude`. Mutually exclusive with `pillar`. See §8.13.1. |
+| `groups[].pillar` | string | optional | ✱ generator ≥ 0.14.0 (`service` in 0.6.0–0.13.x) | Pillar in `info.x-pillars` whose owned domains scope this group. Mutually exclusive with `domains`. See §8.13.2. |
 | `groups[].unknownEnumPolicy` | enum | optional | ✱ Dart/Flutter only | `strict` \| `fallback` (default) \| `null`. |
 | `groups[].formatPolicy` | enum | optional | ✱ Dart/Flutter only | `strict` (default) \| `lax`. |
 | `groups[].mutationOverrides[]` | array<string> | optional | ✱ Dart/Flutter only | Operation IDs to flip between query / mutation classification. |
@@ -841,7 +841,7 @@ The resolved values are surfaced to templates under the `dartGroup.*` namespace 
 }
 ```
 
-### 8.13 Domain scope — `domains` and `service`
+### 8.13 Domain scope — `domains` and `pillar`
 
 A group generates every domain in the bundle unless it says otherwise. These two fields are the two ways of saying otherwise. They answer different questions and are **mutually exclusive**; declaring both fails the load.
 
@@ -870,35 +870,35 @@ A group generates every domain in the bundle unless it says otherwise. These two
 - Async workers, events, channels, and Markdown docs scope from the same decision, so one filter covers every surface.
 - **A cross-domain aggregate edge fails loud.** An in-scope entity that `belongsTo` an out-of-scope entity raises `CROSS_DOMAIN_ENTITY_REFERENCE` rather than silently re-widening the filter. The only thing that softens it is a declared hold — see §8.13.2.
 
-**This field is not a legacy of `service`.** It scopes a group *within one bundle*, for reasons that need have nothing to do with service ownership — a Flutter group declaring `{"exclude": ["crm"]}` because the mobile app does not need that domain is a correct use that predates services entirely.
+**This field is not a legacy of `pillar`.** It scopes a group *within one bundle*, for reasons that need have nothing to do with pillar ownership — a Flutter group declaring `{"exclude": ["crm"]}` because the mobile app does not need that domain is a correct use that predates pillars entirely.
 
-#### 8.13.2 `service`
+#### 8.13.2 `pillar`
 
-**Purpose**: name the service this group generates for, and let the spec's `info.x-services` registry supply its domains instead of hand-listing them.
+**Purpose**: name the pillar this group generates for, and let the spec's `info.x-pillars` registry supply its domains instead of hand-listing them.
 
 **Required**: Optional. See `Vendor_Extensions.md` §14 for the registry itself.
 
-> **Available since generator `0.6.0`.** `service` and `info.x-services` shipped together in that release; on `0.5.8` and earlier the field is unrecognised. See `compatibility.md` §24.
+> **Available since generator `0.14.0`.** The field shipped in `0.6.0` as `service`, bound to `info.x-services`; `0.14.0` renamed both outright, with no alias. A group still carrying `"service"` now fails to load with `INVALID_PILLAR_FILTER`, naming `pillar` — rename the key, the value is unchanged. See `compatibility.md` §24 and §41.
 
-**Type**: string — a service name declared in `info.x-services`.
+**Type**: string — a pillar name declared in `info.x-pillars`.
 
 ```json
 {
   "language": "csharp",
   "destination": "src/Scheduling",
-  "service": "scheduling-service"
+  "pillar": "scheduling-pillar"
 }
 ```
 
 **Rules**:
 
-- `service` and `domains` are **mutually exclusive**; both set, or a blank value, fails with `INVALID_SERVICE_FILTER`. There is no merge semantics for two answers to one question.
-- The service's owned domains expand into an ordinary `include` filter, which then takes exactly the path a hand-written include list takes. **No second filtering mechanism exists** — nothing downstream learns about services.
+- `pillar` and `domains` are **mutually exclusive**; both set, or a blank value, fails with `INVALID_PILLAR_FILTER`. There is no merge semantics for two answers to one question.
+- The pillar's owned domains expand into an ordinary `include` filter, which then takes exactly the path a hand-written include list takes. **No second filtering mechanism exists** — nothing downstream learns about pillars.
 - Membership is checked when the filter is applied, not when the project file is parsed: the registry is built from the spec, which project-file validation cannot see.
-- **Unlike an unregistered domain name, an unresolvable service is fail-closed.** `UNKNOWN_SERVICE_FILTER` when the registry is absent, empty, or does not declare the service; `EMPTY_SERVICE_DOMAINS` when the named service owns zero domains. There is nothing to expand the name to, and generating everything is worse than any explicit value.
-- **Binding to a service does not by itself soften the cross-domain edge check.** A service-bound group whose owned domains reach a foreign entity still fails with `CROSS_DOMAIN_ENTITY_REFERENCE`. What softens it is a **declared hold**: when the group's service declares `holds: [X]` and `X`'s owner publishes a `ReadX` schema, the reference resolves to that replica and the group emits a read-only `ReadX` with no write surface. See `Vendor_Extensions.md` §14.3.
+- **Unlike an unregistered domain name, an unresolvable pillar is fail-closed.** `UNKNOWN_PILLAR_FILTER` when the registry is absent, empty, or does not declare the pillar; `EMPTY_PILLAR_DOMAINS` when the named pillar owns zero domains. There is nothing to expand the name to, and generating everything is worse than any explicit value.
+- **Binding to a pillar does not by itself soften the cross-domain edge check.** A pillar-bound group whose owned domains reach a foreign entity still fails with `CROSS_DOMAIN_ENTITY_REFERENCE`. What softens it is a **declared hold**: when the group's pillar declares `holds: [X]` and `X`'s owner publishes a `ReadX` schema, the reference resolves to that replica and the group emits a read-only `ReadX` with no write surface. See `Vendor_Extensions.md` §14.3.
 
-**Declare `service` even in a split-bundle topology, where the domain filter is redundant.** The identity is not redundant: resolving a reference to a held entity asks *"is this target held by **this group's** service"*, and a per-service bundle that preserves the whole registry for ownership context has more than one candidate to choose from.
+**Declare `pillar` even in a split-bundle topology, where the domain filter is redundant.** The identity is not redundant: resolving a reference to a held entity asks *"is this target held by **this group's** pillar"*, and a per-pillar bundle that preserves the whole registry for ownership context has more than one candidate to choose from.
 
 ---
 
@@ -920,9 +920,9 @@ The project file fails to load when any of the following conditions hold. All er
 | `INVALID_DART_GROUP_FIELD` | `unknownEnumPolicy` or `formatPolicy` outside its accepted set (Dart/Flutter groups only). |
 | `INVALID_FILTER` | `groups[].filter` malformed — multiple top-level operators, unknown operator, wrong value shape. |
 | `INVALID_DOMAIN_FILTER` | `groups[].domains` declares both `include` and `exclude` non-empty. |
-| `INVALID_SERVICE_FILTER` | `groups[].service` set alongside `groups[].domains`, or set to a blank value. |
-| `UNKNOWN_SERVICE_FILTER` | `groups[].service` names a service `info.x-services` does not declare — or the registry is absent or empty. Raised at filter-application time, not at parse time. |
-| `EMPTY_SERVICE_DOMAINS` | `groups[].service` names a service that owns zero domains. |
+| `INVALID_PILLAR_FILTER` | `groups[].pillar` set alongside `groups[].domains`, or set to a blank value — or the group still carries the pre-`0.14.0` key `service`, which is refused by name rather than ignored. |
+| `UNKNOWN_PILLAR_FILTER` | `groups[].pillar` names a pillar `info.x-pillars` does not declare — or the registry is absent or empty. Raised at filter-application time, not at parse time. |
+| `EMPTY_PILLAR_DOMAINS` | `groups[].pillar` names a pillar that owns zero domains. |
 | `UNKNOWN_LANGUAGE` | `groups[].language` not registered. |
 | (cleanScope) | A `cleanScope` entry is absolute or contains `..` segments. |
 | `PERSISTENCE_*` | Persistence-block validation failures. The full list lives in §6.6 alongside the field definitions. |

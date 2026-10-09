@@ -36,7 +36,7 @@ formats: [oas3]
 functions:
   - openapiProjectionCoherence
   - openapiChildCollectionReconcile
-  - openapiServiceRegistry
+  - openapiPillarRegistry
   - openapiReadModelShape
   - openapiClassification
   - openapiScopeGrammar
@@ -1987,48 +1987,49 @@ rules:
         match: "^(person|internet|phone|location|company|date|string|lorem|number)\\."
 
   # ===========================================================================
-  # Service topology — info.x-services, holds, and Read{Entity}
+  # Pillar topology — info.x-pillars, holds, and Read{Entity}
   # ===========================================================================
   #
-  # Handbook: Vendor_Extensions.md §14. Project file: Project_File.md §3.1
-  # (`groups[].service`).
+  # Handbook: Vendor_Extensions.md §14. Project file: Project_File.md §8.13.2
+  # (`groups[].pillar`).
   #
-  # PIN STATE — READ THIS BEFORE CHANGING A SEVERITY HERE.
-  #
-  # `info.x-services` is a generator vocabulary that kit 0.8.0's PINNED
-  # GENERATOR (0.5.8) DOES NOT KNOW. It landed on generator `main` after 0.5.8
-  # and ships in the next generator release. Verified against the pin:
-  # `extensions --format json` on 0.5.8 reports `x-entity` keys only and no
-  # `x-services`. So on 0.5.8 the key is inert — declaring it changes nothing
-  # about generation, and these rules are the ONLY feedback an author gets.
-  #
-  # That is the shape of the `0.7.0` erratum (compatibility.md §18): a kit that
-  # documents and lints a contract its own pinned jar does not implement. The
-  # difference, and the reason these ship anyway, is direction. `0.7.0` accepted
-  # a VALUE the pinned jar rejected, so following the handbook produced an ERROR
-  # at generate time. Here the pinned jar has no opinion at all: it cannot
-  # contradict these rules, and no existing spec declares `info.x-services` or a
-  # `Read*` schema, so the blast radius on every spec that exists today is zero
-  # — exactly as it is generator-side.
+  # A pillar is a group of whole domains that deploys as one unit and owns one
+  # database (pillar ⊃ domain ⊃ entity). The registry was `info.x-services`,
+  # and these rules were `specfuse-services-*`, until generator FEAT-2026-0208
+  # renamed it outright with no alias (authoring#136). The old key is refused by
+  # name on both planes; nothing reads it.
   #
   # Each rule below mirrors a generator finding id at the SAME severity. The
   # mapping is recorded per rule so the next pin bump can diff it rather than
   # re-derive it. Do not tighten past the jar; see compatibility.md §24.
   #
-  # All of these are gated on a declaration. A spec with no `info.x-services`
-  # and no `Read*` schema cannot trip any of them.
+  # All of these are gated on a declaration. A spec with no `info.x-pillars`,
+  # no `info.x-services` and no `Read*` schema cannot trip any of them.
 
-  specfuse-services-registry-shape:
+  specfuse-pillars-legacy-key:
     description: >-
-      info.x-services must be a mapping of service name to metadata carrying `domains`.
-      A bare sequence of service names carries no domains and so expresses nothing.
-    # Generator: SERVICE_REGISTRY_UNREADABLE (WARNING on the whole-value shape),
-    # SERVICE_ENTRY_UNREADABLE (ERROR, per malformed entry), SERVICE_DOMAINS_MISSING
+      info.x-services was renamed to info.x-pillars. The old key is never read, so a
+      registry left under it validates nothing; rename the key, the entries are unchanged.
+    # Generator: PILLAR_REGISTRY_LEGACY_KEY (ERROR). Fires whether or not
+    # x-pillars is also present — a spec declaring both still gets the ERROR.
+    severity: error
+    given: $.info
+    resolved: false
+    then:
+      field: x-services
+      function: falsy
+
+  specfuse-pillars-registry-shape:
+    description: >-
+      info.x-pillars must be a mapping of pillar name to metadata carrying `domains`.
+      A bare sequence of pillar names carries no domains and so expresses nothing.
+    # Generator: PILLAR_REGISTRY_UNREADABLE (WARNING on the whole-value shape),
+    # PILLAR_ENTRY_UNREADABLE (ERROR, per malformed entry), PILLAR_DOMAINS_MISSING
     # (ERROR). Held at `error` here because a registry the author cannot see is
     # read is worse in an editor than in a build log, and every arm the WARNING
     # covers is a shape the schema function reports as one finding anyway.
     severity: error
-    given: $.info["x-services"]
+    given: $.info["x-pillars"]
     resolved: false
     then:
       function: schema
@@ -2036,16 +2037,16 @@ rules:
         schema:
           type: object
           minProperties: 1
-          # Service names are kebab-case, matching the domain vocabulary they
-          # own — `scheduling-service`, not `SchedulingService`.
+          # Pillar names are kebab-case, matching the domain vocabulary they
+          # own — `scheduling-pillar`, not `SchedulingPillar`.
           propertyNames:
             pattern: "^[a-z][a-z0-9-]*$"
           additionalProperties:
             type: object
             additionalProperties: false
-            # `domains` is required with no default. A service entry declaring
+            # `domains` is required with no default. A pillar entry declaring
             # no domains is a typo, not a decision — there is no sensible
-            # reading of "a service that owns nothing".
+            # reading of "a pillar that owns nothing".
             required: ["domains"]
             properties:
               domains:
@@ -2054,7 +2055,7 @@ rules:
                 items:
                   type: string
                   pattern: "^[a-z][a-z0-9-]*$"
-              # Optional. A service that keeps no replicas omits it entirely.
+              # Optional. A pillar that keeps no replicas omits it entirely.
               # Entity names, so PascalCase.
               holds:
                 type: array
@@ -2063,55 +2064,55 @@ rules:
                   type: string
                   pattern: "^[A-Z][A-Za-z0-9]*$"
 
-  specfuse-services-domain-single-owner:
+  specfuse-pillars-domain-single-owner:
     description: >-
-      A domain must be claimed by exactly one service in info.x-services.
-    # Generator: SERVICE_DOMAIN_DUPLICATE_OWNER (ERROR). This is the headline
+      A domain must be claimed by exactly one pillar in info.x-pillars.
+    # Generator: PILLAR_DOMAIN_DUPLICATE_OWNER (ERROR). This is the headline
     # check and the reason the registry lives in the spec rather than in
-    # project.json — a per-repository project file can never see two services at
+    # project.json — a per-repository project file can never see two pillars at
     # once, so it could never detect this.
     message: "{{error}}"
     severity: error
-    given: $.info["x-services"]
+    given: $.info["x-pillars"]
     resolved: false
     then:
-      function: openapiServiceRegistry
+      function: openapiPillarRegistry
       functionOptions:
         check: duplicateOwner
 
-  specfuse-services-domain-registered:
+  specfuse-pillars-domain-registered:
     description: >-
-      A domain claimed in info.x-services must be a member of info.x-domains.
-    # Generator: SERVICE_DOMAIN_UNREGISTERED (ERROR). Skipped when x-domains is
+      A domain claimed in info.x-pillars must be a member of info.x-domains.
+    # Generator: PILLAR_DOMAIN_UNREGISTERED (ERROR). Skipped when x-domains is
     # absent — the two registries degrade independently, and an absent domain
     # registry is a separate finding, not 20 unregistered-domain findings.
     message: "{{error}}"
     severity: error
-    given: $.info["x-services"]
+    given: $.info["x-pillars"]
     resolved: false
     then:
-      function: openapiServiceRegistry
+      function: openapiPillarRegistry
       functionOptions:
         check: unregisteredDomain
 
-  specfuse-services-holds-pairing:
+  specfuse-pillars-holds-pairing:
     description: >-
       `holds: [X]` requires that X is an entity in this spec and that a ReadX schema exists.
-    # Generator: SERVICE_HOLDS_UNKNOWN_ENTITY (ERROR), SERVICE_HOLDS_NO_READ_MODEL (ERROR).
+    # Generator: PILLAR_HOLDS_UNKNOWN_ENTITY (ERROR), PILLAR_HOLDS_NO_READ_MODEL (ERROR).
     # This is the half of the two-halves rule authors get wrong most often:
     # declaring `holds` alone has nothing to generate.
     message: "{{error}}"
     severity: error
-    given: $.info["x-services"]
+    given: $.info["x-pillars"]
     resolved: false
     then:
-      function: openapiServiceRegistry
+      function: openapiPillarRegistry
       functionOptions:
         check: holds
 
   specfuse-read-model-unheld:
     description: >-
-      A Read{Entity} schema that no service holds is authored and unused.
+      A Read{Entity} schema that no pillar holds is authored and unused.
     # Generator: READ_MODEL_UNHELD (WARNING). The other half of the pairing:
     # publishing a Read{Entity} alone would make every group referencing that
     # entity legal, including one whose author never considered keeping a copy.
@@ -2119,10 +2120,10 @@ rules:
     # holder declares itself, is a legitimate order to work in.
     message: "{{error}}"
     severity: warn
-    given: $.info["x-services"]
+    given: $.info["x-pillars"]
     resolved: false
     then:
-      function: openapiServiceRegistry
+      function: openapiPillarRegistry
       functionOptions:
         check: unheld
 
@@ -2161,7 +2162,7 @@ rules:
     # Generator: READ_MODEL_NOT_A_WIRE_TYPE (ERROR). A replica is a store shape.
     # This is the whole reason `Basic*` was not reused for it — `Basic*` carries
     # expandable refs and lives in the Api layer, and reusing it would weld a
-    # consuming service's database table to another team's response DTO.
+    # consuming pillar's database table to another team's response DTO.
     message: "{{error}}"
     severity: error
     given: $.components.schemas
@@ -2195,7 +2196,7 @@ rules:
   #
   # Handbook: Vendor_Extensions.md §1.5.
   #
-  # Unlike the service-topology group above, this vocabulary IS in the pinned
+  # Unlike the pillar-topology group above, this vocabulary IS in the pinned
   # generator (0.5.8) — partially. The jar enforces PRESENCE
   # (`PII_CLASSIFICATION` / finding id `PII_FIELD_MISSING_CLASSIFICATION`, ERROR)
   # and the response-leak guard (`SENSITIVE_FIELD_IN_RESPONSE`, ERROR), and
