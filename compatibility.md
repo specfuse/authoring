@@ -1081,7 +1081,7 @@ userRole:
 
 ### 41. `info.x-services` → `info.x-pillars`, outright (authoring#136, generator `FEAT-2026-0208`)
 
-**Status:** kit-side work **done on `feat/136-x-pillars`**, **held for the generator release that carries `FEAT-2026-0208`** (merged on generator `main` as `aeacc5bce`, #2334; expected `0.14.0`). This must ship in the same kit release as that pin bump, never before: the pinned `0.13.0` jar still reads `x-services` and has never heard of `x-pillars`, so a kit that lints `x-pillars` against it would steer every author to a key the jar silently ignores.
+**Status:** **done — shipped in kit `0.23.0`, pinning generator `0.14.0`** (generator `FEAT-2026-0208`, #2334). The kit half (#137) and the pin bump (#138) land in the same release, because the `0.13.0` jar read `x-services` and had never heard of `x-pillars`: a kit linting `x-pillars` against it would have steered every author to a key the jar silently ignored.
 
 **Why the rename.** The unit the registry describes is a group of whole domains that deploys as one unit and owns one database. "Service" reads as one API, class or endpoint, is overloaded in most codebases, and usually already names the legacy system a project is migrating off. "Pillar" reads as something that holds domains: pillar ⊃ domain ⊃ entity.
 
@@ -1098,13 +1098,13 @@ userRole:
 
 **Not in `rule-renames.yaml`.** That map is the legacy `rm-*` → `specfuse-*` migration and its consumers read it as one. A project whose Spectral baseline counts a `specfuse-services-*` id re-keys those four lines by hand; with zero adopters, no such baseline is known to exist.
 
-**At the pin bump (do not skip):**
+**Verified against the released `0.14.0` jar** (sha256 `5cd33122…cbd0`), on #137 merged into #138, 2026-10-09:
 
-1. Run the new jar's `extensions --format json` and confirm the `info` surface lists `x-pillars` and not `x-services`.
-2. Run `validate` on `examples/hello-orders` and diff `specfuse-findings.json` against the hand-edited one on this branch (`PILLAR_REGISTRY_MISSING`, message and location). Replace it with the jar's output if they differ.
-3. Validate a spec carrying both keys and confirm `PILLAR_REGISTRY_LEGACY_KEY` is ERROR — the severity `specfuse-pillars-legacy-key` claims.
-4. Confirm a project file with `groups[].service` fails load with `INVALID_PILLAR_FILTER`, as `Project_File.md` §8.13.2 and §9 now say.
-5. Confirm `PILLAR_CROSS_BOUNDARY_REFERENCE` is still ERROR and still suppressed by a declared hold (§24 step 3, re-keyed).
+1. `extensions --format json` lists `x-pillars` and not `x-services`.
+2. `examples/hello-orders` validates `PASSED` with 0 errors, and the `specfuse-findings.json` the jar writes is identical to the one committed here (`PILLAR_REGISTRY_MISSING`, message and location).
+3. A spec carrying both keys gets `PILLAR_REGISTRY_LEGACY_KEY` at ERROR — the severity `specfuse-pillars-legacy-key` claims — and the kit rule fires on the same spec.
+4. A project file with `groups[].service` fails to load: `"service" is no longer a group key — it was renamed to "pillar"` (`INVALID_PILLAR_FILTER` in the source).
+5. `PILLAR_CROSS_BOUNDARY_REFERENCE` is still ERROR on an undeclared cross-pillar `belongsTo`, and a `holds` + `Read{Entity}` pair still suppresses it.
 
 **Out of scope, still open:** the optional strict-ownership flag (`pillars.requireComplete`) from the issue is a separate generator follow-up; the kit documents nothing for it.
 
