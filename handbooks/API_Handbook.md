@@ -1040,6 +1040,7 @@ Other errors still apply as per earlier guidance:
 - **405 Method Not Allowed** (include `Allow`)
 - **406 Not Acceptable**
 - **409 Conflict** (business/state conflict, not ETag) — see section 2.1 below
+- **422 Unprocessable Entity** (the request's own content cannot be acted on, whatever the stored state) — narrow; declare it only where a handler raises it, see section 2.2 below
 - **412 Precondition Failed** (`If-Match` mismatch — a *missing* `If-Match` is a `400`, see section 2)
 - **415 Unsupported Media Type**
 
@@ -1058,6 +1059,7 @@ Other errors still apply as per earlier guidance:
 **Key distinction**:
 - **400 Bad Request** → Request is malformed or has validation errors
 - **409 Conflict** → Request is valid but conflicts with current resource state
+- **422 Unprocessable Entity** → Request is valid against its schema, but its own content cannot be processed whatever the stored state (section 2.2). If the same request would succeed against different stored data, it is a 409, not a 422
 - **412 Precondition Failed** → ETag mismatch (concurrency control)
 
 #### Recommended Usage by HTTP Method
@@ -1253,6 +1255,26 @@ When including 409 in an operation spec, document the specific business rules th
                 retryable: false
                 requiredAction: remove_template_from_tenants
 ```
+
+---
+
+### 2.2) 400, 422 or 409 — and declare a status only where something raises it
+
+Three statuses answer "the server will not do this", and they are easy to confuse. One test decides between 422 and 409: **would the same request succeed against different stored data?** If yes, it is a 409.
+
+| Status | The problem is… | Example |
+|---|---|---|
+| **400** | the request breaks its schema | a required field is missing; a value has the wrong type or format |
+| **422** | the request fits its schema, but its own content cannot be acted on, whatever is stored | an uploaded file whose bytes are not an allowed type, or contradict the declared MIME type; an omitted value the server cannot default for this caller |
+| **409** | the request conflicts with what is stored | an invalid state transition; deleting a record that others depend on; editing a finalized record; a duplicate |
+
+"Business rule violation" is not a reason to reach for 422. Nearly every business rule is a check against stored state, and those are 409s (section 2.1).
+
+**Declare an error status only where a handler raises it.** 422 is not part of the standard write response set. A response declared on an operation is a promise: the generator emits `[ProducesResponseType]` and client error mappings for it, and clients write handling for it. A status no code path produces is dead contract, and it spreads by copy-paste. The kit cannot check this, because it cannot see handler code. When sweeping a spec for stale declarations, start from the code that raises the status, not from the spec that declares it. An operation that raises 422 but never declared it will not show up in a grep of the spec.
+
+**Keep authoring rules out of a shared response's `description`.** The generator copies a response description verbatim into every controller's `<response code="…">` XML doc and into client docs. Guidance such as "declare only where raised" belongs in a YAML comment next to the shared response, not in its `description` or example.
+
+At generator `0.14.0`, the generated C# `UnprocessableEntityException` still describes 422 as "business rule violations, invalid state transitions, constraint violations", overlapping the 409 cases above. Follow this section, not that doc comment (`clabonte/generator#2502`).
 
 ---
 

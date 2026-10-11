@@ -160,6 +160,12 @@ Where:
 
 **Tenancy lives in the envelope, not the label.** `tenantId` and any other tenant routing fields are stamped as ApplicationProperties (headers) on every event by the producer pipeline (see the universal envelope contract documented in the project's event-contract overlay; defaults emit `eventId`, `correlationId`, `aggregateId`, `aggregateType`, `eventVersion`, `producedAt`, and `tenantId`). Tenant-scoped subscribers AND-merge `user.tenantId = '<guid>'` into the derived label filter via `x-subscription.requiredHeaders` (see §4.3).
 
+**The envelope travels in broker metadata, never in the body, in every runtime.** The spec already says so: the `auditableEvent` trait declares the envelope as message `headers`, and the message body is the `payload`, nothing else. The rule binds both sides:
+- a producer never wraps the payload in an `{eventType, envelope, body}` object, not even on a direct send that skips the outbox;
+- a consumer rebuilds the envelope from the message's metadata (the broker's subject/label, correlation and message-id members, and its application properties), never from the body.
+
+Which broker member carries which envelope field is the runtime's mapping, documented in the project's event-contract overlay, not here. Breaking this rule fails silently: a consumer that expects the envelope in the body cannot resolve the event type, and a worker that completes unresolvable messages drops every event without a retry or a dead-letter. A runtime that disagrees with the others passes any smoke test that goes through its own send path. At generator `0.14.0`, the generated **Python** `deserialize_event` still reads `eventType` and the envelope from the body. That is fixed on generator main (`clabonte/generator#2477`) but not yet released, so a Python consumer generated from `0.14.0` will not read events sent by the C# outbox.
+
 **Why two-segment labels:**
 
 1. **Stable public contract.** Labels never carry tenant identity, so a message published in 2026 still routes correctly when the tenant is migrated, deleted, or merged.

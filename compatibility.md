@@ -1235,6 +1235,19 @@ None of these is settled enough to document ahead of the pin (§24 precedent).
 
 **At the next pin bump:** re-test `ARAZZO_ACTOR_LACKS_SCOPE` (`#2418`), then drop the "does not fire" notes in `Arazzo_Handbook.md` §4.6 and §9.2.
 
+### 46. RestoManager handoffs 2026-10-11: 422 defined narrowly; the event envelope is broker metadata
+
+**Status:** kit side **done**:
+- `API_Handbook.md` gains a 422 line in §2 and in §2.1's "Key distinction", plus a new §2.2 (400 / 422 / 409, and declare a status only where something raises it);
+- `AsyncAPI_Handbook.md` §0.8 gains a paragraph: the envelope travels in broker metadata, never in the body.
+
+1. **422.** The kit said nothing about 422, and that silence let one consumer declare it on 91 of 293 write operations when only two handlers raised it. The generator's own C# `UnprocessableEntityException` doc comment calls 422 "business rule violations, invalid state transitions, constraint violations", overlapping `ConflictException` (409). That is the text the consumer had copied. **Forwarded:** `clabonte/generator#2502` (narrow the doc comment; no behaviour change). The consumer's Spectral allowlist rule is project-specific, so the kit ships no rule. A portable "422 needs a trigger description" check would be satisfied by any shared `$ref`'d response description, so it would catch nothing.
+2. **Envelope location.** At `0.14.0`, generated Python `deserialize_event` reads `eventType` and the envelope from the body, while the C# outbox sends them as broker metadata. A Python consumer generated from `0.14.0` cannot read C#-sent events. **Fixed on generator main** (`clabonte/generator#2477`, `9b58dd99d`), **not released.** The related legacy-shape cleanup is `#2139` (open).
+
+**At the next pin bump:**
+- confirm `#2477` is in the jar, and drop the "still reads from the body" sentence in AsyncAPI §0.8;
+- if `#2502` landed, drop the `UnprocessableEntityException` sentence in `API_Handbook.md` §2.2.
+
 ---
 
 ## Outstanding kit-side work
