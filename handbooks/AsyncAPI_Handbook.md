@@ -1310,6 +1310,8 @@ post:
       description: Emitted when the order is submitted
 ```
 
+**Order matters on a child create.** The generator reads the **first** label's entity. On a write whose body is a child entity's `New*` under a different URL aggregate, a first label naming the child makes every generated surface return the child. From generator `<NEXT>`, a 2xx that declares the URL aggregate there is `OPERATION_RESPONSE_TYPE_OVERRIDDEN` (ERROR). See `Vendor_Extensions.md` §6.1.
+
 ##### Deliberately silent writes: `x-emits: []`
 
 A write that publishes nothing **by design** declares an empty list, with a YAML comment saying why:
