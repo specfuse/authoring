@@ -80,6 +80,7 @@ Language-coupling column: ✱ means the field is honoured only for a specific la
 | `groups[].unknownEnumPolicy` | enum | optional | ✱ Dart/Flutter only | `strict` \| `fallback` (default) \| `null`. |
 | `groups[].formatPolicy` | enum | optional | ✱ Dart/Flutter only | `strict` (default) \| `lax`. |
 | `groups[].mutationOverrides[]` | array<string> | optional | ✱ Dart/Flutter only | Operation IDs to flip between query / mutation classification. |
+| `groups[].modelNameMapping` | object<string,string> | optional | ✱ generator ≥ `<NEXT>`; TypeScript only | Schema name → emitted type identifier. Overrides the `Model` suffix given to a name that shadows a JS/DOM global. See §3.3. |
 
 ---
 
@@ -307,6 +308,18 @@ When `namingOverrides` does not declare a role, this is the case the language pr
 - The C# / Python / Dart profiles deliberately `Preserve` `enumValue`, `channel`, and `header`. Those identifiers have canonical wire forms the spec author picks deliberately (RFC-defined headers, dotted topic names, deliberate enum casing). Re-casing them would be visibly wrong.
 - The Markdown profile inherits the framework default `PascalCase` for every role and does not override any of them — but no Markdown artifact currently emits identifiers in any of these roles, so the value rarely matters.
 - A polyglot project that wants the same wire JSON shape across C# and Python typically sets `wireField: camelCase` to override Python's `snake_case` default. Without the override, the C# group writes `customerId` and the Python group writes `customer_id` for the same field.
+
+### 3.3 TypeScript type names that shadow a global — `Model` suffix and `modelNameMapping`
+
+**From generator `<NEXT>`, a generated TypeScript type never takes the name of a JS or DOM global** (`clabonte/generator#1740`). A schema whose name TypeScript's standard library declares as a global type (`lib.es5`, `lib.es20xx` or `lib.dom`) is declared and referenced with a fixed `Model` suffix: `Error` becomes `ErrorModel`, `Event` becomes `EventModel`, and `Document`, `Location` and `Screen` change the same way. Only the type identifier changes. File names, module paths, barrels, and builder, fixture and composable names (`buildError`, `errorFixture`) keep the schema name. No deprecated alias for the old name is emitted, because `export type Error = ErrorModel` would bring back the shadowing. **Client action:** change every import of a renamed type. The kit's own example is affected: its shared `Error` schema is emitted as `export interface ErrorModel` in `src/common/data/dtos/error.ts` (measured on `examples/hello-orders`; `0.14.0` emitted `Error`). Dart and C# names do not change.
+
+To choose another name for one schema, set `modelNameMapping` on the group: a map from the declared schema name to the identifier to emit. An entry takes precedence over the suffix.
+
+```json
+{ "language": "typescript", "name": "Web", "modelNameMapping": { "Error": "ProblemBody" }, "artifacts": ["dto"] }
+```
+
+Measured on `examples/hello-orders`: on a TypeScript group the entry renames the declaration and every reference. On a C# group it is accepted and changes nothing. Generator `0.14.0` rejects the key and fails the load (`Unrecognized field "modelNameMapping"`), so add it only after the pin bump.
 
 ---
 
@@ -965,9 +978,18 @@ The full live inventory is available via `java -jar specfuse-generator.jar templ
 
 **Snapshot date:** 2026-09-17 (generator `0.12.0`). **Live source:** `templates --language csharp`.
 
-`apiMapper`, `apiModel`, `domainModel`, `entity`, `annotatedEntity`, `valueObject`, `valueObjectConverter`, `enum`, `entityTypeConfiguration`, `repository`, `repositoryInterface`, `serviceInterface`, `service`, `dbContext`, `apiController`, `applicationServiceInterface`, `applicationService`, `apiFunctionalTest`, `useCaseInterface`, `entityBuilder`, `newDtoBuilder`, `updateDtoBuilder`, `valueObjectFake`, `apiModelFake`, `testSeed`, `serviceUnitTest`, `autoMapperTest`, `valueObjectTest`, `efConfigTest`, `authMatrixTest`, `eventContractTest`, `infrastructureProject`, `domainProject`, `domainValidation`, `domainExceptions`, `apiProject`, `event` (+ legacy alias `asyncEvent`), `asyncEventHandler`, `asyncJobInterface`, `asyncConsumerRegistration`, `azureFunctionTopicTrigger`, `azureFunctionTimerTrigger`, `eventBuilder`, `tenancyMarker`, `eventRuntime`, `eventRuntimeImpl`, `eventRuntimeFunctions`, `snapshot`, `snapshotContext`, `recipeFixture`, `scenarioFunctionalTest`, `heldEntity`, `heldEntityConfiguration`, `heldEntityHydration`, `heldEntityHydrationTrigger` (generator `0.6.0`, for `holds`, see `Vendor_Extensions.md` §14), `fieldEncryptionConformanceTest` (generator `0.12.0`: known-answer vectors for the generated field-encryption format, with test-only key fakes).
+`apiMapper`, `apiModel`, `domainModel`, `entity`, `annotatedEntity`, `valueObject`, `valueObjectConverter`, `enum`, `entityTypeConfiguration`, `repository`, `repositoryInterface`, `serviceInterface`, `service`, `dbContext`, `apiController`, `applicationServiceInterface`, `applicationService`, `apiFunctionalTest`, `useCaseInterface`, `entityBuilder`, `newDtoBuilder`, `updateDtoBuilder`, `valueObjectFake`, `apiModelFake`, `testSeed`, `serviceUnitTest`, `mapperTest` (+ legacy alias `autoMapperTest`), `valueObjectTest`, `efConfigTest`, `authMatrixTest`, `eventContractTest`, `infrastructureProject`, `domainProject`, `domainValidation`, `domainExceptions`, `apiProject`, `event` (+ legacy alias `asyncEvent`), `asyncEventHandler`, `asyncJobInterface`, `asyncConsumerRegistration`, `azureFunctionTopicTrigger`, `azureFunctionTimerTrigger`, `eventBuilder`, `tenancyMarker`, `eventRuntime`, `eventRuntimeImpl`, `eventRuntimeFunctions`, `snapshot`, `snapshotContext`, `recipeFixture`, `scenarioFunctionalTest`, `heldEntity`, `heldEntityConfiguration`, `heldEntityHydration`, `heldEntityHydrationTrigger` (generator `0.6.0`, for `holds`, see `Vendor_Extensions.md` §14), `fieldEncryptionConformanceTest` (generator `0.12.0`: known-answer vectors for the generated field-encryption format, with test-only key fakes).
 
 `applicationService` is not printed by `templates` on `0.11.0` or `0.12.0`, though the jar still binds the name. It is kept here until that is confirmed either way.
+
+**From generator `<NEXT>`, `autoMapperTest` is renamed `mapperTest`** (`clabonte/generator#464`), because the generated C# maps through Mapperly instead of AutoMapper (§11.1.1). `autoMapperTest` stays an alias: a project file naming it loads and generates the replacement without a warning. Measured on `examples/hello-orders`, either id now emits one file, `Generated/Unit/Domain/DomainMapperTests.g.cs`, where `0.14.0` emitted two AutoMapper profile tests (Domain and Api). Prefer the new id in new project files. From the same release `templates` prints an aliased artifact once, under its own id, so neither `autoMapperTest` nor `asyncEvent` appears in its output. On `0.14.0` the C# `event` artifact was listed twice, once for the alias. **`event` is not removed:** it is still accepted and still emits one record per AsyncAPI event message.
+
+#### 11.1.1 Generated C# mapping and test libraries (generator `<NEXT>`)
+
+Two package changes reach a consumer's C# projects on the first regeneration. Both replace a library that became commercially licensed.
+
+- **Mapperly replaces AutoMapper** (`clabonte/generator#464`). No generated file references AutoMapper or `IMapper`. Each aggregate's `service` gains a companion `Mappers/{Aggregate}DomainMapper.g.cs` with three static partial classes: `{Aggregate}DomainMapper` (entity onto a response), `{Aggregate}DomainRequestMapper` (request onto an entity, including the in-place `Apply` a replace uses) and `{Aggregate}DomainMapperHooks`. The Domain and Api `AutoMapperProfile.g.cs` files are no longer emitted. **What a project must change:** reference `Riok.Mapperly` 4.x (the generator targets 4.3.1) in Domain and Api and remove the `AutoMapper` references; remove `AddAutoMapper(...)`; stop passing `IMapper` to a hand-written subclass of a generated `Default*Service`, whose constructor drops it. A hand-written profile is ported: an `AfterMap` becomes an implementation of the generated `static partial void OnAfterTo{Entity}(...)` in a non-generated `partial class {Aggregate}DomainMapperHooks`, and a `ForMember(... MapFrom ...)` becomes a user mapping method in a non-generated partial of the mapper. A response that is not a projection of its source (a computed response) compiles, and throws `NotImplementedException` until you implement `MapTo{Target}` in the hooks class. AutoMapper had no map for it either. The `apiMapper` classes now map a schema's `created` / `updated` onto the entity's `CreatedAt` / `UpdatedAt`, which both libraries left empty before. To enforce Mapperly's strictness, set `RMG012`, `RMG020`, `RMG037`, `RMG038` and `RMG066` to `error` in `.editorconfig`.
+- **AwesomeAssertions replaces FluentAssertions in generated tests** (`clabonte/generator#2506`). Every generated test file that asserts carries `using AwesomeAssertions;`; the `.Should()` calls are unchanged. **What a project must change:** replace the test project's `FluentAssertions` package reference with `AwesomeAssertions` 9.6.0 or later, and switch hand-written tests' `using FluentAssertions;` in the same change. Both libraries define `Should()` on the same types, so a project importing both gets ambiguous-call errors. Hand-written tests written against FluentAssertions 7 also pick up FluentAssertions 8 semantics: `AllSatisfy` and `OnlyContain` pass on an empty collection, and `BeGreaterOrEqualTo` / `BeLessOrEqualTo` are replaced by `BeGreaterThanOrEqualTo` / `BeLessThanOrEqualTo`.
 
 
 #### Authorization artifacts (generator `0.14.0`)
@@ -992,7 +1014,7 @@ Three opt-in artifact ids, none in the lists above, which predate them. Each is 
 
 **Snapshot date:** 2026-09-15 (generator `0.11.0`). **Live source:** `templates --language dart` (Dart and Flutter share the same factory).
 
-`entity`, `enum`, `valueObject`, `dto`, `dartRepositoryInterface`, `dartApiClient`, `dartRepositoryImpl`, `dartDtoMapper`, `dartUseCase`, `dartQueryProvider`, `mutationBinding`, `dartPaginatedNotifier`, `dartFormWidget`, `dartListTile`, `dartBarrelExport`, `dartProblemDetails`, `dartTypedError`, `dartDioErrorInterceptor`, `entityBuilder`, `newDtoBuilder`, `updateDtoBuilder`, `dartRepositoryFake`, `dartProviderOverrides`, `fixture`, `dartFixtureLoader`, `dartCodegenSmokeTest`, `serializationTest`, `dartRepositoryTest`, `dartQueryProviderTest`, `mutationBindingTest`, `validatorTest`, `dartPaginationTest`, `dartEtagTest`, `dartFormWidgetTest`.
+`entity`, `enum`, `valueObject`, `dto`, `dartRepositoryInterface`, `dartApiClient`, `dartRepositoryImpl`, `dartUseCase`, `dartQueryProvider`, `mutationBinding`, `dartPaginatedNotifier`, `dartFormWidget`, `dartListTile`, `dartBarrelExport`, `dartProblemDetails`, `dartTypedError`, `dartDioErrorInterceptor`, `entityBuilder`, `newDtoBuilder`, `updateDtoBuilder`, `dartRepositoryFake`, `dartProviderOverrides`, `fixture`, `dartFixtureLoader`, `dartCodegenSmokeTest`, `serializationTest`, `dartRepositoryTest`, `dartQueryProviderTest`, `mutationBindingTest`, `validatorTest`, `dartPaginationTest`, `dartEtagTest`, `dartFormWidgetTest`.
 
 ### 11.4 TypeScript artifacts
 
@@ -1018,6 +1040,12 @@ These ids still generate the same files as their replacement, and each logs a `W
 | `dartMutationProvider`, `typescriptMutationComposable` | `mutationBinding` |
 | `dartMutationProviderTest`, `typescriptMutationComposableTest` | `mutationBindingTest` |
 | `dartJsonFixture`, `typescriptFixture` | `fixture` |
+
+### 11.4.2 Retired artifact ids (generator `<NEXT>`)
+
+| Retired id | What happens | What to do |
+|---|---|---|
+| `dartDtoMapper` | Emits no files. The project still loads and generates, with a load-time `WARN` naming the id and the group, under both `validate` and `generate`. A `cleanGenerated` group whose `cleanScope` covers `lib/data` removes the `lib/data/mappers/` files it emitted before. The release after `<NEXT>` removes the id, and declaring it then fails the load with `UNKNOWN_ARTIFACT_TYPE`. | Remove it from `artifacts[]` and delete any hand-written import of `data/mappers/`. The entity's own `toJson()` is the supported serializer; the old `toMap()` put enums, dates and nested models into the map raw (`clabonte/generator#1860`). |
 
 ### 11.5 Markdown artifacts
 

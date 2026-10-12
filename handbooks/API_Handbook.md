@@ -7,7 +7,7 @@ This handbook defines authoritative rules for designing REST APIs and OpenAPI sp
 ## 0) Conventions (global)
 
 - **Casing**
-  - **Models (schema names):** PascalCase (`Customer`).
+  - **Models (schema names):** PascalCase (`Customer`). A name that is also a JS or DOM global (`Error`, `Event`, `Document`, `Location`) is legal, but from generator `<NEXT>` its generated TypeScript type gains a `Model` suffix (`ErrorModel`). See `Project_File.md` §3.3.
   - **Paths, query params, JSON properties, enum values:** camelCase.
   - **Schema properties:** camelCase.
 - **Paths & params**
@@ -423,7 +423,7 @@ The last two rows are one rule seen from two sides: a `default` on a `required` 
 
 **Do not add a rule forbidding `required` + `default`.** It reads like a contradiction and it is not. One consumer measured 66 such properties across 43 schemas in a single bundled spec — status enums, country codes, priority levels, numeric thresholds — all correct. A validate-time rule against the pair would fail every one of them.
 
-**For enum properties, the default does not go on the property.** Write it on the enum schema, paired with `x-default`, not beside the `$ref` that points at it — OpenAPI 3.0 ignores keywords declared as siblings of a `$ref`, and the generator ignores property-level defaults on a referenced enum (`ENUM_PROPERTY_LEVEL_DEFAULT_IGNORED`). See `Vendor_Extensions.md` §4.6, which is where this is specified.
+**For enum properties, the default does not go on the property.** Write it on the enum schema, paired with `x-default`, not beside the `$ref` that points at it — OpenAPI 3.0 ignores keywords declared as siblings of a `$ref`, so the default is silently dropped. Nothing reports it: `ENUM_PROPERTY_LEVEL_DEFAULT_IGNORED` never fired on a spec file and is removed from generator `<NEXT>`. See `Vendor_Extensions.md` §4.6, which is where this is specified.
 
 **This is enforced, so it is worth knowing before the build tells you.** A required enum property with no default anywhere raises `REQUIRED_ENUM_MISSING_DEFAULT` — an entity whose state machine has no starting state. The fix is a default on the enum schema, or making the property required in `New{Resource}` so the client must supply it; `x-skip-default-validation: true` on the property suppresses it deliberately. Enforced since generator `0.5.7`. **There is no third exit yet** for a value copied from a related row at creation, such as a role taken from the catalog entry a foreign key names. Such a property can only take the suppression marker, with its source stated in `description`. A declarative `x-derived-from` is a generator ask, not a key the generator reads (`compatibility.md` §40).
 
@@ -663,6 +663,10 @@ Content-Type: application/json
   }
 }
 ```
+
+**`If-Match: *` from an ordinary caller** → 412 Precondition Failed. From generator `<NEXT>`, the generated C# gate accepts RFC 7232's wildcard from two callers only: a system caller (`CallerContext.ForSystem(...)`, which is what a worker uses) and a caller holding a role that the mapping-form `info.x-roles` marks `superuser: true` (`Vendor_Extensions.md` §3.1). The role is matched by name, case-sensitive, against the caller's roles. Every other caller gets the gate's ordinary `412`, with a message saying the wildcard is reserved, and must send the `ETag` of its last read. If the registry marks no role `superuser`, which includes a list-form registry, only system callers may send the wildcard. This is a declared deviation from RFC 7232. Without it, one character would let any client opt out of lost-update protection, silently. It applies to every generated gate: the domain-service update, replace and delete, their related-entity forms, and `{Tag}ApplicationServiceBase`. Through `0.14.0` every authenticated caller could send `*`. The spec does not change. Do not describe `*` as a value clients may send in the `If-Match` parameter's `description`. The generated functional test `{Operation}_WithWildcardIfMatch_ShouldSucceed` is renamed `{Operation}_WithWildcardIfMatch_ShouldReturn412`, and asserts `412` unless its client role is a superuser.
+
+**A `DELETE` that declares `If-Match` and `412` is gated like the `PATCH` on the same path.** From generator `<NEXT>` this includes a `204` `DELETE` with no body on an `optimistic` child entity addressed by its own id, for example `DELETE /lines/{lineId}`, where the path carries no aggregate key. Through `0.14.0` nothing generated compared the header on that shape. The controller bound it, a stale or wildcard `If-Match` deleted the row, and `validate` reported nothing: measured on the generator's own regression fixture, the shape raises no `CONCURRENCY_PRECONDITION_UNENFORCED` on either version. The generated `{Tag}ApplicationServiceBase` now reads the child through its parent's repository and applies the missing, wildcard and stale checks before `Delete{X}Core`. **C# migration:** a hand-written class deriving from that base renames its `public void Delete{X}(...)` to `protected override void Delete{X}Core(...)` (`CS0534` names each one). A tag whose base gains a repository constructor parameter must forward it in its `base(...)` call.
 
 #### AI Agent Recovery Pattern
 
