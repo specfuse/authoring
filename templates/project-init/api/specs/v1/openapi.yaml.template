@@ -31,7 +31,7 @@ info:
   x-roles: [Admin, Manager, Customer, Authenticated]
 
 servers:
-  - url: https://api.{project}.example/v1
+  - url: https://api.{project}.example
     description: TODO — replace with the project's real server URL(s)
 
 # Tags are declared at the root and referenced from operation files.

@@ -1,0 +1,29 @@
+# =============================================================================
+# Regression fixture: a server URL carries no version segment
+# =============================================================================
+# The kit versions in the path (`/v1/customers`, API_Handbook.md §4). The
+# generated C# controllers and functional tests prefix every route with the
+# path part of `servers[0].url`, so a server URL ending in `/v1` doubles it:
+# `[Route("/v1/v1/customers/{customerId}")]`. Measured on generator 0.15.0 with
+# `examples/hello-orders`, which shipped that shape until kit 0.24.0. The Dart
+# and TypeScript clients use the path alone, so the two sides disagreed.
+#
+# Expected findings (asserted by .github/workflows/example-regen.yml):
+#
+#   servers[0].url   https://api.probe.example/v1    specfuse-server-url-no-version
+#   servers[1].url   https://api.probe.example/v2/   specfuse-server-url-no-version
+#   servers[2].url   https://api.probe.example       silent
+#   servers[3].url   https://api.probe.example/api   silent  <- a non-version base path is fine
+#   servers[4].url   https://api.v1probe.example     silent  <- "v1" in the host is not a segment
+#
+openapi: 3.0.3
+info:
+  title: Server URL fixture
+  version: 1.0.0
+servers:
+  - url: https://api.probe.example/v1
+  - url: https://api.probe.example/v2/
+  - url: https://api.probe.example
+  - url: https://api.probe.example/api
+  - url: https://api.v1probe.example
+paths: {}

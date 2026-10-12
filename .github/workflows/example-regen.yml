@@ -1039,6 +1039,45 @@ jobs:
           [[ $fail -eq 0 ]] || exit 1
           echo "==> Phantom cascade keys warn, stay accepted, and do not over-match."
 
+      # A server URL ending in /v1 doubles the version in every generated C#
+      # route (`/v1/v1/customers`), because the controllers prefix each path
+      # with the server URL's path. Two must fire; three must stay silent,
+      # including a non-version base path and a host containing "v1".
+      - name: A server URL carries no version segment (regression)
+        run: |
+          set +e
+          set -uo pipefail
+          REPORT="${RUNNER_TEMP}/server-url-version.txt"
+
+          spectral lint \
+            --ruleset schemas/spectral/specfuse-openapi.yaml \
+            schemas/spectral/fixtures/server-url-version.yaml \
+            >"$REPORT" 2>&1
+          STATUS=$?
+          cat "$REPORT"
+
+          if [[ $STATUS -ge 2 ]]; then
+            echo "::error::Spectral crashed on the server-url fixture (exit ${STATUS})." >&2
+            exit 1
+          fi
+
+          fail=0
+          for i in 0 1; do
+            if ! grep "specfuse-server-url-no-version" "$REPORT" | grep -qE "servers\[${i}\]\.url\s*$"; then
+              echo "::error::specfuse-server-url-no-version did not fire on servers[${i}].url." >&2
+              fail=1
+            fi
+          done
+          for i in 2 3 4; do
+            if grep "specfuse-server-url-no-version" "$REPORT" | grep -qE "servers\[${i}\]\.url\s*$"; then
+              echo "::error::specfuse-server-url-no-version fired on servers[${i}].url, which has no version segment." >&2
+              fail=1
+            fi
+          done
+
+          [[ $fail -eq 0 ]] || exit 1
+          echo "==> A versioned server URL warns; host-only and non-version base paths stay silent."
+
       # Regression net for the 428 inversion. `specfuse-428-on-write` used to
       # REQUIRE the response; `specfuse-no-428` forbids it, and
       # `specfuse-no-428-in-prose` forbids the sentence that motivated it.

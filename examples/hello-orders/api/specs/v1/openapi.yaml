@@ -33,7 +33,7 @@ info:
   x-roles: [Admin, Manager, Customer, Authenticated]
 
 servers:
-  - url: https://api.helloorders.example/v1
+  - url: https://api.helloorders.example
     description: Illustrative — hello-orders is an example project, not a deployable service
 
 tags:

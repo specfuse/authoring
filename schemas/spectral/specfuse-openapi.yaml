@@ -1525,6 +1525,16 @@ rules:
       field: requiresPagination
       function: undefined
 
+  specfuse-server-url-no-version:
+    description: "A server URL must not end in a version segment (/v1). The major version belongs in each path (/v1/customers), and the generated C# controllers and functional tests prefix every route with the path part of the server URL, so /v1 in both gives /v1/v1/customers. Put the host (and any non-version base path) in servers[].url. See API_Handbook.md §4."
+    message: "{{description}}"
+    severity: warn
+    given: $..servers[*].url
+    then:
+      function: pattern
+      functionOptions:
+        notMatch: "/v[0-9]+/?$"
+
   specfuse-xentity-concurrency-unprotected-needs-reason:
     description: "x-entity.concurrency 'none' declares the entity deliberately unprotected against lost updates. Use the object form and record why: { mode: none, reason: <why no second writer can race> }. See Vendor_Extensions.md §1.1."
     message: "{{description}}"
