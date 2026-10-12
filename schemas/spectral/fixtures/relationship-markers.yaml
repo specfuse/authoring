@@ -10,6 +10,9 @@
 #
 #   GoodMarkers            no relationship/projection findings
 #   BadReferenceValue      specfuse-x-references-shape
+#   BadRemoteResolve       specfuse-x-references-shape (resolve not local/remote)
+#   BadRemoteEntity        specfuse-x-references-shape (object form names `none`)
+#   BadRemoteKey           specfuse-x-references-shape (unknown key in object form)
 #   UnjustifiedOpaque      specfuse-opaque-reference-justified
 #   BadFkForValue          specfuse-x-fk-for-shape
 #   ConflictingMarkers     specfuse-fk-marker-exclusive
@@ -57,6 +60,18 @@ components:
           type: string
           format: uuid
           x-references: Customer
+        # Cross-pillar reference with no replica, object form (generator
+        # 0.15.0, clabonte/generator#2397). A description is good practice
+        # but not required.
+        accountId:
+          type: string
+          format: uuid
+          x-references: { entity: Account, resolve: remote }
+        # Object form of a local reference; equal to the string form.
+        reviewerId:
+          type: string
+          format: uuid
+          x-references: { entity: Customer, resolve: local }
         # Opaque uuid, justified.
         correlationId:
           type: string
@@ -103,6 +118,37 @@ components:
       properties:
         id: { type: string, format: uuid }
         customerId: { type: string, format: uuid, x-references: customer }   # not PascalCase
+
+    BadRemoteResolve:
+      type: object
+      x-entity: { domain: support, type: entity }
+      properties:
+        id: { type: string, format: uuid }
+        accountId:
+          type: string
+          format: uuid
+          x-references: { entity: Account, resolve: cached }                # not local/remote
+
+    BadRemoteEntity:
+      type: object
+      x-entity: { domain: support, type: entity }
+      properties:
+        id: { type: string, format: uuid }
+        token:
+          type: string
+          format: uuid
+          description: Opaque token.
+          x-references: { entity: none, resolve: remote }                   # `none` is not an entity
+
+    BadRemoteKey:
+      type: object
+      x-entity: { domain: support, type: entity }
+      properties:
+        id: { type: string, format: uuid }
+        accountId:
+          type: string
+          format: uuid
+          x-references: { entity: Account, resolve: remote, via: getAccount } # unknown key
 
     UnjustifiedOpaque:
       type: object

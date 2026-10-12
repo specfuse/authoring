@@ -75,7 +75,7 @@ Error:                  # shared shape, no owning domain
 - **Exempt:** `x-entity` schemas, pure `$ref` aliases, and the derived shapes of an entity (`New{E}`, `Basic{E}`, `Update{E}`, `{E}List`) — the generator resolves those to their main model's domain.
 - **`common` is reserved.** It means *shared, no owning domain*, and it MUST NOT itself be registered in `info.x-domains` — registering it is `SCHEMA_DOMAIN_UNREGISTERED` against the registry.
 - **What counts is `components.schemas` after bundling.** A shape you only `$ref` from an operation file is hoisted there by `redocly bundle`, so it needs the key in its source file even though no hand-written `components` block names it. The bundle is the contract: folder layout does not survive bundling, so a schema's `domains/{domain}/` location says nothing to the generator, and the key is the only record of its owner that does.
-- A schema that references a schema owned by **another** domain is reported as `SCHEMA_DOMAIN_CROSS_REFERENCED` (WARNING) — a boundary hint, not a failure; `common` is never a cross-reference. **Entity projections are exempt**: a `Basic{E}` (or other derived shape of a registered entity) embedded in another domain's schema — a work item holding a `BasicUser` summary — is normal DDD and is not reported. Referencing the full entity, or a domain-owned enum or value shape, across the boundary is.
+- A schema that references a schema owned by **another** domain is reported as `SCHEMA_DOMAIN_CROSS_REFERENCED` (WARNING) — a boundary hint, not a failure; `common` is never a cross-reference. **Entity projections are exempt**: a `Basic{E}` (or other derived shape of a registered entity) embedded in another domain's schema — a work item holding a `BasicUser` summary — is normal DDD and is not reported. Referencing the full entity, or a domain-owned enum or value shape, across the boundary is. **`validate` does not report it on a bundled spec**, though: the rule reads each property's `$ref`, which the validator's parse has already resolved. Measured on a copy of `hello-orders` with an `order` entity property referencing the `customer` domain's status enum, directly and through a bundler alias (`CrmStatus: {$ref: …/CustomerStatus}`): no finding on `0.14.0` or on a build of generator main, through the project file or the spec alone. Generator `0.15.0` follows the alias to its target (`clabonte/generator#1929`), which matters only once the rule reads the resolved document. Find cross-domain references by review until then.
 
 **Spec-author action on the `0.13.0` pin.** Run `validate` on a fresh bundle and add `x-domain` to every schema it names. This rule shipped in `0.13.0` and the kit missed it at that pin bump (`compatibility.md`, `v0.20.0` row); the kit's own example and new-project scaffold both failed it until the fix that added this paragraph. No kit Spectral mirror yet — the derived-shape exemption needs the entity set, which a schema-local rule does not have.
 
@@ -259,7 +259,7 @@ FEAT-2026-0080 adds six ERROR and two WARNING coherence rules:
 | `DELETE_SEMANTICS_UNDECLARED` | WARNING | the entity is the target of a DELETE operation and declares no `delete` |
 | `DELETE_SOFT_STATUS_ENUM_OVERLAP` | WARNING | a soft-delete entity whose status enum also carries a `deleted`/`archived` member |
 | `DELETE_SOFT_BOOLEAN_FLAG_OVERLAP` | WARNING | a soft-delete entity also carrying a boolean `isArchived` / `isDeleted` property (generator 0.7.0) |
-| `DELETE_SOFT_TIMESTAMP_OVERLAP` | WARNING | a soft-delete entity also carrying a date-time property named `leftAt`, `revokedAt` or `removedAt` (generator 0.8.0). **Read the caveat below before acting on this one** |
+| `DELETE_SOFT_TIMESTAMP_OVERLAP` | WARNING | a soft-delete entity also carrying a date-time property named `revokedAt` or `removedAt` (generator 0.8.0; `leftAt` too, through `0.14.0`). **Read the caveat below before acting on this one** |
 | `DELETE_REASON_INVALID` | ERROR | `reason` outside the closed set |
 | `DELETE_REASON_REQUIRES_HARD` | ERROR | `reason` alongside `mode: soft` |
 | `DELETE_REASON_TEXT_REQUIRED` | ERROR | `reason: other` without `reasonText`, **or** `reasonText` beside any other reason |
@@ -278,7 +278,8 @@ whatever preceded it, a restore cannot recover the prior state.
 
 `DELETE_SOFT_TIMESTAMP_OVERLAP` is different, and its fix text is wrong about
 half the time. **It matches on the property name and nothing else** — the literal
-set is `leftAt`, `revokedAt`, `removedAt`, compared case-insensitively. It does
+set is `revokedAt`, `removedAt` (plus `leftAt` through `0.14.0`), compared
+case-insensitively. It does
 not ask whether anything else in the specification reads the field. Its fix text
 offers *"remove 'X' and rely on `deletedAt`, or — if it records something other
 than removal — rename it to say so"*, and following that on a true positive is
@@ -301,11 +302,15 @@ be read after the event**:
   is a true positive and removing it is correct.
 
 Reported by a consumer whose bundle ran the rule at 1-of-4 precision: one true
-positive, three fields the row is deliberately meant to outlive. A narrowing is
-filed as `clabonte/generator#1441` — check whether the timestamp is referenced
-anywhere else in the specification, since a field nothing else reads is a
-plausible duplicate while one other machinery depends on is not. Until that
-ships, this rule needs a human on every hit.
+positive, three fields the row is deliberately meant to outlive. The narrowing
+filed as `clabonte/generator#1441` asked the rule to check whether the timestamp
+is referenced anywhere else in the specification, since a field nothing else
+reads is a plausible duplicate while one other machinery depends on is not.
+Generator `0.15.0` takes a smaller step: it drops `leftAt` from the name set, as
+a membership ending on a row kept readable afterwards, and defers the reference
+check. Measured on a soft-delete copy of `hello-orders` carrying `leftAt` and
+`revokedAt`: two findings on `0.14.0`, one (`revokedAt`) on a build of generator
+main. `revokedAt` and `removedAt` still need a human on every hit.
 
 ### `delete.reason` — why an entity is `hard` (generator 0.6.0)
 
@@ -451,8 +456,13 @@ strictly larger.
 
 **The `reason` vocabulary — a closed set as of generator 0.5.7.** It was a
 recommendation until then and is now enforced: anything outside the set is
-`INVALID_EXTENSION_VALUE` at parse time, and the kit's `specfuse-xentity-shape`
-guard rejects it at lint. The point of closing it is that the declarations are
+refused at parse time, and the kit's `specfuse-xentity-shape` guard rejects it
+at lint. The parse-time code is `ENTITY_INVALID_CONFIG` through generator
+`0.14.0` (measured; this paragraph used to name the later code) and
+`INVALID_EXTENSION_VALUE` from `0.15.0`. The same move covers an unknown
+`concurrency` mode, `delete` mode and `archiveVisibility`; an unknown `type` and
+the retired `encryptedProperties` keep `ENTITY_INVALID_CONFIG` (all measured).
+Both codes are ERROR. The point of closing it is that the declarations are
 auditable in aggregate — *"find every `none` whose claim is not true"* — which
 80 near-identical sentences cannot support:
 
@@ -566,9 +576,9 @@ version column says which release each family first shipped in.
 | Rule | Severity | Fires when |
 |---|---|---|
 | `ENTITY_CONCURRENCY_INVALID` | ERROR | a value outside `{ optimistic, none, delegated }`, a malformed object form, or a sub-key that reads as a misspelling of `concurrency` |
-| `ENTITY_CONCURRENCY_UNDECLARED` | WARNING | an `x-entity` schema declares no `concurrency` at all |
-| `ENTITY_CONCURRENCY_REASON_REQUIRED` | WARNING | `mode: none` on an entity that exposes an unsafe write (`PATCH`/`PUT`/`DELETE`), with no `reason` |
-| `ENTITY_CONCURRENCY_WRITER_ROLE_UNREADABLE` | WARNING | the entity's unsafe-write roles are not a subset of the roles that can read it from a safe operation |
+| `ENTITY_CONCURRENCY_UNDECLARED` | **ERROR** | an `x-entity` schema declares no `concurrency` at all |
+| `ENTITY_CONCURRENCY_REASON_REQUIRED` | **ERROR** | `mode: none` on an entity that exposes an unsafe write (`PATCH`/`PUT`/`DELETE`), with no `reason`. Through `0.14.0` a write naming the entity only by its request body (no entity in the path) was not counted; from generator `0.15.0` it is |
+| `ENTITY_CONCURRENCY_WRITER_ROLE_UNREADABLE` | WARNING | the entity's unsafe-write roles are not a subset of the roles that can read it from a safe operation. Skipped for `mode: none`. Same body-only gap through `0.14.0`, closed from generator `0.15.0` |
 | `ENTITY_CONCURRENCY_CENSUS` | SUGGESTION | always — reports `optimistic` / `none` / `delegated` / undeclared counts with a `reason` breakdown, in one `validate` run |
 
 **Operation-level preconditions** — generator **0.7.0**, extended in **0.8.0** and **0.12.0**.
@@ -649,10 +659,13 @@ a reason to promote or suppress: the census lines exist so a severity decision
 reads a population rather than a warning count, and `ENTITY_TAG_CENSUS` says so
 in its own text. Adopt entity by entity and watch the census move.
 
-`ENTITY_CONCURRENCY_UNDECLARED` is a WARNING on purpose: adopting the key across
-an existing project should not turn `validate` red mid-migration. The ERROR
-promotion is FEAT-2026-0092, gated on the sweep reaching zero `not-assessed`.
-Use `ENTITY_CONCURRENCY_CENSUS` to track that.
+`ENTITY_CONCURRENCY_UNDECLARED` shipped as a WARNING so that adopting the key
+across an existing project would not turn `validate` red mid-migration.
+FEAT-2026-0092 has since promoted it, and `ENTITY_CONCURRENCY_REASON_REQUIRED`
+with it: both are ERRORs on the `0.14.0` jar (measured on a copy of
+`hello-orders` with one entity's `concurrency` removed and another set to
+`none`). An entity with no `concurrency` now fails `validate`; use
+`ENTITY_CONCURRENCY_CENSUS` to find the rest before regenerating.
 
 > **Both `concurrency: none` and `{ mode: none }` pass lint.** The shorthand is
 > accepted because the generator accepts it, and a lint rule that rejects a form
@@ -810,7 +823,14 @@ from one key to the other.
 
 Malformed shapes are refused at parse time, before those rules run: a constraint
 with no `properties`, an empty `properties` list, a `properties` that is not a
-list, and a non-string `name` are each an `ENTITY_INVALID_CONFIG`.
+list, and a non-string `name` are each an `ENTITY_INVALID_CONFIG` through
+`0.14.0`, and an `INVALID_EXTENSION_VALUE` from generator `0.15.0` (both
+ERROR; measured on all four). A CI filter or findings baseline keyed on
+`ENTITY_INVALID_CONFIG` should match both codes. The new finding's location is
+`x-entity.uniqueBy` (or `x-entity.uniqueBy.name`) **without the schema name**,
+and the message does not name it either, so in a multi-entity spec find the
+entity by the offending value. A retired `x-entity` key such as
+`encryptedProperties` keeps `ENTITY_INVALID_CONFIG`.
 `specfuse-xentity-shape` catches the same four at lint, and additionally rejects
 a repeated member within one tuple and an unknown member on a constraint — both
 of which the jar takes silently. The key is new in `0.8.0`, so no spec predates
@@ -1056,17 +1076,34 @@ User:
       type: string
       format: email
       x-classification: [pii]
+      x-protection: { atRest: none, rationale: Read in plaintext to send mail. }
     passwordHash:
       type: string
       x-internal-only: true        # stored + queried server-side; never in any DTO
+      x-classification: [credential]
+      x-protection: { atRest: hashed }   # required on a *Hash / *Digest name from generator 0.15.0
     password:
       type: string
       writeOnly: true              # client SETS on New*/Update*; never returned
 ```
 
+`x-internal-only` says where a value goes, not how it is protected. From generator `0.15.0` a `*Hash` / `*Digest` string property on an entity that declares no `x-protection` is an ERROR (`PROTECTION_DIGEST_UNDECLARED`, §1.5), and `x-internal-only` alone does not satisfy it. Measured: a `passwordHash` carrying `x-internal-only` alone is clean on `0.14.0` and an ERROR on `0.15.0`.
+
 ### 1.4 x-enum-case
 
-**Purpose**: Overrides the default camelCase formatting applied by the code generator to enum values when the standard convention doesn't make sense (e.g., industry-standard codes that must be preserved as-is).
+**Purpose**: Sets how the code generator cases one enum's serialized wire values, overriding the project-wide `namingOverrides.enumValue` (`Project_File.md` §3.1) for that enum. The typical use is industry-standard codes that must be preserved as-is.
+
+> **⚠ Corrected (generator `0.15.0` pin).** This section used to say the generator
+> applies camelCase to enum values when `x-enum-case` is absent, and that a
+> domain enum should be written in camelCase so the generator's "default
+> transformation" applies. **There is no such transformation.** With no
+> `x-enum-case` and no `namingOverrides.enumValue`, the C#, Python and Dart
+> profiles `Preserve` the value (`Project_File.md` §3.2), and so does
+> TypeScript. Measured on `0.14.0` and the `0.15.0` candidate: an enum value
+> written `placedOrder` is emitted as `placedOrder` in all four. Write domain
+> enum values in camelCase because that *is* the wire value (and
+> `specfuse-enum-camel` holds you to it), not because the generator
+> converts them.
 
 **Scope**: Applied to enum schemas only (schemas with `type: string` and `enum` values)
 
@@ -1079,10 +1116,12 @@ x-enum-case: string  # One of: preserve | PascalCase | camelCase | snake_case | 
 
 > **Naming note:** the generator also accepts the camelCase alias `x-enumCase`. The kit's canonical form is `x-enum-case`.
 
+> **Listed by `extensions` from generator `0.15.0`.** `extensions --format json` gains an `enum` section naming the two enum-level keys, `x-enum-case` (*"member naming case; overrides namingOverrides.enumValue"*) and `x-extensible` (§1.4.1). It lists the kebab-case spelling, which is the kit's. Through `0.14.0` neither key appeared in the output. The kit's vocabulary check reads the section, but no kit guard on enum schemas is closed, so it compares nothing there.
+
 **Allowed Values**:
 - `preserve` — emit enum values exactly as written in the spec, no transformation
 - `PascalCase` — transform values to PascalCase
-- `camelCase` — transform values to camelCase (this is the default when `x-enum-case` is absent)
+- `camelCase` — transform values to camelCase
 - `snake_case` — transform values to snake_case
 - `kebab-case` — transform values to kebab-case
 - `SCREAMING_SNAKE_CASE` — transform values to SCREAMING_SNAKE_CASE
@@ -1097,7 +1136,9 @@ Use `x-enum-case: preserve` **only** when the enum represents externally-defined
 - IANA timezone identifiers (e.g., `America/New_York`)
 - Other industry-standard identifiers where casing is normative
 
-Do **not** use `x-enum-case` for regular domain enums — define values in camelCase and let the generator apply its default transformation.
+Do **not** use `x-enum-case` for regular domain enums — define values in camelCase, which the generator then preserves as written.
+
+Measured on the `0.15.0` candidate with `x-enum-case: SCREAMING_SNAKE_CASE` on an enum of `draft` / `placedOrder`: the wire values become `DRAFT` / `PLACED_ORDER` in C# (`[EnumMember(Value = …)]`), Python, Dart (`@JsonValue`) and TypeScript, while each language keeps its own member-name convention (C# and TypeScript `PlacedOrder`, Python `PLACED_ORDER`, Dart `placedOrder`). The key re-cases what goes on the wire, so changing it on a live enum is a contract change.
 
 **Example**:
 ```yaml
@@ -1121,7 +1162,7 @@ RegionCode:
     - CA-ON
     - CA-QC
 
-# Regular domain enum — no x-enum-case needed, generator uses camelCase default
+# Regular domain enum — no x-enum-case needed, values are emitted as written
 OrderStatus:
   type: string
   enum:
@@ -1130,6 +1171,52 @@ OrderStatus:
     - fulfilled
     - cancelled
 ```
+
+### 1.4.1 x-extensible — decode an unknown value instead of throwing (generator `0.15.0`)
+
+**Purpose**: Lets a generated client survive an enum value the server added after the client was built. A marked enum decodes a wire value it does not recognise to a generated `unknown` member instead of failing the whole payload (`clabonte/generator#1865`).
+
+**Scope**: An enum schema (`type: string` + `enum:`). **Opt-in**: an enum without the key generates byte-identical output, and that is the right default for an enum whose value set is a contract — a client that does not know a value should fail loudly.
+
+**Schema**:
+```yaml
+x-extensible: true   # boolean; absent or false means "an unknown value is an error"
+```
+
+**Example**:
+```yaml
+# A value set the server is expected to grow: an older client must keep
+# decoding the payload around it.
+ShipmentCarrier:
+  type: string
+  x-extensible: true
+  enum: [postal, courier, freight]
+```
+
+**What each language emits** — measured on the `0.15.0` candidate with `x-extensible: true` on `hello-orders`' `OrderStatus`:
+
+| Language | Marked enum | Unmarked enum |
+|---|---|---|
+| C# | `[ExtensibleEnum]` on the enum; `EnumMemberJsonConverter<T>` returns `UNKNOWN` for an unrecognised value | `UNKNOWN = 0` exists here too, but the JSON converter throws on an unrecognised value |
+| Python | `UNKNOWN = "unknown"` plus a `_missing_` that returns `UNKNOWN` for an unrecognised **string**; a non-string still raises `ValueError` | `UNKNOWN` is a member, but there is no `_missing_`, so `OrderStatus("bogus")` raises |
+| Dart | an `unknown` member (`@JsonValue('unknown')`, in `wireNames`); `fromWire` falls back to it; every DTO field typed by the enum carries `@JsonKey(unknownEnumValue: …unknown)` | no `unknown` member |
+| TypeScript | the type widens to `X \| (string & {})`; there is **no** `unknown` constant, the runtime object is unchanged | the literal union only |
+
+**What it does not do.**
+
+- **Persistence still throws.** The C# column converters (`EnumValueConverter`, `EnumListValueConverter`) and the route/query `CustomEnumConverter<T>` are not gated by the key: a row read as `UNKNOWN` and saved back would write `"unknown"` into the column. A renamed stored value is still a data migration.
+- **`unknown` is decode-only.** The original string is not kept, and sending `unknown` back to the server is undefined. A client must not echo it.
+- **A spec member literally named `unknown` folds into the sentinel** rather than producing a second one. Test support (fixtures, builders, fakes) never seeds the sentinel.
+- **A Dart `switch` over a marked enum gains an arm, and a TypeScript `Record<X, …>` over it widens.** Marking an existing enum is a source change for every consumer that does either.
+
+**Validation** — both ERROR, measured on the `0.15.0` candidate:
+
+| Code | Fires when |
+|---|---|
+| `EXTENSIBLE_ON_NON_ENUM` | the key is on a schema that declares no `enum:` list |
+| `EXTENSIBLE_NOT_BOOLEAN` | the value is not a YAML/JSON boolean (`"yes"`, `1`) |
+
+`x-extensible: false` is accepted and means the same as omitting the key. Generator `0.14.0` ignores the key entirely, so a spec that sets it validates there too and gets no `unknown` member. **No kit Spectral rule**: both mistakes are refused by `validate`, and an author reaches for this key deliberately, one enum at a time.
 
 ### 1.5 x-classification
 
@@ -1244,6 +1331,9 @@ Customer:
       type: string
       description: Content-address of the public avatar image; not a credential. Safe on responses despite the secret-shaped name.
       x-classification: [exposed]   # override SENSITIVE_FIELD_IN_RESPONSE — reviewed, public
+      x-protection:                 # required by rule 9, and by rule 16 for any *Hash name
+        atRest: none
+        rationale: A public content address; nothing to protect.
     avatarUrl:
       type: string
       # no classification — unclassified
@@ -1281,7 +1371,7 @@ email:
 
 > **These declarations have a deliverable, from generator 0.9.0.** The
 > `dataProtectionAudit` markdown artifact (`Project_File.md` §11.5) renders
-> `x-classification` and `x-protection` into `data-protection-audit.md` and a
+> `x-classification` and `x-protection` into `DATA_PROTECTION_AUDIT.md` and a
 > JSON companion: inventory, protection matrix, exceptions register, key
 > management, egress map, and erasure capability. It is the reason `rationale`,
 > `reviewedBy` and `reviewedOn` are worth filling in properly rather than
@@ -1362,14 +1452,14 @@ What the generated C# controller does, measured on a generated fixture:
 
 | code | severity | fires on |
 |---|---|---|
-| `UNMASK_PARAMETER_ON_LIST` | **ERROR** | `x-unmask` on a non-GET operation, or on a GET whose response is a bare `type: array` |
+| `UNMASK_PARAMETER_ON_LIST` | **ERROR** | `x-unmask` on a non-GET operation, or on a GET whose response is a bare `type: array` or, from generator `0.15.0`, a `{Resource}List` wrapper |
 | `UNMASK_VALUE_NOT_MASKED` | **ERROR** | an enum value that is not a **top-level** masked field of the response entity — a field masked only inside a nested DTO counts as not masked |
 | `UNMASK_FORBIDDEN_TYPE_NOT_DECLARED` | WARNING | the spec declares `x-unmask`, its `Error.type` is typed by an `ErrorType` enum, and that enum lacks `unmaskForbidden` |
 | `UNMASK_UNDECLARED` | INFO (printed as `SUGGESTION`) | a single-resource GET returns masked fields and declares no `x-unmask` — legitimate when the fields must never be revealed there |
 
 The parameter is exempt from `OPERATION_NON_SEARCHABLE_QUERY_PARAM`.
 
-> **On a list GET returning `{Resource}List`, the jar reports the wrong code.** Measured against `0.14.0`: `x-unmask` on `GET /tenants/{tenantId}/customers` returning `CustomerList` is not `UNMASK_PARAMETER_ON_LIST` but `UNMASK_VALUE_NOT_MASKED` for every enum value (*"masked: []"*), because the validator sees the response with its `$ref` already resolved and cannot recognise the paginated wrapper. The spec is still refused, and the fix is the same — move the parameter to the single-resource GET. See `compatibility.md` §42.
+> **On a list GET returning `{Resource}List`, `0.14.0` reports the wrong code.** `x-unmask` on `GET /tenants/{tenantId}/customers` returning `CustomerList` is not `UNMASK_PARAMETER_ON_LIST` but `UNMASK_VALUE_NOT_MASKED` for every enum value (*"masked: []"*), because the validator sees the response with its `$ref` already resolved and cannot recognise the paginated wrapper. From generator `0.15.0` it is `UNMASK_PARAMETER_ON_LIST` (`clabonte/generator#2370`), measured on a build of generator main. Either way the spec is refused, and the fix is the same — move the parameter to the single-resource GET. See `compatibility.md` §42.
 
 #### `unavailableProperties` — every encrypting entity owes a poisoned-read surface
 
@@ -1531,6 +1621,7 @@ The two sides split cleanly, and the split is the generator's own: `PiiClassific
 | 6 | A property carrying `x-classification: [exposed]` MUST carry a non-empty `description` justifying why exposure is safe. | kit — `specfuse-classification-exposed-needs-description` (error) |
 | 7 | A property the validator reads as PII MUST declare `x-classification` (see "Where it is required" above). | generator — `PII_FIELD_MISSING_CLASSIFICATION` (error); mirrored in the editor by kit `specfuse-classification-pii-required` |
 | 15 | An entity declaring `x-protection.atRest: encrypted` on one of its own properties MUST expose a `readOnly` string array `unavailableProperties`. Generator `0.13.0`; **breaks specs that validated on `0.12.0`**. Not required when the only encrypted target is a flattened value object. | generator — `UNAVAILABLE_PROPERTIES_NOT_DECLARED` (error); mirrored by kit `specfuse-xprotection-unavailable-properties-required` |
+| 16 | A `type: string` property of an `x-entity` schema whose name ends in `hash` or `digest` (case-insensitive; `api_key_hash` counts) MUST declare `x-protection`, whether or not it is classified. `atRest: hashed` is the expected answer for a stored digest (with `x-internal-only`, rule 13), `atRest: none` with a rationale for a public content digest. Presence only — any `x-protection` silences it. Out of scope: a `$ref`-typed or `allOf`-wrapped property, a non-string, and a non-entity schema. **No temporal exclusion**, unlike `SENSITIVE_FIELD_IN_RESPONSE`: a `format: date-time` property named `*Hash` fires. Generator `0.15.0`; **opens at ERROR, so it can break a spec that validated on `0.14.0`** — `x-internal-only` or `writeOnly` alone used to be enough for such a property. | generator — `PROTECTION_DIGEST_UNDECLARED` (error); mirrored by kit `specfuse-xprotection-digest-undeclared` |
 
 Rules 5 and 6 were documented here for some time and enforced by **nothing** on either side — rule 5 even named a finding id (`CLASSIFICATION_EXPOSED_CONTRADICTION`) that exists in neither the kit nor the jar. They are kit Spectral rules now. Rule 2 warns rather than fails: a refused target generates, in plaintext, so read the warning as a protection decision that did not happen.
 
@@ -1554,6 +1645,8 @@ A secret-shaped, response-bound property **passes** the rule only if it carries 
 - `x-classification: [exposed]` — a reviewer has confirmed the field is safe to return as-is.
 
 `x-classification: [sensitive]` alone does **not** satisfy the rule: `sensitive` means *must be masked*, not *may be exposed*. Using `exposed` is an explicit, reviewed override — reach for it only when the secret-shaped name is a false positive, e.g. a public `avatarHash` content-address. Not for a `*Token`: that suffix is not in the heuristic at all, so there is nothing to override.
+
+**Two rules read a `*Hash` name, and they ask different questions.** `SENSITIVE_FIELD_IN_RESPONSE` asks whether the value may reach a response; `PROTECTION_DIGEST_UNDECLARED` (rule 16, generator `0.15.0`) asks how it is protected at rest. Each exit above answers only the first: `writeOnly`, `x-internal-only` and `[exposed]` without an `x-protection` all fail rule 16 from `0.15.0`. The public `avatarHash` therefore carries `[exposed]` **and** `x-protection: {atRest: none, rationale: …}`, as in the §1.5 example; a stored credential digest carries `x-internal-only` **and** `atRest: hashed`. Rule 16 also reads `*Digest`, which `SENSITIVE_FIELD_IN_RESPONSE` does not.
 
 ### 1.6 x-content
 
@@ -1648,6 +1741,9 @@ Article:
 
 ```yaml
 x-references: Customer      # target entity name (PascalCase), or the literal `none`
+
+# Object form (generator 0.15.0):
+x-references: { entity: Customer, resolve: remote }   # resolve: local | remote, default local
 ```
 
 **Semantics**:
@@ -1659,7 +1755,14 @@ x-references: Customer      # target entity name (PascalCase), or the literal `n
 
 **`x-references: none`** marks a `format: uuid` property that is **not a foreign key at all** — a correlation id, an idempotency token, an externally-minted identifier. Because this suppresses relationship classification entirely, it MUST be accompanied by a `description` justifying why the value is opaque. An unjustified `none` is indistinguishable from an author who did not want to think about the relationship.
 
-`none` is also the current form for **an id owned by another pillar that this pillar reads through the owner's API and does not replicate**. The value is a real foreign key in the business sense, but it cannot be a database FK across pillar databases. The `description` then names the owner pillar, the entity, and how the value is resolved. See §14.11. At generator `0.14.0`, `none` on a property named after an entity (`customerId`) still binds it to that entity by name (`clabonte/generator#2400`). No relationship is built either way. But in a pillar-bound group that does not own the entity, generation fails.
+At generator `0.14.0`, `none` on a property named after an entity (`customerId`) still bound it to that entity by name, and a pillar-bound group that did not own the entity failed. Generator `0.15.0` fixes this (`clabonte/generator#2400`): `none` is a plain uuid column whatever the property is called.
+
+**The object form, `{ entity, resolve }` (generator `0.15.0`, `clabonte/generator#2397`).** `resolve` is `local` or `remote` and defaults to `local`.
+
+- **`resolve: local`** is the string form written out. `x-references: { entity: Customer, resolve: local }` and `x-references: Customer` generate the same thing.
+- **`resolve: remote`** declares a reference to an entity **another pillar owns, which this pillar neither holds nor replicates**. It reads the target through the owner's API. The value is a real foreign key in the business sense, but it cannot be a database FK across pillar databases. The generator emits a plain uuid column: no FK, no navigation, no EF configuration, no `Read{Entity}` rebinding. Unlike `none`, it records the target, so the entity diagram still shows the edge. It is the declaration §14.11 describes, and it carries tenancy when it targets the tenant root (§14.11).
+
+The object form is only for a property. A `belongsTo` entry written as an object (`belongsTo: { allOf: [{ entity: Tenant, resolve: remote }] }`) is `INVALID_EXTENSION_VALUE`, because `belongsTo` stays a composition edge inside one database. `none` has no object form: `{ entity: none }` is refused, so write the opt-out as the plain string. A `description` is not required on a remote reference, unlike `none`, but naming the owner pillar and how the value is read is good practice.
 
 **Every FK-shaped property must be classified.** Since the retirement of implicit `{Entity}Id` → `belongsTo` inference (kit `0.5.4`), a `format: uuid` property named after an entity carries no relationship meaning on its own. Exactly one classification applies:
 
@@ -1667,6 +1770,7 @@ x-references: Customer      # target entity name (PascalCase), or the literal `n
 |---|---|
 | This entity is part of the target's aggregate | `belongsTo: <Target>` on `x-entity` (composition, Cascade, aggregate membership) |
 | This entity merely points at the target | `x-references: <Target>` on the property (association, NoAction, no membership) |
+| The target is owned by another pillar and read through its API, with no local copy | `x-references: { entity: <Target>, resolve: remote }` on the property (plain uuid column; generator `0.15.0`, §14.11) |
 | The uuid is not a foreign key | `x-references: none` on the property + a justifying `description` |
 
 Leaving an FK-shaped property unclassified is a spec defect.
@@ -1679,7 +1783,7 @@ Leaving an FK-shaped property unclassified is a spec defect.
    The generator draws the same line, and it is worth knowing which side a shape falls on before authoring it. `DDD_DUAL_RELATIONSHIP_DECLARATION` fires on the property that *implements* the `belongsTo` and also declares `x-references` to that target — one edge cannot be both owned composition and non-owning association. It does **not** fire on sibling properties naming the same target, because those are different edges. Measured against the pinned `0.5.8` jar: `LegalEntity.organisationId` with both declarations errors, while `Associate.managerId` and `Associate.approverId` both pass on an `Associate` that declares `belongsTo: Person`. So **"points at another instance of my own owner's type" is expressed as an ordinary sibling `x-references`** — a self-referencing `Person.managerId -> Person` on an owned entity is legal, and wants a `description` saying which instance it points at.
 3. `x-references` and `x-fk-for` (§1.8) MUST NOT appear on the same property. They declare opposite ownership.
 4. `x-references: none` requires a non-empty `description`.
-5. The value MUST be `none` or a PascalCase entity name.
+5. The value MUST be `none`, a PascalCase entity name, or an object `{ entity: <PascalCase entity>, resolve: local | remote }` with no other key. The generator refuses a malformed object as `INVALID_EXTENSION_VALUE`. Measured at generator `0.15.0`: `resolve: cached` was refused as "Invalid resolve 'cached' in x-references". The kit's `specfuse-x-references-shape` lints both forms.
 
 **Examples**:
 
@@ -1716,6 +1820,7 @@ Note:
 
 - **`belongsTo` (§1.1)**: the owning counterpart. Mutually exclusive per target.
 - **`x-fk-for` (§1.8)**: for an *owning* FK whose column name does not follow the `{Entity}Id` convention.
+- **`info.x-pillars` / `holds` (§14.2, §14.3)**: `resolve: remote` is the alternative to a hold. Declaring both for one target is `PILLAR_REMOTE_REFERENCE_ALSO_HELD` (WARNING); see §14.11.
 
 ---
 
@@ -1825,6 +1930,69 @@ Note:
 
 ---
 
+### 1.10 x-copied-from — a value copied from a related row at creation (generator `0.15.0`)
+
+**Purpose**: Declares that a property's value is **copied once, at create time**, from a field of the row a foreign key in the create body names. The value is then the entity's own: it is not kept in step with the source afterwards. Contrast `x-expand-of` (§1.9), which is a read-time display projection and is never stored (`clabonte/generator#2348`).
+
+**Scope**: A property of a main resource (`x-entity`). It belongs on a property the client does not send, so mark it `readOnly` — the generator does not check that, but a client-supplied value would contradict the declaration.
+
+**Schema**:
+```yaml
+x-copied-from:
+  via: <property>        # a property of New{Entity} that is a declared reference
+  property: <property>   # a property of the entity that reference resolves to
+```
+
+It is an object, not two sibling keys. Generator `0.14.0` ignores it outright (measured: none of the findings below fire there), so a spec using it validates on the old pin and simply gets nothing.
+
+**Example**:
+```yaml
+Customer:
+  type: object
+  x-entity: { domain: customer, type: aggregate, concurrency: none }
+  properties:
+    id: { type: string, format: uuid }
+    preferredCurrency: { $ref: './Currency.yaml' }
+
+Order:
+  type: object
+  x-entity: { domain: order, type: aggregate, concurrency: none }
+  properties:
+    id: { type: string, format: uuid }
+    customerId: { type: string, format: uuid, x-references: Customer }
+    currency:
+      # Fixed when the order is placed; a later change to the customer's
+      # preference does not reach existing orders.
+      readOnly: true
+      allOf: [{ $ref: './Currency.yaml' }]
+      x-copied-from: { via: customerId, property: preferredCurrency }
+
+NewOrder:
+  type: object
+  required: [customerId]
+  properties:
+    customerId: { type: string, format: uuid, x-references: Customer }
+```
+
+**`via` is resolved against `New{Entity}`, not the entity.** It must name a property of the create body that is a declared reference — `x-references: <Target>`, or a `{target}Id` name that resolves to a modelled entity (measured: `NewOrder.customerId` with no `x-references` still resolves to `Customer`). An entity with no `New{Entity}` schema has nothing for `via` to name, and the declaration fails.
+
+**Validation** — measured on the `0.15.0` candidate, all ERROR, all at `validate <spec>`:
+
+| Code | Fires when |
+|---|---|
+| `DDD_COPIED_FROM_VIA_NOT_REFERENCE` | `via` is not a property of `New{Entity}`, or is one that is not a declared reference (a plain `note: string` fails) |
+| `DDD_COPIED_FROM_UNKNOWN_PROPERTY` | `property` is not a property of the referenced entity |
+| `DDD_COPIED_FROM_TYPE_MISMATCH` | the two properties resolve to different types (compared by `$ref` / `allOf` schema name, else `type[:format]`); `Currency` against `string` fails |
+| `INVALID_EXTENSION_VALUE` | the value is not an object (`customerId.preferredCurrency` as a string), or `via` / `property` is missing or not a string |
+
+**What it generates.** Only the TypeScript repository fake (`typescriptRepositoryFake`) reads it. Its `create` copies the field from the referenced row in the shared `RepositoryFakeStores`, where it would otherwise invent a value (for an enum, its first member). If that row is absent, it throws instead of falling back. Measured on a `hello-orders` copy with a required `Order.billingFirstName` copied from `Customer.firstName` via `NewOrder.billingCustomerId`. The generated `createOrder` reads `this.stores.customer.get(newOrder.billingCustomerId)?.firstName`, and otherwise throws *"Order: billingFirstName is x-copied-from Customer.firstName via billingCustomerId, but no Customer row with id … is in the shared store. Seed it first."* A test that creates through the fake must seed the source row first. The copy applies only to a property the fake has to seed: in the same run, a non-required, nullable copied property got no copy. Server code, the C# and Dart fakes and the database are unchanged, per the generator's CHANGELOG.
+
+**It does not satisfy `REQUIRED_ENUM_MISSING_DEFAULT`.** Measured: a `required` enum property declared by `$ref` with `x-copied-from` and no default still fails that rule. Keep `x-skip-default-validation: true` beside it (§4.6) — the declaration now records the source the marker used to leave to `description`.
+
+**No kit Spectral rule.** All three cross-schema checks need `New{Entity}` and the referenced entity resolved together, which is the generator's job, and the generator refuses a malformed value itself. The kit has no closed guard on property-level keys, so nothing rejects the key either.
+
+---
+
 ## 2. Value Object Storage Extensions
 
 > **`storage` patterns are hints, not directives.** The patterns below (`single_json`, `flatten`, `serialized`, `separate_table`, `collection_json`) were originally designed against a relational target. Under the multi-backend persistence model (`Project_File.md` §6), each backend kind honors the hints it can and reinterprets the rest: a `document` adapter typically ignores `flatten` (the whole entity is one document anyway); a pure-`blob` adapter accepts only `serialized`; a `relational` adapter honors every pattern. Authors should pick the hint that matches the *semantic intent* (one blob vs. flat columns vs. side table) and let the resolved backend decide the physical realisation.
@@ -1898,6 +2066,8 @@ The disambiguation is the generator's own (`ProtectionDefinition.isSubKey` over 
 
 The trap is the word *effective*: the set is the usage site's `queryable` **if it declares one**, and the definition's `defaultQueryable` otherwise. So a usage site that declares no `queryable` at all inherits one and fails, and the fix is to declare `queryable: []` explicitly rather than to remove the key.
 
+> **Do not count on `validate` to catch the inherited case.** Measured on a copy of `hello-orders`: a usage site declaring a non-empty `queryable` itself is reported on `0.14.0` and after it. An inherited `defaultQueryable` is not reported on `0.14.0`. From generator `0.15.0` it is, when the embed is a direct `$ref`, but measured on a build of generator main it is still not reported through a one-item `allOf` embed, the form this section uses. Declare `queryable: []` at every encrypted usage site.
+
 **The embed property is a second declaration site, and the usage site wins outright.** From generator `0.13.0` an `x-protection` on the entity's own embed property — `components.schemas.<Entity>.properties.<prop>`, where `x-classification` already sits — emits the same columns the usage-site form does. (A `protection` key under `x-value-object` on the value object's own schema is not one of the sites: the generator does not read it.) Where both declare, **the embed's block is discarded in full — not layered underneath**:
 
 ```yaml
@@ -1917,9 +2087,9 @@ Person:
 
 Every member is `encrypted`; the embed's per-member map does not survive. So a usage site declaring a scalar over an embed that declared per-member nuance discards it — and can *weaken* protection at a site whose author believed they were inheriting. From generator `0.13.0` this is reported as `VALUE_OBJECT_PROTECTION_DECLARED_TWICE` (WARNING): declare protection at one site. The precedence itself is settled and intentional.
 
-**Prefer the usage site even when it is the only declaration.** The embed form alone — `x-classification` plus `x-protection: { atRest: encrypted }` on an `allOf` embed of a value object whose members all have a sound canonical round-trip — **is** encrypted per member at generator `0.14.0`, but it is missing from `data-protection-audit.md` entirely (`clabonte/generator#2417`). Until that lands, `x-entity.valueObjects.<prop>.protection` is the form to use: it is the one the audit sees.
+**Prefer the usage site even when it is the only declaration.** The embed form alone — `x-classification` plus `x-protection: { atRest: encrypted }` on an `allOf` embed of a value object whose members all have a sound canonical round-trip — **is** encrypted per member at generator `0.14.0`. Through `0.14.0` it was missing from `DATA_PROTECTION_AUDIT.md` whenever `x-entity.valueObjects` also listed the property with no `protection` of its own (for its `storage`, say); measured, the same embed with no `valueObjects` entry was audited. From generator `0.15.0` the audit lists it either way (`clabonte/generator#2417`). On `0.14.0`, `x-entity.valueObjects.<prop>.protection` is the form to use: it is the one the audit always sees.
 
-> **The audit is coarser than the storage, deliberately.** A value object protected by a scalar usage-site declaration appears as **one row keyed by the embed property name** in both section 1 and the section 2 matrix of `data-protection-audit.md`, while `0.13.0` encrypts **per member**. An assessor reading `residenceAddress | encrypted` is seeing a summary of several columns, not one.
+> **The audit is coarser than the storage, deliberately.** A value object protected by a scalar usage-site declaration appears as **one row keyed by the embed property name** in both section 1 and the section 2 matrix of `DATA_PROTECTION_AUDIT.md`, while `0.13.0` encrypts **per member**. An assessor reading `residenceAddress | encrypted` is seeing a summary of several columns, not one.
 
 **Storage Patterns**:
 
@@ -2040,7 +2210,8 @@ info:
 |---|---|---|
 | generator `OPERATION_UNKNOWN_ROLE` | an `x-roles` member is not in `info.x-roles` | **ERROR** |
 | generator `OPERATION_ROLE_REGISTRY_MISSING` | no `info.x-roles` at all — *"role membership validation disabled"* | WARNING |
-| generator `OPERATION_MISSING_ROLES` | a secured operation declares neither `x-roles` nor `x-public` | **ERROR** |
+| generator `OPERATION_MISSING_ROLES` | a secured operation declares neither `x-roles` nor `x-public`. From generator `0.15.0`, not under `authorization.mode: scopes` without `shadow` | **ERROR** |
+| generator `OPERATION_MISSING_SCOPES` | from generator `0.15.0`, under `authorization.mode: scopes` without `shadow`: a secured operation declares no `x-scopes`, even if it declares `x-roles` | **ERROR** |
 | generator `OPERATION_EMPTY_ROLES` / `OPERATION_INVALID_ROLE` / `OPERATION_INVALID_ROLES_FORMAT` | an empty list, an empty member, or a non-array | — |
 | kit `specfuse-auth-roles-pascal` | the **shape** only: PascalCase identifiers | error |
 
@@ -2101,7 +2272,7 @@ info:
 |---|---|---|
 | `grants` | string[] | Scopes this role holds, in §3.2's grammar, or `"*"`. |
 | `implicit` | boolean | Every authenticated principal holds this role without a claim. The scope-model counterpart of the `Authenticated` convention below. |
-| `superuser` | boolean | Passes every coherence and runtime check regardless of its grants — a declared fact, replacing an `Admin`-by-name short-circuit. A role that is both `superuser` and `implicit` is `ROLE_IMPLICIT_SUPERUSER` (ERROR): every authenticated principal would pass every gate. |
+| `superuser` | boolean | Passes every coherence and runtime check regardless of its grants — a declared fact, replacing an `Admin`-by-name short-circuit. A role that is both `superuser` and `implicit` is `ROLE_IMPLICIT_SUPERUSER` (ERROR): every authenticated principal would pass every gate. From generator `0.15.0` it also decides who may send `If-Match: *`: a superuser role and a system caller only, every other caller gets `412` (`API_Handbook.md` §"Concurrency Control"). This applies whether or not the project generates an authorization runtime. |
 | `delegable` | boolean | A role another role may grant. **Declared, not enforced** at `0.14.0`: it is published per role in the `role-grants.json` companion of `authorizationMatrix` (`Project_File.md` §11.5), and read by no validation rule and none of the generated C# `Authorization/` runtime files. Enforcement is planned generator-side (`FEAT-2026-0203`, `clabonte/generator#2180`). |
 | `description` | string | Free text. Read by nothing. |
 
@@ -2155,7 +2326,12 @@ no coherence diagnostic to a sequence-form spec. Measured on `hello-orders`
 on either shape, and it overlaps the kit's `specfuse-auth-scopes-registry`
 (§3.2). Arazzo carries the same check for actors: `ARAZZO_ACTOR_LACKS_SCOPE`
 mirrors `OPERATION_ROLE_LACKS_SCOPE`, under `authorization.mode: scopes` only
-(`Arazzo_Handbook.md` §4.6 records its limits).
+(`Arazzo_Handbook.md` §4.6 records its limits). It fires from generator
+`0.15.0`, and it is **not** inert on a sequence-form registry: a role with no
+grants covers no scope, so under `scopes` every scenario step whose operation
+declares `x-scopes` fails. Measured: unmodified `hello-orders` with
+`"authorization": {"mode": "scopes"}` passes on `0.14.0` and fails with three
+`ARAZZO_ACTOR_LACKS_SCOPE` ERRORs on a build of generator main.
 
 `OPERATION_ROLE_UNLISTED` is the one to read twice. The coherence target is
 that an operation's `x-roles` **equals** the set of roles whose grants cover its
@@ -2194,7 +2370,7 @@ x-scopes: string[]  # Array of scope names, each matching the grammar below
 >
 > 1. **Shape**, from generator `0.11.0`: `OPERATION_SCOPE_SHAPE_INVALID` (WARNING in either mode) checks segment count and the closed operation set, parsed right to left. It deliberately does **not** check casing.
 > 2. **Registry binding and role coherence**, from `0.14.0`: `OPERATION_SCOPE_UNBOUND` (a domain outside `info.x-domains`, or an entity segment that is not an `x-entity` of that domain), and — when `info.x-roles` is in the mapping form — the coherence rules of §3.1, which check an operation's `x-roles` against the roles whose grants cover its scopes.
-> 3. **Runtime**, from `0.14.0`: under `authorization.mode: scopes` a generated C# controller carries `[ScopesRequired("<scope>", …)]` instead of `[RoleRequired(…)]`. Under the default `roles` mode `x-scopes` changes no generated code.
+> 3. **Runtime**, from `0.14.0`: under `authorization.mode: scopes` a generated C# controller carries `[ScopesRequired("<scope>", …)]` instead of `[RoleRequired(…)]`. Under the default `roles` mode `x-scopes` changes no generated code. From generator `0.15.0`, `scopes` without `shadow` also makes `x-scopes` the key a secured operation must declare: `OPERATION_MISSING_SCOPES` (ERROR) replaces `OPERATION_MISSING_ROLES` there (§3.1), so the generator no longer requires `x-roles`. Through `0.14.0`, `OPERATION_MISSING_ROLES` fired in every mode, so a scopes-mode spec kept a role list on every operation that decided nothing at runtime.
 >
 > Through `0.13.0` only (1) existed, and `compatibility.md` §28's *"read by nothing"* was measured on `0.5.8` and `0.9.0`, before it. The kit is **stricter than the jar** on two points and that is deliberate: `specfuse-auth-scopes-shape` is an `error` and checks casing; `specfuse-auth-scopes-registry` is an `error` where `OPERATION_SCOPE_UNBOUND` is a WARNING under the default mode. See `compatibility.md` §43.
 
@@ -2283,7 +2459,7 @@ paths:
 
 **Purpose**: Declares that an operation is reachable by a **kiosk-session principal** — a shared device signed in under its own authentication scheme rather than as a person.
 
-**Scope**: Applied to OpenAPI operations. Read by the generated C# authorization runtime only (`authorizationRuntime`, `Project_File.md` §11.1), from generator `0.14.0`. No validation rule reads it, and `extensions --format json` does not list it, since it publishes `x-entity` and `info`-level keys only.
+**Scope**: Applied to OpenAPI operations. Read by the generated C# authorization runtime (`authorizationRuntime`, `Project_File.md` §11.1), from generator `0.14.0`, and validated from generator `0.15.0` (below). `extensions --format json` does not list it; it publishes `x-entity`, `info`-level and, from `0.15.0`, enum-level keys only.
 
 **Schema**:
 ```yaml
@@ -2295,6 +2471,17 @@ x-kiosk-session: true   # boolean; absent means false
 **It is inert until the scheme is declared.** With no `authorization.kioskSession.scheme`, no principal is ever recognised as a kiosk session, and the generated policy allows every route. Measured on a `hello-orders` copy with `x-kiosk-session: true` on `getCustomer`: without the scheme `KioskSessionPolicy.IsAllowed` returns `true` unconditionally; with `scheme: KioskSession` the filter tests `AuthenticationType == "KioskSession"` and the allowlist holds exactly that operation's route.
 
 **Not a role.** It narrows what a kiosk session can reach; it grants nothing. The operation still needs `x-roles` (and `x-scopes`) that admit the kiosk principal's role. A kiosk-status check (a deactivated device) belongs in a host-implemented `IPrincipalPolicy`, which the generated runtime evaluates before any role logic.
+
+**Validation** (generator `0.15.0`, `clabonte/generator#782`). Two ERRORs, both measured on a `hello-orders` copy; neither changes a generated byte.
+
+| Code | Fires when | Seen by |
+|---|---|---|
+| `KIOSK_SESSION_INVALID_VALUE` | the value is anything but the literal boolean `true` — `"true"`, `1`, **and `false`**. The runtime reads the flag as exactly `true`, so any other value silently leaves the operation off the allowlist. To exclude an operation, omit the key. | `validate <spec>`, `validate <project.json>`, `generate` |
+| `KIOSK_SESSION_ROLE_UNSATISFIABLE` | an operation flagged `true` whose `x-roles` does not list the kiosk principal's role, compared ignoring case — including an operation with no `x-roles` at all. The kiosk check runs before the role gate, not instead of it, so every kiosk call to that operation would be `403`. | `validate <project.json>` and `generate` only |
+
+The second rule is **armed by `authorization.kioskSession.role`** in the project file (`Project_File.md` §16), the role the kiosk principal carries. A project that declares no role gets only the value rule, and `validate <spec.yaml>` never sees the role, because it reads no project file. The role arms the rule with or without `kioskSession.scheme`. Measured with `role: customer` against operations whose `x-roles` list `Customer`: silent. Generator `0.14.0` reports neither code, and its project loader drops the unknown `role` key without complaint.
+
+**No kit Spectral rule.** The value rule is a one-line check, but the generator makes it on the spec itself, and the role rule needs the project file, which lint never reads.
 
 ---
 
@@ -2410,13 +2597,13 @@ x-default: active      # must match `default`
 enum: [active, inactive, suspended]
 ```
 
-**A required enum property needs one.** An entity with a required enum property and no default has no defined state at creation, which is an error (`REQUIRED_ENUM_MISSING_DEFAULT`). Either give the enum a default as above, or make the property required in the `New{Entity}` schema so the client must supply it. Suppress deliberately with `x-skip-default-validation: true` on the property. That marker is also the only option today for a value copied from a related row at creation; see `compatibility.md` §40.
+**A required enum property needs one.** An entity with a required enum property and no default has no defined state at creation, which is an error (`REQUIRED_ENUM_MISSING_DEFAULT`). Either give the enum a default as above, or make the property required in the `New{Entity}` schema so the client must supply it. Suppress deliberately with `x-skip-default-validation: true` on the property. That marker is also the only exit for a value copied from a related row at creation. From generator `0.15.0`, declare where the value comes from with `x-copied-from` (§1.10) as well — measured, `x-copied-from` alone does not satisfy `REQUIRED_ENUM_MISSING_DEFAULT`. See `compatibility.md` §40.
 
-**Where it goes.** On the **enum schema**, not beside the `$ref` that points at it — OpenAPI 3.0 ignores keywords declared as siblings of `$ref`, so a default written next to the reference is silently dropped. The generator reports this directly as `ENUM_PROPERTY_LEVEL_DEFAULT_IGNORED`: move the `default` to the enum schema and add a matching `x-default` there. If the two are present but disagree, that is `ENUM_DEFAULT_MISMATCH`.
+**Where it goes.** On the **enum schema**, not beside the `$ref` that points at it — OpenAPI 3.0 ignores keywords declared as siblings of `$ref`, so a default written next to the reference is silently dropped. **Nothing reports it, so check it by eye:** move the `default` to the enum schema and add a matching `x-default` there. Earlier versions of this section named `ENUM_PROPERTY_LEVEL_DEFAULT_IGNORED` (WARNING) as the check. It never fired on a spec file, because `validate` resolves every `$ref` before the rule runs, and generator `0.15.0` removes it. A suppression keyed on the code is inert. If the two keywords on the enum schema are present but disagree, that is `ENUM_DEFAULT_MISMATCH`.
 
 Outside enum schemas, prefer the standard `default` keyword on its own. Use `x-default` alone for cases the standard keyword does not cover — e.g. a value the generator should use for test data without declaring it as a schema-level default.
 
-**What `default` means next to `required`** — including the `readOnly` case, where it becomes a persistence default rather than a client-side suggestion — is `API_Handbook.md` §1.9. All four diagnostics above are the enum-specific enforcement of that rule.
+**What `default` means next to `required`** — including the `readOnly` case, where it becomes a persistence default rather than a client-side suggestion — is `API_Handbook.md` §1.9. The three diagnostics above are the enum-specific enforcement of that rule.
 
 ---
 
@@ -2614,6 +2801,10 @@ post:
 - The code generator wires up event publishing in the API layer (outbox pattern)
 - Each event in `x-emits` generates a publish call at the end of the successful operation
 - The Label is set to `{Entity}.{Action}` per the AsyncAPI Label convention (two segments only — tenancy lives in envelope ApplicationProperties)
+
+**The first label also decides the response type of a child create.** When a write's request body is an `x-entity`'s `New*`, its **first** `x-emits` label names that body entity, and the URL's aggregate is a different entity, the generator treats the operation as acting on the body entity. Its domain service returns the child, and every generated surface — controller, mapper, every client — returns the child too, whatever the spec's 2xx says. `hello-orders`' `addOrderLine` is that shape: `POST /orders/{orderId}/lines`, body `NewOrderLine`, first label `OrderLine.Created`, `201` → `OrderLine`.
+
+From generator `0.15.0`, a 2xx that declares the **URL aggregate** instead is `OPERATION_RESPONSE_TYPE_OVERRIDDEN` (ERROR), on `validate <spec>`, `validate <project.json>` and `generate`. Measured on a `hello-orders` copy with `addOrderLine`'s `201` changed to `Order`: `0.14.0` validates it clean; the `0.15.0` candidate refuses it, at `validate` and at `generate` (*"declares its 201 response as 'Order', but every generated surface returns 'OrderLine'"*). With the first label changed to `Order.Updated`, the same `201: Order` is not reported, because the operation is no longer re-pointed. **Fix: declare the emitted type as the response schema.** Generated output does not change; only the spec stops contradicting it. A re-pointed operation whose 2xx declares no schema is not reported. `API_Handbook.md` §1.8 states the same rule from the endpoint side.
 
 **Cross-spec validation**:
 - The structure validator checks that every `x-emits.event` has a matching AsyncAPI message with the same `x-label`
@@ -4100,7 +4291,7 @@ x-ui:
 
 ## 14. Pillar Topology Extensions
 
-> **Availability.** The registry shipped in generator `0.6.0` as `info.x-services`, with `holds` and `Read{Entity}`. Generator `0.14.0` renamed it `info.x-pillars`, outright and with no alias (authoring#136); the entry shape, `domains` and `holds`, is unchanged. `extensions --format json` has published the `info`-level surface (`x-domains`, `x-pillars`, `x-roles`) since `0.11.0` (as `x-services` before `0.14.0`). Nothing here is retroactive: a spec that declares none of it is unaffected in every generator version. See `compatibility.md` §24 and §41.
+> **Availability.** The registry shipped in generator `0.6.0` as `info.x-services`, with `holds` and `Read{Entity}`. Generator `0.14.0` renamed it `info.x-pillars`, outright and with no alias (authoring#136); the entry shape, `domains` and `holds`, is unchanged. `extensions --format json` has published the `info`-level surface (`x-domains`, `x-pillars`, `x-roles`) since `0.11.0` (as `x-services` before `0.14.0`). Generator `0.15.0` adds `x-references: { entity, resolve: remote }`, a cross-pillar reference with no replica (§14.11). Nothing here is retroactive: a spec that declares none of it is unaffected in every generator version. See `compatibility.md` §24 and §41.
 
 > **Renamed from `info.x-services`.** A leftover `info.x-services` is never read. It is refused by name — `PILLAR_REGISTRY_LEGACY_KEY` (ERROR) in the generator, `specfuse-pillars-legacy-key` in the kit — whether or not `info.x-pillars` is also present, so a half-finished rename cannot pass for a finished one. Every `SERVICE_*` finding id is now `PILLAR_*` at the same severity, the kit's `specfuse-services-*` rules are now `specfuse-pillars-*`, and `groups[].service` is now `groups[].pillar` (`Project_File.md` §8.13.2). Migrating is a key rename: `x-services:` becomes `x-pillars:`, and any CI filter, suppression list or Spectral baseline keyed on an old id is re-keyed.
 
@@ -4188,7 +4379,7 @@ info:
 
 **A hold means a persisted, event-fed replica, and it changes the holder's generated code.** It is not only a validation declaration. In a group bound with `groups[].pillar`, every reference to a held entity is rebound to its `Read{Entity}` replica. That applies to an `x-references` FK and to the FK column of a `belongsTo`. The holder's EF model then carries a non-owning relationship to a replica **table in the holder's own database**, kept current by the owner's snapshot events (§14.5). The group has to register the artifacts that emit that table and its feed: `heldEntity` and `heldEntityConfiguration`, and `heldEntityHydration` and `heldEntityHydrationTrigger` wherever the events are consumed (`Project_File.md` §11.1). Otherwise the rebound navigation is typed against a class nothing emits. A group with no `pillar` holds nothing and rebinds nothing.
 
-So `holds` is the right declaration only when the holder really keeps a copy. A pillar that reads a neighbour's entity through the owner's API and keeps no copy should not declare a hold; see §14.11.
+So `holds` is the right declaration only when the holder really keeps a copy. A pillar that reads a neighbour's entity through the owner's API and keeps no copy should not declare a hold. It declares the reference `resolve: remote` instead (§14.11). A `resolve: remote` reference is never rebound, even to a held target.
 
 ### 14.4 `Read{Entity}`
 
@@ -4256,7 +4447,7 @@ A replica is fed by the owner's events, so declaring one puts requirements on th
 
 `project.json` gains `groups[].pillar`, which binds a group to a pillar name in `info.x-pillars`; the pillar's owned domains expand into the ordinary include-filter that `groups[].domains` writes by hand. `pillar` and `domains` are **mutually exclusive**. See `Project_File.md` §8.13.2.
 
-Only a pillar-bound group applies holds (§14.3). At `0.14.0`, several cross-pillar shapes fail to generate in a pillar-bound group, and no C# group with `domainProject` compiles while the spec declares `Read{Entity}` schemas. See §14.10.
+Only a pillar-bound group applies holds (§14.3). At generator `0.15.0`, a cross-pillar `belongsTo` or `x-references` with a hold, or a `resolve: remote` reference with none, generates in both pillars' groups. A cross-pillar reverse `hasMany`/`hasOne` and a child route nested under another pillar's parent still fail. See §14.10.
 
 ### 14.7 One bundle or many — the choice this vocabulary does *not* make for you
 
@@ -4282,7 +4473,7 @@ Adoption is opt-in and the checks are gated on a declaration, so there is no for
 5. **Re-run validation and use its output as the work list.** Do not plan from a count someone measured against an older bundle — the ranking moves.
 6. **Validate the project file, then generate every pillar.** `validate` on a bundled spec runs the pillar rules in §14.9. Some failures only appear when a group's context is built for one pillar: `validate <project>.json` builds it, while spec-level `validate` and the Spectral layers do not. A spec can be green at the spec level and still fail to generate for every pillar. Give the project file one group per pillar, each with `groups[].pillar`, and validate that file.
 
-   Even that is not the whole bar. At `0.14.0`, a child-create operation nested under a held parent's path passed project-level `validate` and still failed `generate` (§14.10). Run `generate` for each pillar-bound group before calling the topology done. §14.10 lists the shapes that fail at generator `0.14.0`.
+   Even that is not the whole bar. At generator `0.15.0`, a child-create operation nested under a held parent's path still passes project-level `validate` and fails `generate`, in both pillars' groups (§14.10). Run `generate` for each pillar-bound group before calling the topology done. §14.10 lists the shapes that fail at generator `0.15.0`.
 
 ### 14.9 Kit Spectral rules and their generator counterparts
 
@@ -4303,40 +4494,46 @@ The kit lints this vocabulary in the editor; the generator validates it at gener
 
 **Generator-only, with no kit rule** — each needs the AsyncAPI surface, the OpenAPI surface, or both at once, which no single Spectral run has:
 
-`PILLAR_REGISTRY_MISSING` (warn) · `PILLAR_DOMAIN_UNOWNED` (warn) · `PILLAR_HOLDS_OWNED_ENTITY` (warn) · `PILLAR_CROSS_BOUNDARY_REFERENCE` · `PILLAR_BOUNDARY_OWNER_UNKNOWN` (warn) · `READ_MODEL_MISSING_TENANT_KEY` · `READ_MODEL_NOT_HYDRATABLE` · `READ_MODEL_SNAPSHOT_MISSING_KEY` · `READ_MODEL_NO_SNAPSHOT` (warn) · `READ_MODEL_NO_CREATE_EVENT` · `READ_MODEL_NO_UPDATE_EVENT` · `READ_MODEL_NO_REMOVAL_EVENT` · `READ_MODEL_EVENT_PAYLOAD_NOT_SNAPSHOT` · `READ_MODEL_SNAPSHOT_VERSION_DRIFT` (ERROR when the read model's field survives only in a deprecated snapshot version; warn when the canonical snapshot still carries it) · `READ_MODEL_NO_ORDERING_KEY` (warn) · `READ_MODEL_DUPLICATE_CONSUMER`
+`PILLAR_REGISTRY_MISSING` (warn) · `PILLAR_DOMAIN_UNOWNED` (warn) · `PILLAR_HOLDS_OWNED_ENTITY` (warn) · `PILLAR_CROSS_BOUNDARY_REFERENCE` · `PILLAR_BOUNDARY_OWNER_UNKNOWN` (warn) · `PILLAR_REMOTE_REFERENCE_ALSO_HELD` (warn, `0.15.0`) · `PILLAR_REMOTE_REFERENCE_SAME_PILLAR` (warn, `0.15.0`) · `READ_MODEL_MISSING_TENANT_KEY` · `READ_MODEL_NOT_HYDRATABLE` · `READ_MODEL_SNAPSHOT_MISSING_KEY` · `READ_MODEL_NO_SNAPSHOT` (warn) · `READ_MODEL_NO_CREATE_EVENT` · `READ_MODEL_NO_UPDATE_EVENT` · `READ_MODEL_NO_REMOVAL_EVENT` · `READ_MODEL_EVENT_PAYLOAD_NOT_SNAPSHOT` · `READ_MODEL_SNAPSHOT_VERSION_DRIFT` (ERROR when the read model's field survives only in a deprecated snapshot version; warn when the canonical snapshot still carries it) · `READ_MODEL_NO_ORDERING_KEY` (warn) · `READ_MODEL_DUPLICATE_CONSUMER`
 
-**`PILLAR_CROSS_BOUNDARY_REFERENCE` is the one finding that can turn a green `validate` red.** It reports every reference whose target is owned by a different pillar and is not covered by a `Read{Entity}` + `holds` pair. It fires **only** on a spec that declares `info.x-pillars`, so it cannot affect a project that has not adopted the vocabulary — but once you do adopt, it is an ERROR, not a warning. It is satisfiable by authoring the pairs, or by declaring the reference opaque with `x-references: none` (§1.7), which the census skips (§14.11).
+**`PILLAR_CROSS_BOUNDARY_REFERENCE` is the one finding that can turn a green `validate` red.** It reports every reference whose target is owned by a different pillar and is not covered by a `Read{Entity}` + `holds` pair. It fires **only** on a spec that declares `info.x-pillars`, so it cannot affect a project that has not adopted the vocabulary — but once you do adopt, it is an ERROR, not a warning. It is satisfiable by authoring the pairs, by declaring the reference `x-references: { entity: <Target>, resolve: remote }` (generator `0.15.0`, §14.11), or by declaring it opaque with `x-references: none` (§1.7). The census accepts the first two and skips the third. Since generator `0.15.0` it also reports a cross-pillar `hasMany`/`hasOne` **even when the target is held**: the child's `belongsTo` is the crossing, and the reverse edge must go (§14.10).
 
-**Passing this census does not mean every pillar generates.** The census accepts every edge kind a hold covers, including some that pillar-bound generation then rejects. See §14.10.
+**Passing this census does not mean every pillar generates.** At generator `0.15.0` the census and pillar-bound generation agree on every edge kind measured in §14.10. A child route nested under another pillar's parent still passes the census and fails `generate`. See §14.10.
 
-### 14.10 Cross-pillar edges at generator `0.14.0`: what generates
+### 14.10 Cross-pillar edges at generator `0.15.0`: what generates
 
-Everything below was measured against the released `0.14.0` jar, on a copy of `examples/hello-orders` split into two pillars:
+Everything below was measured at generator `0.15.0`, on a copy of `examples/hello-orders` split into two pillars:
 
 - `core` owns `tenant` and `customer`;
-- `sales` owns `order` and holds `Tenant` and `Customer`;
+- `sales` owns `order`;
 - `Order` refers to `Tenant` and `Customer`;
-- the nested `/customers/{customerId}/orders` routes were flattened to `/orders` (see the third bullet below).
+- a row that says "held" means `sales` holds `Tenant` and `Customer`, with flat `ReadTenant` and `ReadCustomer` schemas and the owner's create, update and removal events;
+- the nested `/customers/{customerId}/orders` routes were flattened to `/orders` (see the routes bullet below).
 
-"Holder" is `sales`, the child's pillar. "Owner" is `core`, the parent's pillar. Each verdict is `generate` for one C# group bound to that pillar, with `entity`, `valueObject`, `enum`, `domainModel`, `domainProject`, `heldEntity` and `heldEntityConfiguration` registered. The project-level `validate` reported the same failure on every row. It did **not** report the nested-route failure in the third bullet below (§14.8 step 6).
+"Holder" is `sales`, the child's pillar. "Owner" is `core`, the parent's pillar. Each verdict is `generate` for one C# group bound to that pillar, with `entity`, `valueObject`, `enum`, `domainModel`, `domainProject`, `heldEntity` and `heldEntityConfiguration` registered. The project-level `validate` gave the same verdict as `generate` on every row. The same spec run through the `0.14.0` jar reproduced the `0.14.0` column, the verdicts this section recorded at that pin.
 
-| how `Order` refers to its parent | holder's group | owner's group |
-|---|---|---|
-| `belongsTo`, parent held, **and** the owner declares the reverse `hasMany: [Order]` | **fails**, `PROPERTY_DUPLICATE` on `Order.CustomerId` (`clabonte/generator#2393`) | **fails**, `CROSS_DOMAIN_ENTITY_REFERENCE` (`#2394`) |
-| `belongsTo`, parent held, **no** reverse edge | generates; the FK binds to `Read{Parent}` | **fails**, `CROSS_DOMAIN_ENTITY_REFERENCE`: the owner's group builds the inverse navigation from the child's `belongsTo` itself (`#2394`) |
-| `x-references: <Parent>`, parent held | generates; the FK binds to `Read{Parent}` | generates |
-| `x-references: none` on a property named `{parent}Id` (`tenantId`), no hold | **fails**, `CROSS_DOMAIN_ENTITY_REFERENCE`: the name still binds the property to the entity (`clabonte/generator#2400`) | generates |
-| `x-references: none` on a property named otherwise (`tenantRef`), no hold | generates; opaque uuid column | generates |
+| how `Order` refers to its parent | holder's group | owner's group | at `0.14.0` |
+|---|---|---|---|
+| `belongsTo`, parent held, **and** the owner declares the reverse `hasMany: [Order]` | **fails**, `PILLAR_CROSS_BOUNDARY_REFERENCE` on the `hasMany` | **fails**, the same finding | with `core` holding `Order`: holder `PROPERTY_DUPLICATE` (`clabonte/generator#2393`), owner `CROSS_DOMAIN_ENTITY_REFERENCE` (`#2394`); without, as now |
+| `belongsTo`, parent held, **no** reverse edge | generates; the FK binds to `Read{Parent}` | generates; the parent has no navigation to `Order` | owner failed, `CROSS_DOMAIN_ENTITY_REFERENCE` (`#2394`) |
+| `x-references: <Parent>`, parent held | generates; the FK binds to `Read{Parent}` | generates | same |
+| `x-references: { entity: <Parent>, resolve: remote }`, no hold | generates; plain uuid column | generates | not available (`#2397`) |
+| `x-references: none` on a property named `{parent}Id` (`tenantId`), no hold | generates; plain uuid column | generates | holder failed, `CROSS_DOMAIN_ENTITY_REFERENCE` (`#2400`) |
+| `x-references: none` on a property named otherwise (`tenantRef`), no hold | generates; plain uuid column | generates | same |
+
+The `resolve: remote` row was measured twice: once with `Customer` remote and `Tenant` still held through `x-references: Tenant`, and once with both remote and no `holds` at all. Both generated in both groups.
 
 What follows from the table:
 
-- **Never declare a reverse `hasMany`/`hasOne` across a pillar boundary.** A parent cannot navigate to children stored in another pillar's database, and declaring the reverse edge breaks both groups. When the child's pillar holds the parent, `RELATIONSHIP_SYMMETRY` does not require the reverse edge, so dropping it is legal.
-- **The one form that generates on both sides at `0.14.0` is `x-references: <Parent>` plus a hold.** It keeps the relationship declared. It gives up composition semantics (§1.7), which cannot hold across pillar databases anyway. **A child declared `type: entity` must become `type: aggregate` when its `belongsTo` is replaced:** an `entity` with no `belongsTo` is `ENTITY_ORPHAN`. Measured on `0.14.0` with a parent in one pillar and a child in another, each pillar holding the other's entity: `belongsTo` failed the parent's group with `CROSS_DOMAIN_ENTITY_REFERENCE`, while `x-references: <Parent>` on the child's `{parent}Id` with the child as an `aggregate` generated both groups, and the child's FK bound to `Read{Parent}`. A cross-pillar `belongsTo` generates only in the holder's group until `#2394` is fixed. The generator's own `#2250` regression fixture fails the same way when generated from the owner's side.
-- **Do not nest a child's routes under a parent owned by another pillar.** With `POST /customers/{customerId}/orders` in place, the holder's group failed to resolve `createOrder`: "rooted under aggregate 'Customer' which does not own 'Order'". The owner's group failed the same way once the `belongsTo` was gone, because operations are resolved for the whole spec, not only the pillar's domains. Put the child's create and list operations at the child's own path, with the parent id in the body or as a query filter.
-- **The tenancy root has no safe form at `0.14.0`.** The `I{Tenant}Scoped` marker follows `belongsTo` only (`Project_File.md` §4.1). A child in another pillar therefore needs a `belongsTo` to its tenant, and that `belongsTo` breaks the tenant owner's group. A split bundle (§14.7) keeps the child out of the owner's bundle, which should avoid the inverse, but this is unmeasured. A multi-pillar tenancy otherwise waits on `#2394`.
-- **No C# group with `domainProject` compiles while the spec declares `Read{Entity}` schemas** (`clabonte/generator#2392`). The Domain `AutoMapperProfile.g.cs` maps every `Read{Entity}` to its entity. An unbound group emits no `Read{Entity}` type. A holder's group emits the replica but not the owner's entity it is mapped to. Either way the result is `CS0246`. Dart and TypeScript groups emit an unused `Read{Entity}` client type.
+- **Never declare a reverse `hasMany`/`hasOne` across a pillar boundary.** A parent cannot navigate to children stored in another pillar's database. `PILLAR_CROSS_BOUNDARY_REFERENCE` now reports the reverse edge even when the child is held. Its fix says to drop the reverse edge, because the child's `belongsTo` is the crossing. It is a spec-level finding: the spec-level `validate` reported it too. Holding `Order` in `core` made no difference. `RELATIONSHIP_SYMMETRY` does not require the reverse edge when the child's pillar holds the parent, so dropping it is legal.
+- **A cross-pillar `belongsTo` with a hold now generates on both sides.** The owner's group builds no inverse navigation from another pillar's child. In the holder's group the child's FK binds to the `Read{Parent}` replica. A child declared `type: entity` can keep its `belongsTo`. Measured with a parent in one pillar and a child in another, each pillar holding the other's entity: the child stayed an `entity` with `belongsTo`, and both groups generated (authoring#146). At `0.14.0` the owner's group failed this way, and the workaround was `x-references: <Parent>` with the child retyped as an `aggregate`. That form still generates, but it is no longer needed.
+- **Replacing a `belongsTo` still needs the retype.** An `entity` with no `belongsTo` is `ENTITY_ORPHAN`, whatever its `x-references` say. Measured with `resolve: remote` in place of the `belongsTo` above: the child as an `entity` failed both groups with `ENTITY_ORPHAN`, and as an `aggregate` it generated both.
+- **Do not nest a child's routes under a parent owned by another pillar.** With `POST /customers/{customerId}/orders` and `belongsTo` in place, the project-level `validate` passed and `generate` failed in **both** groups: "Create operation 'CreateOrder' is rooted under aggregate 'Customer' which does not own 'Order'". Neither group builds the cross-pillar edge as ownership: the holder sees a replica, the owner sees no inverse. With `resolve: remote` instead of `belongsTo`, the spec-level `validate` already fails, with `OPERATION_PARENT_NOT_OWNER` and `OPERATION_NESTED_LIST_NO_RELATIONSHIP`. Put the child's create and list operations at the child's own path, with the parent id in the body or as a query filter.
+- **The tenancy root has two working forms.** `belongsTo` to the tenant with a hold generates on both sides (second row), and the child carries the `I{Tenant}Scoped` marker. A `resolve: remote` reference to the tenant carries the marker with no `belongsTo` and no hold (§14.11). Measured with a `tenancy` block: under `belongsTo` and under `resolve: remote`, `Order` implemented the tenant marker. Under `x-references: Tenant` and under `x-references: none`, it did not. The generated `Order` events carried the marker in all four cases.
+- **The C# Domain no longer maps `Read{Entity}`** (`clabonte/generator#2392`). At `0.15.0` the generated C# maps through Mapperly, and no group emits an `AutoMapperProfile.g.cs`. In the measured groups, no generated file names a `Read{Entity}` except the replica's own entity and configuration and the holder's entity whose FK binds to it. Dart and TypeScript `dto` groups no longer emit a `Read{Entity}` client type. Checked with `dotnet build` on an unbound C# group of the held spec, with the domain artifacts it needs to compile (`domainValidation`, `domainExceptions`, `serviceInterface`, `service`, `repositoryInterface`, `event`, `eventRuntime`, `tenancyMarker`, `snapshot`, and a `tenancy` block). At `0.15.0` it built with 0 errors. At `0.14.0` it failed with `CS0246` on `ReadTenant`, `ReadOrder` and `ReadCustomer` in `AutoMapperProfile.g.cs`.
+- **A pillar-bound C# group with `snapshot` does not compile, at `0.15.0` or `0.14.0`.** `snapshot` emits every `{Entity}Snapshot` under the AsyncAPI source root, not only the pillar's, and each one maps from its entity. In the holder's group, `CustomerSnapshot.g.cs` and `TenantSnapshot.g.cs` failed with `CS0246` on `Customer`, `CustomerStatus` and `Tenant`. `OrderSnapshot.g.cs` failed the same way in the owner's group. This is unrelated to replicas, and nothing in the spec avoids it.
 
-These verdicts are tied to `0.14.0`; re-measure them at every pin bump (`compatibility.md` §44).
+These verdicts are tied to `0.15.0`; re-measure them at every pin bump (`compatibility.md` §44).
 
 ### 14.11 A pillar that reads without keeping a copy
 
@@ -4344,7 +4541,7 @@ These verdicts are tied to `0.14.0`; re-measure them at every pin bump (`compati
 
 **Do not declare a hold for that.** A hold brings the replica table, the FK rebinding (§14.3), the hydration artifacts and the event-feed rules in §14.5. `READ_MODEL_NO_ORDERING_KEY` and its siblings would then describe hazards of a table that does not exist.
 
-The vocabulary has no declaration for this model yet; `clabonte/generator#2397` proposes `x-references: { entity: <Parent>, resolve: remote }`. Until it ships, the intended form is an **opaque** id:
+**Declare the reference `resolve: remote`** (generator `0.15.0`, `clabonte/generator#2397`):
 
 ```yaml
 customerId:
@@ -4353,18 +4550,29 @@ customerId:
   description: >
     Customer id, owned by the core pillar. Read through the owner's
     getCustomer operation and cached; there is no local foreign key.
-  x-references: none
+  x-references: { entity: Customer, resolve: remote }
 ```
 
-- `PILLAR_CROSS_BOUNDARY_REFERENCE` skips `none`, so no hold or `Read{Entity}` is needed.
-- The `description` is required (§1.7 rule 4). Name the owner pillar, the entity and how the value is resolved. Until `#2397` ships, that sentence is the only record of the relationship, and no diagram or audit will show it.
-- Drop any cross-pillar `belongsTo`, `hasMany` or `hasOne` for the same link; under this model none of them can exist.
-- **At `0.14.0` this form only generates when the property is not named after the entity.** A `none` on `customerId` still binds to `Customer` by name, and the holder's group fails (§14.10, `clabonte/generator#2400`). Renaming the property changes the wire contract, so for an existing API the realistic choices are:
-  - wait for `#2400`;
-  - or use `x-references: <Parent>` plus a hold, the form that generates on both sides (§14.10), and accept the replica artifacts until `#2397`.
-- **Caveat: the tenancy root.** Dropping a `belongsTo` to the tenant drops the `I{Tenant}Scoped` marker and the tenant filter with it. See the tenancy bullet in §14.10.
+Measured at `0.15.0` on the two-pillar `hello-orders` split in §14.10, with `Order.customerId` and `Order.tenantId` both `resolve: remote` and no `holds`:
 
-**See also**: §1.1 (`x-entity.delete`), §1.7 (`x-references`), §1.9 (`x-expand-of` / `x-projection`), §12.2 (`x-label`), `Project_File.md` §8.13 (`groups[].domains` / `groups[].pillar`), `compatibility.md` §24 and §44.
+- **Both groups generate.** `PILLAR_CROSS_BOUNDARY_REFERENCE` accepts `resolve: remote` with no `holds` and no `Read{Entity}`. The holder's `Order` has `public Guid CustomerId { get; set; } = Guid.Empty;` and no navigation, FK configuration or replica.
+- **The relationship stays visible.** The `entityDiagram` Markdown artifact lists the column as ``→ `Customer` (remote)`` and draws a dashed edge to `Customer`. `x-references: none` records no target, so it cannot do this.
+- **It carries tenancy.** With a `tenancy` block naming `Tenant` (`Project_File.md` §4.1), a `resolve: remote` reference to `Tenant` makes `Order` implement the `I{Tenant}Scoped` marker with no `belongsTo`. `TenancyDerivationValidationRule` accepts it as the tenant chain. `Order`'s events carried the marker too. Checked with `dotnet build` on an unbound group: 0 errors. This is the case `x-references: none` could not express (§14.10 tenancy bullet).
+  - **Name the column after `tenancy.tenant.foreignKey`.** The marker's property is the tenancy block's `foreignKey`, not the column that carries the remote reference. With the reference on `tenantRef`, generation passed, and `dotnet build` failed with `CS0535`: `Order` does not implement the marker's `TenantId`. Validation does not catch it.
+  - Only the tenant tier is read from a remote reference. In the generator source, a `subTenant` tier still needs `belongsTo`.
+- **Two warnings catch a contradictory topology.** Measured, both WARNING:
+  - `PILLAR_REMOTE_REFERENCE_ALSO_HELD`: the referencing pillar also `holds` the target, so one edge has two strategies. The column stays a plain uuid; the hold does not rebind it.
+  - `PILLAR_REMOTE_REFERENCE_SAME_PILLAR`: the referencing pillar owns the target itself, so there is nothing to resolve remotely.
+- **It is declaration only.** No cache-aside reader or API client is generated for the reference. A test builder seeds the column with `Guid.NewGuid()` rather than a `TestSeed` constant the group does not declare (generator CHANGELOG, `#2438`; not measured here).
+
+Rules for the form:
+
+- Drop any cross-pillar `belongsTo`, `hasMany` or `hasOne` for the same link; under this model none of them can exist. If the child is an `entity`, retype it as an `aggregate` (§14.10).
+- The `description` is optional, unlike for `none`. It is still the place to name the owner pillar and the operation that resolves the value.
+- `x-references: none` is no longer the form for this model. Keep `none` for a uuid that identifies no entity at all (§1.7). Since `#2400` it generates on a property named after an entity, so an existing `none` keeps working. Moving it to `resolve: remote` restores the diagram edge and, for the tenant, the marker.
+- A `resolve: remote` reference cannot appear in `belongsTo`. An object entry there is `INVALID_EXTENSION_VALUE`.
+
+**See also**: §1.1 (`x-entity.delete`), §1.7 (`x-references`), §1.9 (`x-expand-of` / `x-projection`), §12.2 (`x-label`), `Project_File.md` §4.1 (`tenancy`) and §8.13 (`groups[].domains` / `groups[].pillar`), `compatibility.md` §24 and §44.
 
 ---
 

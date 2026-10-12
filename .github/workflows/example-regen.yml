@@ -373,6 +373,9 @@ jobs:
             fi
           }
           check "components.schemas.BadReferenceValue"  "specfuse-x-references-shape"
+          check "specfuse-x-references-shape.*components.schemas.BadRemoteResolve" "specfuse-x-references-shape"
+          check "specfuse-x-references-shape.*components.schemas.BadRemoteEntity"  "specfuse-x-references-shape"
+          check "specfuse-x-references-shape.*components.schemas.BadRemoteKey"     "specfuse-x-references-shape"
           check "components.schemas.UnjustifiedOpaque.properties.token" "specfuse-opaque-reference-justified"
           check "components.schemas.BadFkForValue"      "specfuse-x-fk-for-shape"
           check "components.schemas.ConflictingMarkers" "specfuse-fk-marker-exclusive"
@@ -605,6 +608,12 @@ jobs:
             # The one rule in this file that BREAKS EXISTING SPECS on its pin,
             # which is precisely why lint has to catch it before generate does.
             "specfuse-xprotection-unavailable-properties-required|PoisonedReadMissing|an encrypted property with no unavailableProperties member was accepted"
+            # generator 0.15.0, PROTECTION_DIGEST_UNDECLARED (ERROR). The four
+            # cases are exactly the four the jar reports on this fixture.
+            "specfuse-xprotection-digest-undeclared|bareDigestHash|a *Hash with x-internal-only and no x-protection was accepted"
+            "specfuse-xprotection-digest-undeclared|exportDigest|a *Digest with no x-protection was accepted"
+            "specfuse-xprotection-digest-undeclared|api_key_hash|a snake_case *_hash with no x-protection was accepted"
+            "specfuse-xprotection-digest-undeclared|lastSeenHash|a date-time *Hash was excluded; the jar has no temporal exclusion"
           )
           for row in "${EXPECTED[@]}"; do
             IFS='|' read -r rule needle why <<<"$row"
@@ -765,6 +774,18 @@ jobs:
             echo "The value rule has been scoped to entities and now misses DTO typos." >&2
             fail=1
           fi
+
+          # Digest controls. The jar is silent on every one of these, measured
+          # on the same fixture: a declared digest, a $ref-typed and an
+          # allOf-wrapped property (the rule runs unresolved for exactly this
+          # reason), non-strings, and a plain DTO.
+          for ok in declaredHash refDigest wrappedHash blockHash hashCount DigestValue DigestShapedDto; do
+            if grep "specfuse-xprotection-digest-undeclared" "$REPORT" | grep -q "$ok"; then
+              echo "::error::digest-undeclared fired on '${ok}', which the generator accepts." >&2
+              echo "The kit must not reject what the jar it distributes permits." >&2
+              fail=1
+            fi
+          done
 
           [[ $fail -eq 0 ]] || exit 1
           echo "==> x-classification value rules verified in both directions."

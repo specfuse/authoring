@@ -1681,15 +1681,33 @@ rules:
   # classified AT ALL needs the entity graph and is generator-side —
   # see compatibility.md.
 
+  # Two forms (generator 0.15.0, clabonte/generator#2397): the string form, and
+  # the object form `{ entity, resolve }`. A `pattern` check alone passes any
+  # object untested, so the rule uses a schema with one branch per form.
+  # `none` is not an entity, so the object form cannot carry it; the generator
+  # refuses `{ entity: none }`, an unknown key, a missing `entity` and any
+  # `resolve` other than `local` / `remote` as INVALID_EXTENSION_VALUE.
   specfuse-x-references-shape:
-    description: "x-references must name a PascalCase entity, or the literal 'none' for a uuid that is not a foreign key."
-    message: "x-references must be a PascalCase entity name or 'none'. See Vendor_Extensions.md §1.7."
+    description: "x-references must name a PascalCase entity, be the literal 'none' for a uuid that is not a foreign key, or be { entity: <PascalCase entity>, resolve: local | remote }."
+    message: "x-references must be a PascalCase entity name, 'none', or { entity: <Entity>, resolve: local | remote } with no other key. See Vendor_Extensions.md §1.7."
     severity: error
     given: $.components.schemas[*].properties[*]["x-references"]
     then:
-      function: pattern
+      function: schema
       functionOptions:
-        match: "^(none|[A-Z][A-Za-z0-9]*)$"
+        schema:
+          oneOf:
+            - type: string
+              pattern: "^(none|[A-Z][A-Za-z0-9]*)$"
+            - type: object
+              required: [entity]
+              additionalProperties: false
+              properties:
+                entity:
+                  type: string
+                  pattern: "^[A-Z][A-Za-z0-9]*$"
+                resolve:
+                  enum: [local, remote]
 
   specfuse-opaque-reference-justified:
     description: "x-references: none suppresses relationship classification, so it must carry a description saying why the uuid is not a foreign key."
@@ -2388,6 +2406,31 @@ rules:
           anyOf:
             - { type: object, properties: { writeOnly: { const: true } }, required: [writeOnly] }
             - { type: object, properties: { x-internal-only: { const: true } }, required: [x-internal-only] }
+
+  specfuse-xprotection-digest-undeclared:
+    description: >-
+      A *Hash / *Digest string property on an x-entity schema must declare x-protection.
+    # Mirrors PROTECTION_DIGEST_UNDECLARED (error, generator 0.15.0,
+    # UndeclaredDigestValidationRule). The jar's scope, copied exactly so the
+    # two agree in both directions: an x-entity schema's own properties whose
+    # name ends in `hash` or `digest` (case-insensitive, so `api_key_hash`
+    # too), typed `type: string` inline. A `$ref`-typed property, a non-string,
+    # and any non-entity schema are out of scope. Unlike
+    # SENSITIVE_FIELD_IN_RESPONSE there is NO temporal exclusion — measured, a
+    # `format: date-time` property named `*Hash` fires — so none here either.
+    # Presence only: any x-protection silences it; atRest: none with a
+    # rationale is a legitimate answer for a public content digest.
+    message: "Property name ends in Hash / Digest but declares no x-protection. Declare atRest: hashed (with x-internal-only if this is the stored digest), or atRest: none with a rationale for a public content digest."
+    severity: error
+    # Unresolved, because the jar skips a `$ref`-typed property (and an
+    # `allOf` wrapper, which has no `type`). Resolved, Spectral follows the
+    # `$ref` and reports the referenced string component instead — a finding
+    # the jar does not make, at a location that is not the property.
+    resolved: false
+    given: $.components.schemas[?(@ && @["x-entity"])].properties[?(@ && @property.match(/(hash|digest)$/i) && @.type === "string" && !@["$ref"])]
+    then:
+      field: x-protection
+      function: truthy
 
   specfuse-xprotection-sad-not-persisted:
     description: >-
