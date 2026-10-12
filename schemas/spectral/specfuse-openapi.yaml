@@ -1681,7 +1681,7 @@ rules:
   # classified AT ALL needs the entity graph and is generator-side —
   # see compatibility.md.
 
-  # Two forms (generator <NEXT>, clabonte/generator#2397): the string form, and
+  # Two forms (generator 0.15.0, clabonte/generator#2397): the string form, and
   # the object form `{ entity, resolve }`. A `pattern` check alone passes any
   # object untested, so the rule uses a schema with one branch per form.
   # `none` is not an entity, so the object form cannot carry it; the generator
@@ -2410,7 +2410,7 @@ rules:
   specfuse-xprotection-digest-undeclared:
     description: >-
       A *Hash / *Digest string property on an x-entity schema must declare x-protection.
-    # Mirrors PROTECTION_DIGEST_UNDECLARED (error, generator <NEXT>,
+    # Mirrors PROTECTION_DIGEST_UNDECLARED (error, generator 0.15.0,
     # UndeclaredDigestValidationRule). The jar's scope, copied exactly so the
     # two agree in both directions: an x-entity schema's own properties whose
     # name ends in `hash` or `digest` (case-insensitive, so `api_key_hash`

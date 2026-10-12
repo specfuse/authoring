@@ -608,7 +608,7 @@ jobs:
             # The one rule in this file that BREAKS EXISTING SPECS on its pin,
             # which is precisely why lint has to catch it before generate does.
             "specfuse-xprotection-unavailable-properties-required|PoisonedReadMissing|an encrypted property with no unavailableProperties member was accepted"
-            # generator <NEXT>, PROTECTION_DIGEST_UNDECLARED (ERROR). The four
+            # generator 0.15.0, PROTECTION_DIGEST_UNDECLARED (ERROR). The four
             # cases are exactly the four the jar reports on this fixture.
             "specfuse-xprotection-digest-undeclared|bareDigestHash|a *Hash with x-internal-only and no x-protection was accepted"
             "specfuse-xprotection-digest-undeclared|exportDigest|a *Digest with no x-protection was accepted"

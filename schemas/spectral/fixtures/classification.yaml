@@ -48,7 +48,7 @@
 #     nickname      x-classification: [secret]     -> values STILL fires; the
 #                   value set is the same wherever it is written.
 #
-#   DigestShaped (specfuse-xprotection-digest-undeclared, generator <NEXT>)
+#   DigestShaped (specfuse-xprotection-digest-undeclared, generator 0.15.0)
 #     bareDigestHash, exportDigest, api_key_hash, lastSeenHash
 #                   *Hash / *Digest string, no x-protection   -> digest-undeclared
 #     declaredHash  [credential] + atRest: hashed             -> clean
@@ -498,7 +498,7 @@ components:
         residenceAddress:
           type: object
 
-    # ---- Digest-shaped names (PROTECTION_DIGEST_UNDECLARED, generator <NEXT>).
+    # ---- Digest-shaped names (PROTECTION_DIGEST_UNDECLARED, generator 0.15.0).
     # Every case below was measured against the candidate jar: the four that
     # fire here are exactly the four the jar reports, and the jar is silent on
     # every control. Keep the two in step — a kit rule stricter than the jar

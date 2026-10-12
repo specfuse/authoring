@@ -184,7 +184,7 @@ rulesets:
       rm-x-kiosk-session-shape:
         note: >-
           The kit documents `x-kiosk-session` (Vendor_Extensions.md §3.3) but
-          ships no rule for it. From generator <NEXT> the generator validates
+          ships no rule for it. From generator 0.15.0 the generator validates
           the value itself (`KIOSK_SESSION_INVALID_VALUE`, ERROR, on anything
           but the literal `true`), so a project rule that checks only that
           shape duplicates it.

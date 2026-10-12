@@ -348,7 +348,7 @@ The role values are project-specific. The project declares its closed role set i
 - it compares grants: a `superuser: true` role and a step whose operation declares no `x-scopes` are skipped, and a role from a sequence-form registry grants nothing, so under `scopes` every step it takes on a scoped operation fails;
 - it checks scopes, not membership: whether the actor's role is in the operation's `x-roles` is not checked by anything (`clabonte/generator#2414`).
 
-**It fires from generator `<NEXT>`, and never at `0.14.0`** (`clabonte/generator#2418`). Through `0.14.0` it looked each step's `operationId` up by exact key, while the generator keys operations PascalCased, so every step found no operation and was skipped. Measured on a mapping-form copy of `hello-orders` under `mode: scopes`, with a `Customer` whose grants miss the scenario's `order.*` scopes: `0.14.0` reports only `OPERATION_ROLE_LACKS_SCOPE` on the operations; a build of generator main adds one `ARAZZO_ACTOR_LACKS_SCOPE` per step (three). On `0.14.0`, read `OPERATION_ROLE_LACKS_SCOPE` as the check that catches an under-granted actor.
+**It fires from generator `0.15.0`, and never at `0.14.0`** (`clabonte/generator#2418`). Through `0.14.0` it looked each step's `operationId` up by exact key, while the generator keys operations PascalCased, so every step found no operation and was skipped. Measured on a mapping-form copy of `hello-orders` under `mode: scopes`, with a `Customer` whose grants miss the scenario's `order.*` scopes: `0.14.0` reports only `OPERATION_ROLE_LACKS_SCOPE` on the operations; a build of generator main adds one `ARAZZO_ACTOR_LACKS_SCOPE` per step (three). On `0.14.0`, read `OPERATION_ROLE_LACKS_SCOPE` as the check that catches an under-granted actor.
 
 **Recommended convention:** projects that distinguish pre-business-role flows (e.g., self-service signup, invitation acceptance, where the user has a valid auth token but no assigned role yet) should include an `Authenticated` role for that case.
 
@@ -952,7 +952,7 @@ This means:
 | Event `{Entity}.{Action}` exists | `x-async.emit` / `x-async.await` | AsyncAPI message `x-label` | Error |
 | Status code assertions don't contradict OpenAPI response codes | `successCriteria` | OpenAPI operation responses | Error |
 | Actor `role` in closed set (`ARAZZO_INVALID_ACTOR_ROLE`) | `x-actors.*.role` | Project's OpenAPI `info.x-roles` registry | Error |
-| Actor role's grants cover the step operation's `x-scopes` (`ARAZZO_ACTOR_LACKS_SCOPE`) | `x-actors.*.role` + step `operationId` | Mapping-form `info.x-roles` grants, operation `x-scopes` | Error, under `authorization.mode: scopes` only; from generator `<NEXT>`, never at `0.14.0` (§4.6, `clabonte/generator#2418`) |
+| Actor role's grants cover the step operation's `x-scopes` (`ARAZZO_ACTOR_LACKS_SCOPE`) | `x-actors.*.role` + step `operationId` | Mapping-form `info.x-roles` grants, operation `x-scopes` | Error, under `authorization.mode: scopes` only; from generator `0.15.0`, never at `0.14.0` (§4.6, `clabonte/generator#2418`) |
 | `x-domain` value valid | `x-domain` | Project's active domain list + `cross-domain` | Error |
 | `cross-domain` only in `scenarios/cross-domain/` | File path + `x-domain` | Directory structure | Error |
 | `$setup.outputs.X` resolves | Expression | Recipe `outputs` map | Error |

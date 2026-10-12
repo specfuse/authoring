@@ -63,8 +63,8 @@ Language-coupling column: ✱ means the field is honoured only for a specific la
 | `authorization.shadow` | boolean | optional | ✱ C# only | Emit both gates and log divergence; never decides by scopes. Requires `mode: scopes`. |
 | `authorization.claims.{roles,userId,rolesShape,roleKey}` | string | optional | ✱ C# only | Claim types and shape for the generated `ClaimsPrincipalReader`. Defaults `roles`, `sub`, `name`, `role`. |
 | `authorization.kioskSession.scheme` | string | optional | ✱ C# only | Authentication scheme of a kiosk-session principal. Absent makes `x-kiosk-session` inert. |
-| `authorization.kioskSession.role` | string | optional | validation | **From generator `<NEXT>`.** The role a kiosk-session principal carries. Arms `KIOSK_SESSION_ROLE_UNSATISFIABLE`. See §16. |
-| `authorization.testGrants` | string (path) | optional | ✱ C# tests only | **From generator `<NEXT>`.** A role-grants file for the generated authorization tests of a `scopes`-mode project whose spec declares no grants. See §16. |
+| `authorization.kioskSession.role` | string | optional | validation | **From generator `0.15.0`.** The role a kiosk-session principal carries. Arms `KIOSK_SESSION_ROLE_UNSATISFIABLE`. See §16. |
+| `authorization.testGrants` | string (path) | optional | ✱ C# tests only | **From generator `0.15.0`.** A role-grants file for the generated authorization tests of a `scopes`-mode project whose spec declares no grants. See §16. |
 | `groups[]` | array<object> | yes for generation | — | One artifact group per output tree. |
 | `groups[].name` | string | recommended | — | Human-readable group label; used by `--group` and diagnostics. |
 | `groups[].description` | string | optional | — | Free-form description. |
@@ -82,7 +82,7 @@ Language-coupling column: ✱ means the field is honoured only for a specific la
 | `groups[].unknownEnumPolicy` | enum | optional | ✱ Dart/Flutter only | `strict` \| `fallback` (default) \| `null`. |
 | `groups[].formatPolicy` | enum | optional | ✱ Dart/Flutter only | `strict` (default) \| `lax`. |
 | `groups[].mutationOverrides[]` | array<string> | optional | ✱ Dart/Flutter only | Operation IDs to flip between query / mutation classification. |
-| `groups[].modelNameMapping` | object<string,string> | optional | ✱ generator ≥ `<NEXT>`; TypeScript only | Schema name → emitted type identifier. Overrides the `Model` suffix given to a name that shadows a JS/DOM global. See §3.3. |
+| `groups[].modelNameMapping` | object<string,string> | optional | ✱ generator ≥ `0.15.0`; TypeScript only | Schema name → emitted type identifier. Overrides the `Model` suffix given to a name that shadows a JS/DOM global. See §3.3. |
 
 ---
 
@@ -162,7 +162,7 @@ The three spec-path fields tell the generator where to find the bundled inputs.
 
 **Required**: Optional. When set, Arazzo files are parsed, validated, cross-linked against the OpenAPI build context, and made available to scenario / recipe artifacts (Markdown docs, C# fixture & test classes).
 
-**Validation severity**: Arazzo errors are **not** downgraded: an Arazzo ERROR fails `validate` like any other (measured on `0.14.0` and `<NEXT>`; earlier revisions of this line said they were downgraded to warnings). Arazzo does not yet drive code generation in lockstep with OpenAPI/AsyncAPI.
+**Validation severity**: Arazzo errors are **not** downgraded: an Arazzo ERROR fails `validate` like any other (measured on `0.14.0` and `0.15.0`; earlier revisions of this line said they were downgraded to warnings). Arazzo does not yet drive code generation in lockstep with OpenAPI/AsyncAPI.
 
 ```json
 { "arazzoSpecifications": "./api/specs/v3" }
@@ -313,7 +313,7 @@ When `namingOverrides` does not declare a role, this is the case the language pr
 
 ### 3.3 TypeScript type names that shadow a global — `Model` suffix and `modelNameMapping`
 
-**From generator `<NEXT>`, a generated TypeScript type never takes the name of a JS or DOM global** (`clabonte/generator#1740`). A schema whose name TypeScript's standard library declares as a global type (`lib.es5`, `lib.es20xx` or `lib.dom`) is declared and referenced with a fixed `Model` suffix: `Error` becomes `ErrorModel`, `Event` becomes `EventModel`, and `Document`, `Location` and `Screen` change the same way. Only the type identifier changes. File names, module paths, barrels, and builder, fixture and composable names (`buildError`, `errorFixture`) keep the schema name. No deprecated alias for the old name is emitted, because `export type Error = ErrorModel` would bring back the shadowing. **Client action:** change every import of a renamed type. The kit's own example is affected: its shared `Error` schema is emitted as `export interface ErrorModel` in `src/common/data/dtos/error.ts` (measured on `examples/hello-orders`; `0.14.0` emitted `Error`). Dart and C# names do not change.
+**From generator `0.15.0`, a generated TypeScript type never takes the name of a JS or DOM global** (`clabonte/generator#1740`). A schema whose name TypeScript's standard library declares as a global type (`lib.es5`, `lib.es20xx` or `lib.dom`) is declared and referenced with a fixed `Model` suffix: `Error` becomes `ErrorModel`, `Event` becomes `EventModel`, and `Document`, `Location` and `Screen` change the same way. Only the type identifier changes. File names, module paths, barrels, and builder, fixture and composable names (`buildError`, `errorFixture`) keep the schema name. No deprecated alias for the old name is emitted, because `export type Error = ErrorModel` would bring back the shadowing. **Client action:** change every import of a renamed type. The kit's own example is affected: its shared `Error` schema is emitted as `export interface ErrorModel` in `src/common/data/dtos/error.ts` (measured on `examples/hello-orders`; `0.14.0` emitted `Error`). Dart and C# names do not change.
 
 To choose another name for one schema, set `modelNameMapping` on the group: a map from the declared schema name to the identifier to emit. An entry takes precedence over the suffix.
 
@@ -329,7 +329,7 @@ Measured on `examples/hello-orders`: on a TypeScript group the entry renames the
 
 ### 4.1 `tenancy` *(C# only today)*
 
-**Purpose**: Declares the project's multi-tenant entity topology. In the C# target, it drives marker-interface generation (`I{Tenant}Scoped` / `I{SubTenant}Scoped`) and entity partial-class derivation from `x-entity.belongsTo`. From generator `<NEXT>`, a property declaring `x-references: { entity: <tenant entity>, resolve: remote }` also gives its entity the tenant marker, with no `belongsTo`. The property must be named after `tenant.foreignKey`, which the marker's property is. The `subTenant` tier still follows `belongsTo` only. See `Vendor_Extensions.md` §14.11. It also feeds AsyncAPI validators (tenant FK ordering) and broker tenant scoping.
+**Purpose**: Declares the project's multi-tenant entity topology. In the C# target, it drives marker-interface generation (`I{Tenant}Scoped` / `I{SubTenant}Scoped`) and entity partial-class derivation from `x-entity.belongsTo`. From generator `0.15.0`, a property declaring `x-references: { entity: <tenant entity>, resolve: remote }` also gives its entity the tenant marker, with no `belongsTo`. The property must be named after `tenant.foreignKey`, which the marker's property is. The `subTenant` tier still follows `belongsTo` only. See `Vendor_Extensions.md` §14.11. It also feeds AsyncAPI validators (tenant FK ordering) and broker tenant scoping.
 
 The Python and Dart/Flutter artifact factories do **not** register a tenancy-marker artifact today and emit no `I{Tenant}Scoped` equivalents. The block is still useful for those languages indirectly: AsyncAPI validation rules (e.g. tenancy ordering on `belongsTo`, the "events from emitting entities should include the tenant in their chain" suggestion) consult `tenancy` regardless of which language group consumes the result.
 
@@ -916,8 +916,8 @@ A group generates every domain in the bundle unless it says otherwise. These two
 - The pillar's owned domains expand into an ordinary `include` filter, which then takes exactly the path a hand-written include list takes. **No second filtering mechanism exists** — nothing downstream learns about pillars.
 - Membership is checked when the filter is applied, not when the project file is parsed: the registry is built from the spec, which project-file validation cannot see.
 - **Unlike an unregistered domain name, an unresolvable pillar is fail-closed.** `UNKNOWN_PILLAR_FILTER` when the registry is absent, empty, or does not declare the pillar; `EMPTY_PILLAR_DOMAINS` when the named pillar owns zero domains. There is nothing to expand the name to, and generating everything is worse than any explicit value.
-- **Binding to a pillar does not by itself soften the cross-domain edge check.** A pillar-bound group whose owned domains reach a foreign entity still fails with `CROSS_DOMAIN_ENTITY_REFERENCE`. What softens it is a **declared hold**, or, from generator `<NEXT>`, a reference declared `x-references: { entity: X, resolve: remote }`, which is a plain uuid column and never an edge (`Vendor_Extensions.md` §14.11). A hold works when the group's pillar declares `holds: [X]` and `X`'s owner publishes a `ReadX` schema: the reference resolves to that replica, and the group emits a read-only `ReadX` with no write surface. The group must register `heldEntity` and `heldEntityConfiguration` for the replica to exist; otherwise the rebound navigation names a class nothing emits. See `Vendor_Extensions.md` §14.3.
-- **Validate the project file, then generate each pillar.** `validate <project>.json` builds each group's context and reports a cross-domain edge the group cannot generate (`CROSS_DOMAIN_ENTITY_REFERENCE`); spec-level `validate` does not. It is still not the whole bar: a child-create nested under a parent in another pillar passes it and fails `generate`. At generator `<NEXT>`, a cross-pillar `belongsTo` with a hold generates in both pillars' groups, and a cross-pillar reverse `hasMany` fails both with `PILLAR_CROSS_BOUNDARY_REFERENCE`, which spec-level `validate` reports too. At `0.14.0` the `belongsTo` failed in the owner's group (`CROSS_DOMAIN_ENTITY_REFERENCE`) and the reverse edge failed in both. `Vendor_Extensions.md` §14.10 has the measured matrix and the forms that generate.
+- **Binding to a pillar does not by itself soften the cross-domain edge check.** A pillar-bound group whose owned domains reach a foreign entity still fails with `CROSS_DOMAIN_ENTITY_REFERENCE`. What softens it is a **declared hold**, or, from generator `0.15.0`, a reference declared `x-references: { entity: X, resolve: remote }`, which is a plain uuid column and never an edge (`Vendor_Extensions.md` §14.11). A hold works when the group's pillar declares `holds: [X]` and `X`'s owner publishes a `ReadX` schema: the reference resolves to that replica, and the group emits a read-only `ReadX` with no write surface. The group must register `heldEntity` and `heldEntityConfiguration` for the replica to exist; otherwise the rebound navigation names a class nothing emits. See `Vendor_Extensions.md` §14.3.
+- **Validate the project file, then generate each pillar.** `validate <project>.json` builds each group's context and reports a cross-domain edge the group cannot generate (`CROSS_DOMAIN_ENTITY_REFERENCE`); spec-level `validate` does not. It is still not the whole bar: a child-create nested under a parent in another pillar passes it and fails `generate`. At generator `0.15.0`, a cross-pillar `belongsTo` with a hold generates in both pillars' groups, and a cross-pillar reverse `hasMany` fails both with `PILLAR_CROSS_BOUNDARY_REFERENCE`, which spec-level `validate` reports too. At `0.14.0` the `belongsTo` failed in the owner's group (`CROSS_DOMAIN_ENTITY_REFERENCE`) and the reverse edge failed in both. `Vendor_Extensions.md` §14.10 has the measured matrix and the forms that generate.
 
 **Declare `pillar` even in a split-bundle topology, where the domain filter is redundant.** The identity is not redundant: resolving a reference to a held entity asks *"is this target held by **this group's** pillar"*, and a per-pillar bundle that preserves the whole registry for ownership context has more than one candidate to choose from.
 
@@ -961,7 +961,7 @@ The OpenAPI / AsyncAPI / Arazzo spec contents are validated separately by the pe
 - **`name` ⟷ `configs.applicationPackage`** — the C# event-contract test artifact derives `{name}.Application` when no explicit value is set; if both are absent, the artifact fails with a hard error.
 - **`groups[]` ⟷ event-runtime opt-in** — when any group registers the `eventRuntime` artifact (or the language equivalents `eventRuntimeImpl` / `eventRuntimeFunctions`), the generator stamps a project-wide `hasEventRuntime: true` additional property visible to every artifact in every group. This is the unambiguous opt-in marker for event-runtime emission.
 - **`namingOverrides` ⟷ `x-enumCase`** — `x-enumCase: preserve` on a schema wins over a project-wide `enumValue` override.
-- **`tenancy` ⟷ `x-entity.belongsTo`** — entities whose `belongsTo` references the tenancy entities receive the corresponding `I{Tenant}Scoped` marker interface in the C# target. From generator `<NEXT>`, so does an entity with a `resolve: remote` reference to the tenant entity (§4.1). The project-file loader does not validate that `tenancy.tenant.entity` resolves to a real `x-entity` schema; see §4.1 for the downstream symptoms.
+- **`tenancy` ⟷ `x-entity.belongsTo`** — entities whose `belongsTo` references the tenancy entities receive the corresponding `I{Tenant}Scoped` marker interface in the C# target. From generator `0.15.0`, so does an entity with a `resolve: remote` reference to the tenant entity (§4.1). The project-file loader does not validate that `tenancy.tenant.entity` resolves to a real `x-entity` schema; see §4.1 for the downstream symptoms.
 - **`broker.outboxDialect` ⟷ event-runtime functions artifact** — `postgres` emits a stub in the drainer; only `sqlServer` produces a working runtime today.
 - **`persistence` ⟷ `x-entity`** — every `x-entity` schema in the bundled spec must resolve to a backend descriptor (either via `persistence.entities.<EntityName>` or `persistence.default`). Unresolved entities fail the load. `x-value-object` schemas are excluded — they persist as part of their owning entity.
 - **`persistence` ⟷ `tenancy`** — orthogonal. Tenant scoping is generated against the resolved backend kind: FK column for `relational`, partition key for `document`, key prefix for `blob`, both sides for `hybrid`.
@@ -984,9 +984,9 @@ The full live inventory is available via `java -jar specfuse-generator.jar templ
 
 `applicationService` is not printed by `templates` on `0.11.0` or `0.12.0`, though the jar still binds the name. It is kept here until that is confirmed either way.
 
-**From generator `<NEXT>`, `autoMapperTest` is renamed `mapperTest`** (`clabonte/generator#464`), because the generated C# maps through Mapperly instead of AutoMapper (§11.1.1). `autoMapperTest` stays an alias: a project file naming it loads and generates the replacement without a warning. Measured on `examples/hello-orders`, either id now emits one file, `Generated/Unit/Domain/DomainMapperTests.g.cs`, where `0.14.0` emitted two AutoMapper profile tests (Domain and Api). Prefer the new id in new project files. From the same release `templates` prints an aliased artifact once, under its own id, so neither `autoMapperTest` nor `asyncEvent` appears in its output. On `0.14.0` the C# `event` artifact was listed twice, once for the alias. **`event` is not removed:** it is still accepted and still emits one record per AsyncAPI event message.
+**From generator `0.15.0`, `autoMapperTest` is renamed `mapperTest`** (`clabonte/generator#464`), because the generated C# maps through Mapperly instead of AutoMapper (§11.1.1). `autoMapperTest` stays an alias: a project file naming it loads and generates the replacement without a warning. Measured on `examples/hello-orders`, either id now emits one file, `Generated/Unit/Domain/DomainMapperTests.g.cs`, where `0.14.0` emitted two AutoMapper profile tests (Domain and Api). Prefer the new id in new project files. From the same release `templates` prints an aliased artifact once, under its own id, so neither `autoMapperTest` nor `asyncEvent` appears in its output. On `0.14.0` the C# `event` artifact was listed twice, once for the alias. **`event` is not removed:** it is still accepted and still emits one record per AsyncAPI event message.
 
-#### 11.1.1 Generated C# mapping and test libraries (generator `<NEXT>`)
+#### 11.1.1 Generated C# mapping and test libraries (generator `0.15.0`)
 
 Two package changes reach a consumer's C# projects on the first regeneration. Both replace a library that became commercially licensed.
 
@@ -1016,7 +1016,9 @@ Three opt-in artifact ids, none in the lists above, which predate them. Each is 
 
 **Snapshot date:** 2026-09-15 (generator `0.11.0`). **Live source:** `templates --language dart` (Dart and Flutter share the same factory).
 
-`entity`, `enum`, `valueObject`, `dto`, `dartRepositoryInterface`, `dartApiClient`, `dartRepositoryImpl`, `dartUseCase`, `dartQueryProvider`, `mutationBinding`, `dartPaginatedNotifier`, `dartFormWidget`, `dartListTile`, `dartBarrelExport`, `dartProblemDetails`, `dartTypedError`, `dartDioErrorInterceptor`, `entityBuilder`, `newDtoBuilder`, `updateDtoBuilder`, `dartRepositoryFake`, `dartProviderOverrides`, `fixture`, `dartFixtureLoader`, `dartCodegenSmokeTest`, `serializationTest`, `dartRepositoryTest`, `dartQueryProviderTest`, `mutationBindingTest`, `validatorTest`, `dartPaginationTest`, `dartEtagTest`, `dartFormWidgetTest`.
+`entity`, `enum`, `valueObject`, `dto`, `dartRepositoryInterface`, `dartApiClient`, `dartRepositoryImpl`, `dartUseCase`, `dartQueryProvider`, `mutationBinding`, `dartPaginatedNotifier`, `dartFormWidget`, `dartListTile`, `dartBarrelExport`, `dartProblemDetails`, `dartTypedError`, `dartDioErrorInterceptor`, `entityBuilder`, `newDtoBuilder`, `updateDtoBuilder`, `dartRepositoryFake`, `dartProviderOverrides`, `fixture`, `dartFixtureLoader`, `dartCodegenSmokeTest`, `serializationTest`, `dartRepositoryTest`, `dartQueryProviderTest`, `mutationBindingTest`, `validatorTest`, `dartPaginationTest`, `dartEtagTest`, `dartFormWidgetTest`, `dartListTileTest`.
+
+`dartListTileTest` (from generator `0.15.0`) emits one render-smoke test per generated list tile, at `<package>/test/widgets/<model>_list_tile_test.dart`. It builds each tile's `Basic*` item from its entity's builder, so register `entityBuilder` in the same package. A `Basic*` model whose main model is not an entity gets no test.
 
 ### 11.4 TypeScript artifacts
 
@@ -1043,11 +1045,11 @@ These ids still generate the same files as their replacement, and each logs a `W
 | `dartMutationProviderTest`, `typescriptMutationComposableTest` | `mutationBindingTest` |
 | `dartJsonFixture`, `typescriptFixture` | `fixture` |
 
-### 11.4.2 Retired artifact ids (generator `<NEXT>`)
+### 11.4.2 Retired artifact ids (generator `0.15.0`)
 
 | Retired id | What happens | What to do |
 |---|---|---|
-| `dartDtoMapper` | Emits no files. The project still loads and generates, with a load-time `WARN` naming the id and the group, under both `validate` and `generate`. A `cleanGenerated` group whose `cleanScope` covers `lib/data` removes the `lib/data/mappers/` files it emitted before. The release after `<NEXT>` removes the id, and declaring it then fails the load with `UNKNOWN_ARTIFACT_TYPE`. | Remove it from `artifacts[]` and delete any hand-written import of `data/mappers/`. The entity's own `toJson()` is the supported serializer; the old `toMap()` put enums, dates and nested models into the map raw (`clabonte/generator#1860`). |
+| `dartDtoMapper` | Emits no files. The project still loads and generates, with a load-time `WARN` naming the id and the group, under both `validate` and `generate`. A `cleanGenerated` group whose `cleanScope` covers `lib/data` removes the `lib/data/mappers/` files it emitted before. The release after `0.15.0` removes the id, and declaring it then fails the load with `UNKNOWN_ARTIFACT_TYPE`. | Remove it from `artifacts[]` and delete any hand-written import of `data/mappers/`. The entity's own `toJson()` is the supported serializer; the old `toMap()` put enums, dates and nested models into the map raw (`clabonte/generator#1860`). |
 
 ### 11.5 Markdown artifacts
 
@@ -1313,7 +1315,7 @@ The block sets floors; the per-property decisions are `x-classification` and `x-
 }
 ```
 
-`kioskSession.role` and `testGrants` are read from generator `<NEXT>`. Generator `0.14.0` drops both without a word, like any unknown project key (Appendix A, step 1).
+`kioskSession.role` and `testGrants` are read from generator `0.15.0`. Generator `0.14.0` drops both without a word, like any unknown project key (Appendix A, step 1).
 
 | Key | Default | What it does |
 |---|---|---|
@@ -1324,8 +1326,8 @@ The block sets floors; the per-property decisions are `x-classification` and `x-
 | `claims.rolesShape` | `name` | `name` (the claim value is the role name) \| `object` (the value is a JSON object carrying the role name under `roleKey`). Anything else fails the load (`UNKNOWN_ROLES_SHAPE`). |
 | `claims.roleKey` | `role` | Under `rolesShape: object`, the property holding the role name. Typed tenant ids are read through `tenancy` (§4), not here; every other key of the object is kept on the principal's role as an attribute. |
 | `kioskSession.scheme` | none | The authentication scheme a kiosk-session principal signs in under. Absent, `x-kiosk-session` is inert (`Vendor_Extensions.md` §3.3). |
-| `kioskSession.role` | none | **From generator `<NEXT>`.** The role the kiosk principal carries, compared ignoring case. Declaring it arms `KIOSK_SESSION_ROLE_UNSATISFIABLE`: an operation flagged `x-kiosk-session: true` whose `x-roles` lacks this role is an ERROR, because every kiosk call to it would be `403`. Validation only, with or without `scheme`; no generated byte changes. See `Vendor_Extensions.md` §3.3. |
-| `testGrants` | none | **From generator `<NEXT>`.** Path, relative to the project file, to a JSON or YAML file in the `info.x-roles` mapping shape. Feeds the generated C# authorization tests only. See below. |
+| `kioskSession.role` | none | **From generator `0.15.0`.** The role the kiosk principal carries, compared ignoring case. Declaring it arms `KIOSK_SESSION_ROLE_UNSATISFIABLE`: an operation flagged `x-kiosk-session: true` whose `x-roles` lacks this role is an ERROR, because every kiosk call to it would be `403`. Validation only, with or without `scheme`; no generated byte changes. See `Vendor_Extensions.md` §3.3. |
+| `testGrants` | none | **From generator `0.15.0`.** Path, relative to the project file, to a JSON or YAML file in the `info.x-roles` mapping shape. Feeds the generated C# authorization tests only. See below. |
 
 `claims` and `kioskSession.scheme` are read only by the generated runtime; `kioskSession.role` only by validation; `testGrants` only by test generation; `mode` and `shadow` also change validation and controllers.
 
@@ -1353,14 +1355,14 @@ All three fail `Project.Load`, like the codes under "Where it is checked" below,
 
 ### `mode`
 
-**It changes three things, and nothing on the wire** — four from generator `<NEXT>`. No DTO, database column or event contract moves.
+**It changes three things, and nothing on the wire** — four from generator `0.15.0`. No DTO, database column or event contract moves.
 
 - **Severity.** The role/scope coherence rules (`Vendor_Extensions.md` §3.1) and `OPERATION_SCOPE_UNBOUND` are WARNING under `roles` and **ERROR** under `scopes`. `ROLE_DEAD_GRANT`, `SCOPE_UNHELD` and `OPERATION_SCOPE_SHAPE_INVALID` stay WARNING in both. Measured on a mapping-form copy of `hello-orders`: four coherence WARNINGs under the default became four ERRORs, and `validate` went from `PASSED` to `FAILED`, with only `"authorization": {"mode": "scopes"}` added.
 - **The controller gate.** A generated C# controller action carries `[ScopesRequired("<scope>", …)]` from its `x-scopes` instead of `[RoleRequired(AuthorizedRole.X, …)]` from its `x-roles`. Measured on the same copy.
-- **Which key a secured operation must declare** (from generator `<NEXT>`). Under `scopes` without `shadow` it is `x-scopes`: `OPERATION_MISSING_SCOPES` (ERROR) fires on a non-`x-public` operation that declares none, including one that declares only `x-roles`, and `OPERATION_MISSING_ROLES` does not fire. Under `roles`, and under `scopes` with `shadow` (where the role decision still governs), `x-roles` stays required. Measured on a copy of `hello-orders` with one operation stripped of `x-roles` and another of `x-scopes`: `0.14.0` reports `OPERATION_MISSING_ROLES` on the first; a build of generator main reports `OPERATION_MISSING_SCOPES` on the second instead, and `OPERATION_MISSING_ROLES` again once `shadow: true` is added. Through `0.14.0` a scopes-mode spec had to keep an `x-roles` list on every operation.
+- **Which key a secured operation must declare** (from generator `0.15.0`). Under `scopes` without `shadow` it is `x-scopes`: `OPERATION_MISSING_SCOPES` (ERROR) fires on a non-`x-public` operation that declares none, including one that declares only `x-roles`, and `OPERATION_MISSING_ROLES` does not fire. Under `roles`, and under `scopes` with `shadow` (where the role decision still governs), `x-roles` stays required. Measured on a copy of `hello-orders` with one operation stripped of `x-roles` and another of `x-scopes`: `0.14.0` reports `OPERATION_MISSING_ROLES` on the first; a build of generator main reports `OPERATION_MISSING_SCOPES` on the second instead, and `OPERATION_MISSING_ROLES` again once `shadow: true` is added. Through `0.14.0` a scopes-mode spec had to keep an `x-roles` list on every operation.
 - **Test derivation.** An operation declaring only `x-scopes` gets its roles derived — the roles whose grants cover every declared scope — for `AuthorizationMatrixTest`, the functional-test theories and recipe-fixture role selection, which used to read `x-roles` only.
 
-**Switch only on a coherent registry.** `scopes` admits whichever roles' grants cover an operation's scopes, whatever its `x-roles` lists, so every `OPERATION_ROLE_UNLISTED` WARNING under `roles` is a role that `scopes` lets in. Read the `authorizationMatrix` artifact (§11.5) first, or run `shadow` in production before switching. From generator `<NEXT>` the switch also checks every Arazzo actor against its role's grants (`ARAZZO_ACTOR_LACKS_SCOPE`, `Arazzo_Handbook.md` §4.6), and a sequence-form `info.x-roles` grants nothing: unmodified `hello-orders` passes `validate` under `scopes` on `0.14.0` and fails it with three of those ERRORs on a build of generator main. Move the registry to the mapping form first.
+**Switch only on a coherent registry.** `scopes` admits whichever roles' grants cover an operation's scopes, whatever its `x-roles` lists, so every `OPERATION_ROLE_UNLISTED` WARNING under `roles` is a role that `scopes` lets in. Read the `authorizationMatrix` artifact (§11.5) first, or run `shadow` in production before switching. From generator `0.15.0` the switch also checks every Arazzo actor against its role's grants (`ARAZZO_ACTOR_LACKS_SCOPE`, `Arazzo_Handbook.md` §4.6), and a sequence-form `info.x-roles` grants nothing: unmodified `hello-orders` passes `validate` under `scopes` on `0.14.0` and fails it with three of those ERRORs on a build of generator main. Move the registry to the mapping form first.
 
 **The attribute is not the runtime.** `mode: scopes` changes the attribute on the controller whether or not the group registers `authorizationRuntime` — measured: without it, the controllers still carry `[ScopesRequired]` and import `{apiPackage}.Authorization`, which then has to supply that type. Register `authorizationRuntime` (§11.1), or own a hand-written `ScopesRequiredAttribute` in that namespace.
 

@@ -61,7 +61,7 @@ components:
           format: uuid
           x-references: Customer
         # Cross-pillar reference with no replica, object form (generator
-        # <NEXT>, clabonte/generator#2397). A description is good practice
+        # 0.15.0, clabonte/generator#2397). A description is good practice
         # but not required.
         accountId:
           type: string

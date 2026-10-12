@@ -75,7 +75,7 @@ Error:                  # shared shape, no owning domain
 - **Exempt:** `x-entity` schemas, pure `$ref` aliases, and the derived shapes of an entity (`New{E}`, `Basic{E}`, `Update{E}`, `{E}List`) — the generator resolves those to their main model's domain.
 - **`common` is reserved.** It means *shared, no owning domain*, and it MUST NOT itself be registered in `info.x-domains` — registering it is `SCHEMA_DOMAIN_UNREGISTERED` against the registry.
 - **What counts is `components.schemas` after bundling.** A shape you only `$ref` from an operation file is hoisted there by `redocly bundle`, so it needs the key in its source file even though no hand-written `components` block names it. The bundle is the contract: folder layout does not survive bundling, so a schema's `domains/{domain}/` location says nothing to the generator, and the key is the only record of its owner that does.
-- A schema that references a schema owned by **another** domain is reported as `SCHEMA_DOMAIN_CROSS_REFERENCED` (WARNING) — a boundary hint, not a failure; `common` is never a cross-reference. **Entity projections are exempt**: a `Basic{E}` (or other derived shape of a registered entity) embedded in another domain's schema — a work item holding a `BasicUser` summary — is normal DDD and is not reported. Referencing the full entity, or a domain-owned enum or value shape, across the boundary is. **`validate` does not report it on a bundled spec**, though: the rule reads each property's `$ref`, which the validator's parse has already resolved. Measured on a copy of `hello-orders` with an `order` entity property referencing the `customer` domain's status enum, directly and through a bundler alias (`CrmStatus: {$ref: …/CustomerStatus}`): no finding on `0.14.0` or on a build of generator main, through the project file or the spec alone. Generator `<NEXT>` follows the alias to its target (`clabonte/generator#1929`), which matters only once the rule reads the resolved document. Find cross-domain references by review until then.
+- A schema that references a schema owned by **another** domain is reported as `SCHEMA_DOMAIN_CROSS_REFERENCED` (WARNING) — a boundary hint, not a failure; `common` is never a cross-reference. **Entity projections are exempt**: a `Basic{E}` (or other derived shape of a registered entity) embedded in another domain's schema — a work item holding a `BasicUser` summary — is normal DDD and is not reported. Referencing the full entity, or a domain-owned enum or value shape, across the boundary is. **`validate` does not report it on a bundled spec**, though: the rule reads each property's `$ref`, which the validator's parse has already resolved. Measured on a copy of `hello-orders` with an `order` entity property referencing the `customer` domain's status enum, directly and through a bundler alias (`CrmStatus: {$ref: …/CustomerStatus}`): no finding on `0.14.0` or on a build of generator main, through the project file or the spec alone. Generator `0.15.0` follows the alias to its target (`clabonte/generator#1929`), which matters only once the rule reads the resolved document. Find cross-domain references by review until then.
 
 **Spec-author action on the `0.13.0` pin.** Run `validate` on a fresh bundle and add `x-domain` to every schema it names. This rule shipped in `0.13.0` and the kit missed it at that pin bump (`compatibility.md`, `v0.20.0` row); the kit's own example and new-project scaffold both failed it until the fix that added this paragraph. No kit Spectral mirror yet — the derived-shape exemption needs the entity set, which a schema-local rule does not have.
 
@@ -306,7 +306,7 @@ positive, three fields the row is deliberately meant to outlive. The narrowing
 filed as `clabonte/generator#1441` asked the rule to check whether the timestamp
 is referenced anywhere else in the specification, since a field nothing else
 reads is a plausible duplicate while one other machinery depends on is not.
-Generator `<NEXT>` takes a smaller step: it drops `leftAt` from the name set, as
+Generator `0.15.0` takes a smaller step: it drops `leftAt` from the name set, as
 a membership ending on a row kept readable afterwards, and defers the reference
 check. Measured on a soft-delete copy of `hello-orders` carrying `leftAt` and
 `revokedAt`: two findings on `0.14.0`, one (`revokedAt`) on a build of generator
@@ -459,7 +459,7 @@ recommendation until then and is now enforced: anything outside the set is
 refused at parse time, and the kit's `specfuse-xentity-shape` guard rejects it
 at lint. The parse-time code is `ENTITY_INVALID_CONFIG` through generator
 `0.14.0` (measured; this paragraph used to name the later code) and
-`INVALID_EXTENSION_VALUE` from `<NEXT>`. The same move covers an unknown
+`INVALID_EXTENSION_VALUE` from `0.15.0`. The same move covers an unknown
 `concurrency` mode, `delete` mode and `archiveVisibility`; an unknown `type` and
 the retired `encryptedProperties` keep `ENTITY_INVALID_CONFIG` (all measured).
 Both codes are ERROR. The point of closing it is that the declarations are
@@ -577,8 +577,8 @@ version column says which release each family first shipped in.
 |---|---|---|
 | `ENTITY_CONCURRENCY_INVALID` | ERROR | a value outside `{ optimistic, none, delegated }`, a malformed object form, or a sub-key that reads as a misspelling of `concurrency` |
 | `ENTITY_CONCURRENCY_UNDECLARED` | **ERROR** | an `x-entity` schema declares no `concurrency` at all |
-| `ENTITY_CONCURRENCY_REASON_REQUIRED` | **ERROR** | `mode: none` on an entity that exposes an unsafe write (`PATCH`/`PUT`/`DELETE`), with no `reason`. Through `0.14.0` a write naming the entity only by its request body (no entity in the path) was not counted; from generator `<NEXT>` it is |
-| `ENTITY_CONCURRENCY_WRITER_ROLE_UNREADABLE` | WARNING | the entity's unsafe-write roles are not a subset of the roles that can read it from a safe operation. Skipped for `mode: none`. Same body-only gap through `0.14.0`, closed from generator `<NEXT>` |
+| `ENTITY_CONCURRENCY_REASON_REQUIRED` | **ERROR** | `mode: none` on an entity that exposes an unsafe write (`PATCH`/`PUT`/`DELETE`), with no `reason`. Through `0.14.0` a write naming the entity only by its request body (no entity in the path) was not counted; from generator `0.15.0` it is |
+| `ENTITY_CONCURRENCY_WRITER_ROLE_UNREADABLE` | WARNING | the entity's unsafe-write roles are not a subset of the roles that can read it from a safe operation. Skipped for `mode: none`. Same body-only gap through `0.14.0`, closed from generator `0.15.0` |
 | `ENTITY_CONCURRENCY_CENSUS` | SUGGESTION | always — reports `optimistic` / `none` / `delegated` / undeclared counts with a `reason` breakdown, in one `validate` run |
 
 **Operation-level preconditions** — generator **0.7.0**, extended in **0.8.0** and **0.12.0**.
@@ -824,7 +824,7 @@ from one key to the other.
 Malformed shapes are refused at parse time, before those rules run: a constraint
 with no `properties`, an empty `properties` list, a `properties` that is not a
 list, and a non-string `name` are each an `ENTITY_INVALID_CONFIG` through
-`0.14.0`, and an `INVALID_EXTENSION_VALUE` from generator `<NEXT>` (both
+`0.14.0`, and an `INVALID_EXTENSION_VALUE` from generator `0.15.0` (both
 ERROR; measured on all four). A CI filter or findings baseline keyed on
 `ENTITY_INVALID_CONFIG` should match both codes. The new finding's location is
 `x-entity.uniqueBy` (or `x-entity.uniqueBy.name`) **without the schema name**,
@@ -1081,25 +1081,25 @@ User:
       type: string
       x-internal-only: true        # stored + queried server-side; never in any DTO
       x-classification: [credential]
-      x-protection: { atRest: hashed }   # required on a *Hash / *Digest name from generator <NEXT>
+      x-protection: { atRest: hashed }   # required on a *Hash / *Digest name from generator 0.15.0
     password:
       type: string
       writeOnly: true              # client SETS on New*/Update*; never returned
 ```
 
-`x-internal-only` says where a value goes, not how it is protected. From generator `<NEXT>` a `*Hash` / `*Digest` string property on an entity that declares no `x-protection` is an ERROR (`PROTECTION_DIGEST_UNDECLARED`, §1.5), and `x-internal-only` alone does not satisfy it. Measured: a `passwordHash` carrying `x-internal-only` alone is clean on `0.14.0` and an ERROR on `<NEXT>`.
+`x-internal-only` says where a value goes, not how it is protected. From generator `0.15.0` a `*Hash` / `*Digest` string property on an entity that declares no `x-protection` is an ERROR (`PROTECTION_DIGEST_UNDECLARED`, §1.5), and `x-internal-only` alone does not satisfy it. Measured: a `passwordHash` carrying `x-internal-only` alone is clean on `0.14.0` and an ERROR on `0.15.0`.
 
 ### 1.4 x-enum-case
 
 **Purpose**: Sets how the code generator cases one enum's serialized wire values, overriding the project-wide `namingOverrides.enumValue` (`Project_File.md` §3.1) for that enum. The typical use is industry-standard codes that must be preserved as-is.
 
-> **⚠ Corrected (generator `<NEXT>` pin).** This section used to say the generator
+> **⚠ Corrected (generator `0.15.0` pin).** This section used to say the generator
 > applies camelCase to enum values when `x-enum-case` is absent, and that a
 > domain enum should be written in camelCase so the generator's "default
 > transformation" applies. **There is no such transformation.** With no
 > `x-enum-case` and no `namingOverrides.enumValue`, the C#, Python and Dart
 > profiles `Preserve` the value (`Project_File.md` §3.2), and so does
-> TypeScript. Measured on `0.14.0` and the `<NEXT>` candidate: an enum value
+> TypeScript. Measured on `0.14.0` and the `0.15.0` candidate: an enum value
 > written `placedOrder` is emitted as `placedOrder` in all four. Write domain
 > enum values in camelCase because that *is* the wire value (and
 > `specfuse-enum-camel` holds you to it), not because the generator
@@ -1116,7 +1116,7 @@ x-enum-case: string  # One of: preserve | PascalCase | camelCase | snake_case | 
 
 > **Naming note:** the generator also accepts the camelCase alias `x-enumCase`. The kit's canonical form is `x-enum-case`.
 
-> **Listed by `extensions` from generator `<NEXT>`.** `extensions --format json` gains an `enum` section naming the two enum-level keys, `x-enum-case` (*"member naming case; overrides namingOverrides.enumValue"*) and `x-extensible` (§1.4.1). It lists the kebab-case spelling, which is the kit's. Through `0.14.0` neither key appeared in the output. The kit's vocabulary check reads the section, but no kit guard on enum schemas is closed, so it compares nothing there.
+> **Listed by `extensions` from generator `0.15.0`.** `extensions --format json` gains an `enum` section naming the two enum-level keys, `x-enum-case` (*"member naming case; overrides namingOverrides.enumValue"*) and `x-extensible` (§1.4.1). It lists the kebab-case spelling, which is the kit's. Through `0.14.0` neither key appeared in the output. The kit's vocabulary check reads the section, but no kit guard on enum schemas is closed, so it compares nothing there.
 
 **Allowed Values**:
 - `preserve` — emit enum values exactly as written in the spec, no transformation
@@ -1138,7 +1138,7 @@ Use `x-enum-case: preserve` **only** when the enum represents externally-defined
 
 Do **not** use `x-enum-case` for regular domain enums — define values in camelCase, which the generator then preserves as written.
 
-Measured on the `<NEXT>` candidate with `x-enum-case: SCREAMING_SNAKE_CASE` on an enum of `draft` / `placedOrder`: the wire values become `DRAFT` / `PLACED_ORDER` in C# (`[EnumMember(Value = …)]`), Python, Dart (`@JsonValue`) and TypeScript, while each language keeps its own member-name convention (C# and TypeScript `PlacedOrder`, Python `PLACED_ORDER`, Dart `placedOrder`). The key re-cases what goes on the wire, so changing it on a live enum is a contract change.
+Measured on the `0.15.0` candidate with `x-enum-case: SCREAMING_SNAKE_CASE` on an enum of `draft` / `placedOrder`: the wire values become `DRAFT` / `PLACED_ORDER` in C# (`[EnumMember(Value = …)]`), Python, Dart (`@JsonValue`) and TypeScript, while each language keeps its own member-name convention (C# and TypeScript `PlacedOrder`, Python `PLACED_ORDER`, Dart `placedOrder`). The key re-cases what goes on the wire, so changing it on a live enum is a contract change.
 
 **Example**:
 ```yaml
@@ -1172,7 +1172,7 @@ OrderStatus:
     - cancelled
 ```
 
-### 1.4.1 x-extensible — decode an unknown value instead of throwing (generator `<NEXT>`)
+### 1.4.1 x-extensible — decode an unknown value instead of throwing (generator `0.15.0`)
 
 **Purpose**: Lets a generated client survive an enum value the server added after the client was built. A marked enum decodes a wire value it does not recognise to a generated `unknown` member instead of failing the whole payload (`clabonte/generator#1865`).
 
@@ -1193,7 +1193,7 @@ ShipmentCarrier:
   enum: [postal, courier, freight]
 ```
 
-**What each language emits** — measured on the `<NEXT>` candidate with `x-extensible: true` on `hello-orders`' `OrderStatus`:
+**What each language emits** — measured on the `0.15.0` candidate with `x-extensible: true` on `hello-orders`' `OrderStatus`:
 
 | Language | Marked enum | Unmarked enum |
 |---|---|---|
@@ -1209,7 +1209,7 @@ ShipmentCarrier:
 - **A spec member literally named `unknown` folds into the sentinel** rather than producing a second one. Test support (fixtures, builders, fakes) never seeds the sentinel.
 - **A Dart `switch` over a marked enum gains an arm, and a TypeScript `Record<X, …>` over it widens.** Marking an existing enum is a source change for every consumer that does either.
 
-**Validation** — both ERROR, measured on the `<NEXT>` candidate:
+**Validation** — both ERROR, measured on the `0.15.0` candidate:
 
 | Code | Fires when |
 |---|---|
@@ -1452,14 +1452,14 @@ What the generated C# controller does, measured on a generated fixture:
 
 | code | severity | fires on |
 |---|---|---|
-| `UNMASK_PARAMETER_ON_LIST` | **ERROR** | `x-unmask` on a non-GET operation, or on a GET whose response is a bare `type: array` or, from generator `<NEXT>`, a `{Resource}List` wrapper |
+| `UNMASK_PARAMETER_ON_LIST` | **ERROR** | `x-unmask` on a non-GET operation, or on a GET whose response is a bare `type: array` or, from generator `0.15.0`, a `{Resource}List` wrapper |
 | `UNMASK_VALUE_NOT_MASKED` | **ERROR** | an enum value that is not a **top-level** masked field of the response entity — a field masked only inside a nested DTO counts as not masked |
 | `UNMASK_FORBIDDEN_TYPE_NOT_DECLARED` | WARNING | the spec declares `x-unmask`, its `Error.type` is typed by an `ErrorType` enum, and that enum lacks `unmaskForbidden` |
 | `UNMASK_UNDECLARED` | INFO (printed as `SUGGESTION`) | a single-resource GET returns masked fields and declares no `x-unmask` — legitimate when the fields must never be revealed there |
 
 The parameter is exempt from `OPERATION_NON_SEARCHABLE_QUERY_PARAM`.
 
-> **On a list GET returning `{Resource}List`, `0.14.0` reports the wrong code.** `x-unmask` on `GET /tenants/{tenantId}/customers` returning `CustomerList` is not `UNMASK_PARAMETER_ON_LIST` but `UNMASK_VALUE_NOT_MASKED` for every enum value (*"masked: []"*), because the validator sees the response with its `$ref` already resolved and cannot recognise the paginated wrapper. From generator `<NEXT>` it is `UNMASK_PARAMETER_ON_LIST` (`clabonte/generator#2370`), measured on a build of generator main. Either way the spec is refused, and the fix is the same — move the parameter to the single-resource GET. See `compatibility.md` §42.
+> **On a list GET returning `{Resource}List`, `0.14.0` reports the wrong code.** `x-unmask` on `GET /tenants/{tenantId}/customers` returning `CustomerList` is not `UNMASK_PARAMETER_ON_LIST` but `UNMASK_VALUE_NOT_MASKED` for every enum value (*"masked: []"*), because the validator sees the response with its `$ref` already resolved and cannot recognise the paginated wrapper. From generator `0.15.0` it is `UNMASK_PARAMETER_ON_LIST` (`clabonte/generator#2370`), measured on a build of generator main. Either way the spec is refused, and the fix is the same — move the parameter to the single-resource GET. See `compatibility.md` §42.
 
 #### `unavailableProperties` — every encrypting entity owes a poisoned-read surface
 
@@ -1621,7 +1621,7 @@ The two sides split cleanly, and the split is the generator's own: `PiiClassific
 | 6 | A property carrying `x-classification: [exposed]` MUST carry a non-empty `description` justifying why exposure is safe. | kit — `specfuse-classification-exposed-needs-description` (error) |
 | 7 | A property the validator reads as PII MUST declare `x-classification` (see "Where it is required" above). | generator — `PII_FIELD_MISSING_CLASSIFICATION` (error); mirrored in the editor by kit `specfuse-classification-pii-required` |
 | 15 | An entity declaring `x-protection.atRest: encrypted` on one of its own properties MUST expose a `readOnly` string array `unavailableProperties`. Generator `0.13.0`; **breaks specs that validated on `0.12.0`**. Not required when the only encrypted target is a flattened value object. | generator — `UNAVAILABLE_PROPERTIES_NOT_DECLARED` (error); mirrored by kit `specfuse-xprotection-unavailable-properties-required` |
-| 16 | A `type: string` property of an `x-entity` schema whose name ends in `hash` or `digest` (case-insensitive; `api_key_hash` counts) MUST declare `x-protection`, whether or not it is classified. `atRest: hashed` is the expected answer for a stored digest (with `x-internal-only`, rule 13), `atRest: none` with a rationale for a public content digest. Presence only — any `x-protection` silences it. Out of scope: a `$ref`-typed or `allOf`-wrapped property, a non-string, and a non-entity schema. **No temporal exclusion**, unlike `SENSITIVE_FIELD_IN_RESPONSE`: a `format: date-time` property named `*Hash` fires. Generator `<NEXT>`; **opens at ERROR, so it can break a spec that validated on `0.14.0`** — `x-internal-only` or `writeOnly` alone used to be enough for such a property. | generator — `PROTECTION_DIGEST_UNDECLARED` (error); mirrored by kit `specfuse-xprotection-digest-undeclared` |
+| 16 | A `type: string` property of an `x-entity` schema whose name ends in `hash` or `digest` (case-insensitive; `api_key_hash` counts) MUST declare `x-protection`, whether or not it is classified. `atRest: hashed` is the expected answer for a stored digest (with `x-internal-only`, rule 13), `atRest: none` with a rationale for a public content digest. Presence only — any `x-protection` silences it. Out of scope: a `$ref`-typed or `allOf`-wrapped property, a non-string, and a non-entity schema. **No temporal exclusion**, unlike `SENSITIVE_FIELD_IN_RESPONSE`: a `format: date-time` property named `*Hash` fires. Generator `0.15.0`; **opens at ERROR, so it can break a spec that validated on `0.14.0`** — `x-internal-only` or `writeOnly` alone used to be enough for such a property. | generator — `PROTECTION_DIGEST_UNDECLARED` (error); mirrored by kit `specfuse-xprotection-digest-undeclared` |
 
 Rules 5 and 6 were documented here for some time and enforced by **nothing** on either side — rule 5 even named a finding id (`CLASSIFICATION_EXPOSED_CONTRADICTION`) that exists in neither the kit nor the jar. They are kit Spectral rules now. Rule 2 warns rather than fails: a refused target generates, in plaintext, so read the warning as a protection decision that did not happen.
 
@@ -1646,7 +1646,7 @@ A secret-shaped, response-bound property **passes** the rule only if it carries 
 
 `x-classification: [sensitive]` alone does **not** satisfy the rule: `sensitive` means *must be masked*, not *may be exposed*. Using `exposed` is an explicit, reviewed override — reach for it only when the secret-shaped name is a false positive, e.g. a public `avatarHash` content-address. Not for a `*Token`: that suffix is not in the heuristic at all, so there is nothing to override.
 
-**Two rules read a `*Hash` name, and they ask different questions.** `SENSITIVE_FIELD_IN_RESPONSE` asks whether the value may reach a response; `PROTECTION_DIGEST_UNDECLARED` (rule 16, generator `<NEXT>`) asks how it is protected at rest. Each exit above answers only the first: `writeOnly`, `x-internal-only` and `[exposed]` without an `x-protection` all fail rule 16 from `<NEXT>`. The public `avatarHash` therefore carries `[exposed]` **and** `x-protection: {atRest: none, rationale: …}`, as in the §1.5 example; a stored credential digest carries `x-internal-only` **and** `atRest: hashed`. Rule 16 also reads `*Digest`, which `SENSITIVE_FIELD_IN_RESPONSE` does not.
+**Two rules read a `*Hash` name, and they ask different questions.** `SENSITIVE_FIELD_IN_RESPONSE` asks whether the value may reach a response; `PROTECTION_DIGEST_UNDECLARED` (rule 16, generator `0.15.0`) asks how it is protected at rest. Each exit above answers only the first: `writeOnly`, `x-internal-only` and `[exposed]` without an `x-protection` all fail rule 16 from `0.15.0`. The public `avatarHash` therefore carries `[exposed]` **and** `x-protection: {atRest: none, rationale: …}`, as in the §1.5 example; a stored credential digest carries `x-internal-only` **and** `atRest: hashed`. Rule 16 also reads `*Digest`, which `SENSITIVE_FIELD_IN_RESPONSE` does not.
 
 ### 1.6 x-content
 
@@ -1742,7 +1742,7 @@ Article:
 ```yaml
 x-references: Customer      # target entity name (PascalCase), or the literal `none`
 
-# Object form (generator <NEXT>):
+# Object form (generator 0.15.0):
 x-references: { entity: Customer, resolve: remote }   # resolve: local | remote, default local
 ```
 
@@ -1755,9 +1755,9 @@ x-references: { entity: Customer, resolve: remote }   # resolve: local | remote,
 
 **`x-references: none`** marks a `format: uuid` property that is **not a foreign key at all** — a correlation id, an idempotency token, an externally-minted identifier. Because this suppresses relationship classification entirely, it MUST be accompanied by a `description` justifying why the value is opaque. An unjustified `none` is indistinguishable from an author who did not want to think about the relationship.
 
-At generator `0.14.0`, `none` on a property named after an entity (`customerId`) still bound it to that entity by name, and a pillar-bound group that did not own the entity failed. Generator `<NEXT>` fixes this (`clabonte/generator#2400`): `none` is a plain uuid column whatever the property is called.
+At generator `0.14.0`, `none` on a property named after an entity (`customerId`) still bound it to that entity by name, and a pillar-bound group that did not own the entity failed. Generator `0.15.0` fixes this (`clabonte/generator#2400`): `none` is a plain uuid column whatever the property is called.
 
-**The object form, `{ entity, resolve }` (generator `<NEXT>`, `clabonte/generator#2397`).** `resolve` is `local` or `remote` and defaults to `local`.
+**The object form, `{ entity, resolve }` (generator `0.15.0`, `clabonte/generator#2397`).** `resolve` is `local` or `remote` and defaults to `local`.
 
 - **`resolve: local`** is the string form written out. `x-references: { entity: Customer, resolve: local }` and `x-references: Customer` generate the same thing.
 - **`resolve: remote`** declares a reference to an entity **another pillar owns, which this pillar neither holds nor replicates**. It reads the target through the owner's API. The value is a real foreign key in the business sense, but it cannot be a database FK across pillar databases. The generator emits a plain uuid column: no FK, no navigation, no EF configuration, no `Read{Entity}` rebinding. Unlike `none`, it records the target, so the entity diagram still shows the edge. It is the declaration §14.11 describes, and it carries tenancy when it targets the tenant root (§14.11).
@@ -1770,7 +1770,7 @@ The object form is only for a property. A `belongsTo` entry written as an object
 |---|---|
 | This entity is part of the target's aggregate | `belongsTo: <Target>` on `x-entity` (composition, Cascade, aggregate membership) |
 | This entity merely points at the target | `x-references: <Target>` on the property (association, NoAction, no membership) |
-| The target is owned by another pillar and read through its API, with no local copy | `x-references: { entity: <Target>, resolve: remote }` on the property (plain uuid column; generator `<NEXT>`, §14.11) |
+| The target is owned by another pillar and read through its API, with no local copy | `x-references: { entity: <Target>, resolve: remote }` on the property (plain uuid column; generator `0.15.0`, §14.11) |
 | The uuid is not a foreign key | `x-references: none` on the property + a justifying `description` |
 
 Leaving an FK-shaped property unclassified is a spec defect.
@@ -1783,7 +1783,7 @@ Leaving an FK-shaped property unclassified is a spec defect.
    The generator draws the same line, and it is worth knowing which side a shape falls on before authoring it. `DDD_DUAL_RELATIONSHIP_DECLARATION` fires on the property that *implements* the `belongsTo` and also declares `x-references` to that target — one edge cannot be both owned composition and non-owning association. It does **not** fire on sibling properties naming the same target, because those are different edges. Measured against the pinned `0.5.8` jar: `LegalEntity.organisationId` with both declarations errors, while `Associate.managerId` and `Associate.approverId` both pass on an `Associate` that declares `belongsTo: Person`. So **"points at another instance of my own owner's type" is expressed as an ordinary sibling `x-references`** — a self-referencing `Person.managerId -> Person` on an owned entity is legal, and wants a `description` saying which instance it points at.
 3. `x-references` and `x-fk-for` (§1.8) MUST NOT appear on the same property. They declare opposite ownership.
 4. `x-references: none` requires a non-empty `description`.
-5. The value MUST be `none`, a PascalCase entity name, or an object `{ entity: <PascalCase entity>, resolve: local | remote }` with no other key. The generator refuses a malformed object as `INVALID_EXTENSION_VALUE`. Measured at generator `<NEXT>`: `resolve: cached` was refused as "Invalid resolve 'cached' in x-references". The kit's `specfuse-x-references-shape` lints both forms.
+5. The value MUST be `none`, a PascalCase entity name, or an object `{ entity: <PascalCase entity>, resolve: local | remote }` with no other key. The generator refuses a malformed object as `INVALID_EXTENSION_VALUE`. Measured at generator `0.15.0`: `resolve: cached` was refused as "Invalid resolve 'cached' in x-references". The kit's `specfuse-x-references-shape` lints both forms.
 
 **Examples**:
 
@@ -1930,7 +1930,7 @@ Note:
 
 ---
 
-### 1.10 x-copied-from — a value copied from a related row at creation (generator `<NEXT>`)
+### 1.10 x-copied-from — a value copied from a related row at creation (generator `0.15.0`)
 
 **Purpose**: Declares that a property's value is **copied once, at create time**, from a field of the row a foreign key in the create body names. The value is then the entity's own: it is not kept in step with the source afterwards. Contrast `x-expand-of` (§1.9), which is a read-time display projection and is never stored (`clabonte/generator#2348`).
 
@@ -1976,7 +1976,7 @@ NewOrder:
 
 **`via` is resolved against `New{Entity}`, not the entity.** It must name a property of the create body that is a declared reference — `x-references: <Target>`, or a `{target}Id` name that resolves to a modelled entity (measured: `NewOrder.customerId` with no `x-references` still resolves to `Customer`). An entity with no `New{Entity}` schema has nothing for `via` to name, and the declaration fails.
 
-**Validation** — measured on the `<NEXT>` candidate, all ERROR, all at `validate <spec>`:
+**Validation** — measured on the `0.15.0` candidate, all ERROR, all at `validate <spec>`:
 
 | Code | Fires when |
 |---|---|
@@ -2066,7 +2066,7 @@ The disambiguation is the generator's own (`ProtectionDefinition.isSubKey` over 
 
 The trap is the word *effective*: the set is the usage site's `queryable` **if it declares one**, and the definition's `defaultQueryable` otherwise. So a usage site that declares no `queryable` at all inherits one and fails, and the fix is to declare `queryable: []` explicitly rather than to remove the key.
 
-> **Do not count on `validate` to catch the inherited case.** Measured on a copy of `hello-orders`: a usage site declaring a non-empty `queryable` itself is reported on `0.14.0` and after it. An inherited `defaultQueryable` is not reported on `0.14.0`. From generator `<NEXT>` it is, when the embed is a direct `$ref`, but measured on a build of generator main it is still not reported through a one-item `allOf` embed, the form this section uses. Declare `queryable: []` at every encrypted usage site.
+> **Do not count on `validate` to catch the inherited case.** Measured on a copy of `hello-orders`: a usage site declaring a non-empty `queryable` itself is reported on `0.14.0` and after it. An inherited `defaultQueryable` is not reported on `0.14.0`. From generator `0.15.0` it is, when the embed is a direct `$ref`, but measured on a build of generator main it is still not reported through a one-item `allOf` embed, the form this section uses. Declare `queryable: []` at every encrypted usage site.
 
 **The embed property is a second declaration site, and the usage site wins outright.** From generator `0.13.0` an `x-protection` on the entity's own embed property — `components.schemas.<Entity>.properties.<prop>`, where `x-classification` already sits — emits the same columns the usage-site form does. (A `protection` key under `x-value-object` on the value object's own schema is not one of the sites: the generator does not read it.) Where both declare, **the embed's block is discarded in full — not layered underneath**:
 
@@ -2087,7 +2087,7 @@ Person:
 
 Every member is `encrypted`; the embed's per-member map does not survive. So a usage site declaring a scalar over an embed that declared per-member nuance discards it — and can *weaken* protection at a site whose author believed they were inheriting. From generator `0.13.0` this is reported as `VALUE_OBJECT_PROTECTION_DECLARED_TWICE` (WARNING): declare protection at one site. The precedence itself is settled and intentional.
 
-**Prefer the usage site even when it is the only declaration.** The embed form alone — `x-classification` plus `x-protection: { atRest: encrypted }` on an `allOf` embed of a value object whose members all have a sound canonical round-trip — **is** encrypted per member at generator `0.14.0`. Through `0.14.0` it was missing from `DATA_PROTECTION_AUDIT.md` whenever `x-entity.valueObjects` also listed the property with no `protection` of its own (for its `storage`, say); measured, the same embed with no `valueObjects` entry was audited. From generator `<NEXT>` the audit lists it either way (`clabonte/generator#2417`). On `0.14.0`, `x-entity.valueObjects.<prop>.protection` is the form to use: it is the one the audit always sees.
+**Prefer the usage site even when it is the only declaration.** The embed form alone — `x-classification` plus `x-protection: { atRest: encrypted }` on an `allOf` embed of a value object whose members all have a sound canonical round-trip — **is** encrypted per member at generator `0.14.0`. Through `0.14.0` it was missing from `DATA_PROTECTION_AUDIT.md` whenever `x-entity.valueObjects` also listed the property with no `protection` of its own (for its `storage`, say); measured, the same embed with no `valueObjects` entry was audited. From generator `0.15.0` the audit lists it either way (`clabonte/generator#2417`). On `0.14.0`, `x-entity.valueObjects.<prop>.protection` is the form to use: it is the one the audit always sees.
 
 > **The audit is coarser than the storage, deliberately.** A value object protected by a scalar usage-site declaration appears as **one row keyed by the embed property name** in both section 1 and the section 2 matrix of `DATA_PROTECTION_AUDIT.md`, while `0.13.0` encrypts **per member**. An assessor reading `residenceAddress | encrypted` is seeing a summary of several columns, not one.
 
@@ -2210,8 +2210,8 @@ info:
 |---|---|---|
 | generator `OPERATION_UNKNOWN_ROLE` | an `x-roles` member is not in `info.x-roles` | **ERROR** |
 | generator `OPERATION_ROLE_REGISTRY_MISSING` | no `info.x-roles` at all — *"role membership validation disabled"* | WARNING |
-| generator `OPERATION_MISSING_ROLES` | a secured operation declares neither `x-roles` nor `x-public`. From generator `<NEXT>`, not under `authorization.mode: scopes` without `shadow` | **ERROR** |
-| generator `OPERATION_MISSING_SCOPES` | from generator `<NEXT>`, under `authorization.mode: scopes` without `shadow`: a secured operation declares no `x-scopes`, even if it declares `x-roles` | **ERROR** |
+| generator `OPERATION_MISSING_ROLES` | a secured operation declares neither `x-roles` nor `x-public`. From generator `0.15.0`, not under `authorization.mode: scopes` without `shadow` | **ERROR** |
+| generator `OPERATION_MISSING_SCOPES` | from generator `0.15.0`, under `authorization.mode: scopes` without `shadow`: a secured operation declares no `x-scopes`, even if it declares `x-roles` | **ERROR** |
 | generator `OPERATION_EMPTY_ROLES` / `OPERATION_INVALID_ROLE` / `OPERATION_INVALID_ROLES_FORMAT` | an empty list, an empty member, or a non-array | — |
 | kit `specfuse-auth-roles-pascal` | the **shape** only: PascalCase identifiers | error |
 
@@ -2272,7 +2272,7 @@ info:
 |---|---|---|
 | `grants` | string[] | Scopes this role holds, in §3.2's grammar, or `"*"`. |
 | `implicit` | boolean | Every authenticated principal holds this role without a claim. The scope-model counterpart of the `Authenticated` convention below. |
-| `superuser` | boolean | Passes every coherence and runtime check regardless of its grants — a declared fact, replacing an `Admin`-by-name short-circuit. A role that is both `superuser` and `implicit` is `ROLE_IMPLICIT_SUPERUSER` (ERROR): every authenticated principal would pass every gate. From generator `<NEXT>` it also decides who may send `If-Match: *`: a superuser role and a system caller only, every other caller gets `412` (`API_Handbook.md` §"Concurrency Control"). This applies whether or not the project generates an authorization runtime. |
+| `superuser` | boolean | Passes every coherence and runtime check regardless of its grants — a declared fact, replacing an `Admin`-by-name short-circuit. A role that is both `superuser` and `implicit` is `ROLE_IMPLICIT_SUPERUSER` (ERROR): every authenticated principal would pass every gate. From generator `0.15.0` it also decides who may send `If-Match: *`: a superuser role and a system caller only, every other caller gets `412` (`API_Handbook.md` §"Concurrency Control"). This applies whether or not the project generates an authorization runtime. |
 | `delegable` | boolean | A role another role may grant. **Declared, not enforced** at `0.14.0`: it is published per role in the `role-grants.json` companion of `authorizationMatrix` (`Project_File.md` §11.5), and read by no validation rule and none of the generated C# `Authorization/` runtime files. Enforcement is planned generator-side (`FEAT-2026-0203`, `clabonte/generator#2180`). |
 | `description` | string | Free text. Read by nothing. |
 
@@ -2327,7 +2327,7 @@ on either shape, and it overlaps the kit's `specfuse-auth-scopes-registry`
 (§3.2). Arazzo carries the same check for actors: `ARAZZO_ACTOR_LACKS_SCOPE`
 mirrors `OPERATION_ROLE_LACKS_SCOPE`, under `authorization.mode: scopes` only
 (`Arazzo_Handbook.md` §4.6 records its limits). It fires from generator
-`<NEXT>`, and it is **not** inert on a sequence-form registry: a role with no
+`0.15.0`, and it is **not** inert on a sequence-form registry: a role with no
 grants covers no scope, so under `scopes` every scenario step whose operation
 declares `x-scopes` fails. Measured: unmodified `hello-orders` with
 `"authorization": {"mode": "scopes"}` passes on `0.14.0` and fails with three
@@ -2370,7 +2370,7 @@ x-scopes: string[]  # Array of scope names, each matching the grammar below
 >
 > 1. **Shape**, from generator `0.11.0`: `OPERATION_SCOPE_SHAPE_INVALID` (WARNING in either mode) checks segment count and the closed operation set, parsed right to left. It deliberately does **not** check casing.
 > 2. **Registry binding and role coherence**, from `0.14.0`: `OPERATION_SCOPE_UNBOUND` (a domain outside `info.x-domains`, or an entity segment that is not an `x-entity` of that domain), and — when `info.x-roles` is in the mapping form — the coherence rules of §3.1, which check an operation's `x-roles` against the roles whose grants cover its scopes.
-> 3. **Runtime**, from `0.14.0`: under `authorization.mode: scopes` a generated C# controller carries `[ScopesRequired("<scope>", …)]` instead of `[RoleRequired(…)]`. Under the default `roles` mode `x-scopes` changes no generated code. From generator `<NEXT>`, `scopes` without `shadow` also makes `x-scopes` the key a secured operation must declare: `OPERATION_MISSING_SCOPES` (ERROR) replaces `OPERATION_MISSING_ROLES` there (§3.1), so the generator no longer requires `x-roles`. Through `0.14.0`, `OPERATION_MISSING_ROLES` fired in every mode, so a scopes-mode spec kept a role list on every operation that decided nothing at runtime.
+> 3. **Runtime**, from `0.14.0`: under `authorization.mode: scopes` a generated C# controller carries `[ScopesRequired("<scope>", …)]` instead of `[RoleRequired(…)]`. Under the default `roles` mode `x-scopes` changes no generated code. From generator `0.15.0`, `scopes` without `shadow` also makes `x-scopes` the key a secured operation must declare: `OPERATION_MISSING_SCOPES` (ERROR) replaces `OPERATION_MISSING_ROLES` there (§3.1), so the generator no longer requires `x-roles`. Through `0.14.0`, `OPERATION_MISSING_ROLES` fired in every mode, so a scopes-mode spec kept a role list on every operation that decided nothing at runtime.
 >
 > Through `0.13.0` only (1) existed, and `compatibility.md` §28's *"read by nothing"* was measured on `0.5.8` and `0.9.0`, before it. The kit is **stricter than the jar** on two points and that is deliberate: `specfuse-auth-scopes-shape` is an `error` and checks casing; `specfuse-auth-scopes-registry` is an `error` where `OPERATION_SCOPE_UNBOUND` is a WARNING under the default mode. See `compatibility.md` §43.
 
@@ -2459,7 +2459,7 @@ paths:
 
 **Purpose**: Declares that an operation is reachable by a **kiosk-session principal** — a shared device signed in under its own authentication scheme rather than as a person.
 
-**Scope**: Applied to OpenAPI operations. Read by the generated C# authorization runtime (`authorizationRuntime`, `Project_File.md` §11.1), from generator `0.14.0`, and validated from generator `<NEXT>` (below). `extensions --format json` does not list it; it publishes `x-entity`, `info`-level and, from `<NEXT>`, enum-level keys only.
+**Scope**: Applied to OpenAPI operations. Read by the generated C# authorization runtime (`authorizationRuntime`, `Project_File.md` §11.1), from generator `0.14.0`, and validated from generator `0.15.0` (below). `extensions --format json` does not list it; it publishes `x-entity`, `info`-level and, from `0.15.0`, enum-level keys only.
 
 **Schema**:
 ```yaml
@@ -2472,7 +2472,7 @@ x-kiosk-session: true   # boolean; absent means false
 
 **Not a role.** It narrows what a kiosk session can reach; it grants nothing. The operation still needs `x-roles` (and `x-scopes`) that admit the kiosk principal's role. A kiosk-status check (a deactivated device) belongs in a host-implemented `IPrincipalPolicy`, which the generated runtime evaluates before any role logic.
 
-**Validation** (generator `<NEXT>`, `clabonte/generator#782`). Two ERRORs, both measured on a `hello-orders` copy; neither changes a generated byte.
+**Validation** (generator `0.15.0`, `clabonte/generator#782`). Two ERRORs, both measured on a `hello-orders` copy; neither changes a generated byte.
 
 | Code | Fires when | Seen by |
 |---|---|---|
@@ -2597,9 +2597,9 @@ x-default: active      # must match `default`
 enum: [active, inactive, suspended]
 ```
 
-**A required enum property needs one.** An entity with a required enum property and no default has no defined state at creation, which is an error (`REQUIRED_ENUM_MISSING_DEFAULT`). Either give the enum a default as above, or make the property required in the `New{Entity}` schema so the client must supply it. Suppress deliberately with `x-skip-default-validation: true` on the property. That marker is also the only exit for a value copied from a related row at creation. From generator `<NEXT>`, declare where the value comes from with `x-copied-from` (§1.10) as well — measured, `x-copied-from` alone does not satisfy `REQUIRED_ENUM_MISSING_DEFAULT`. See `compatibility.md` §40.
+**A required enum property needs one.** An entity with a required enum property and no default has no defined state at creation, which is an error (`REQUIRED_ENUM_MISSING_DEFAULT`). Either give the enum a default as above, or make the property required in the `New{Entity}` schema so the client must supply it. Suppress deliberately with `x-skip-default-validation: true` on the property. That marker is also the only exit for a value copied from a related row at creation. From generator `0.15.0`, declare where the value comes from with `x-copied-from` (§1.10) as well — measured, `x-copied-from` alone does not satisfy `REQUIRED_ENUM_MISSING_DEFAULT`. See `compatibility.md` §40.
 
-**Where it goes.** On the **enum schema**, not beside the `$ref` that points at it — OpenAPI 3.0 ignores keywords declared as siblings of `$ref`, so a default written next to the reference is silently dropped. **Nothing reports it, so check it by eye:** move the `default` to the enum schema and add a matching `x-default` there. Earlier versions of this section named `ENUM_PROPERTY_LEVEL_DEFAULT_IGNORED` (WARNING) as the check. It never fired on a spec file, because `validate` resolves every `$ref` before the rule runs, and generator `<NEXT>` removes it. A suppression keyed on the code is inert. If the two keywords on the enum schema are present but disagree, that is `ENUM_DEFAULT_MISMATCH`.
+**Where it goes.** On the **enum schema**, not beside the `$ref` that points at it — OpenAPI 3.0 ignores keywords declared as siblings of `$ref`, so a default written next to the reference is silently dropped. **Nothing reports it, so check it by eye:** move the `default` to the enum schema and add a matching `x-default` there. Earlier versions of this section named `ENUM_PROPERTY_LEVEL_DEFAULT_IGNORED` (WARNING) as the check. It never fired on a spec file, because `validate` resolves every `$ref` before the rule runs, and generator `0.15.0` removes it. A suppression keyed on the code is inert. If the two keywords on the enum schema are present but disagree, that is `ENUM_DEFAULT_MISMATCH`.
 
 Outside enum schemas, prefer the standard `default` keyword on its own. Use `x-default` alone for cases the standard keyword does not cover — e.g. a value the generator should use for test data without declaring it as a schema-level default.
 
@@ -2804,7 +2804,7 @@ post:
 
 **The first label also decides the response type of a child create.** When a write's request body is an `x-entity`'s `New*`, its **first** `x-emits` label names that body entity, and the URL's aggregate is a different entity, the generator treats the operation as acting on the body entity. Its domain service returns the child, and every generated surface — controller, mapper, every client — returns the child too, whatever the spec's 2xx says. `hello-orders`' `addOrderLine` is that shape: `POST /orders/{orderId}/lines`, body `NewOrderLine`, first label `OrderLine.Created`, `201` → `OrderLine`.
 
-From generator `<NEXT>`, a 2xx that declares the **URL aggregate** instead is `OPERATION_RESPONSE_TYPE_OVERRIDDEN` (ERROR), on `validate <spec>`, `validate <project.json>` and `generate`. Measured on a `hello-orders` copy with `addOrderLine`'s `201` changed to `Order`: `0.14.0` validates it clean; the `<NEXT>` candidate refuses it, at `validate` and at `generate` (*"declares its 201 response as 'Order', but every generated surface returns 'OrderLine'"*). With the first label changed to `Order.Updated`, the same `201: Order` is not reported, because the operation is no longer re-pointed. **Fix: declare the emitted type as the response schema.** Generated output does not change; only the spec stops contradicting it. A re-pointed operation whose 2xx declares no schema is not reported. `API_Handbook.md` §1.8 states the same rule from the endpoint side.
+From generator `0.15.0`, a 2xx that declares the **URL aggregate** instead is `OPERATION_RESPONSE_TYPE_OVERRIDDEN` (ERROR), on `validate <spec>`, `validate <project.json>` and `generate`. Measured on a `hello-orders` copy with `addOrderLine`'s `201` changed to `Order`: `0.14.0` validates it clean; the `0.15.0` candidate refuses it, at `validate` and at `generate` (*"declares its 201 response as 'Order', but every generated surface returns 'OrderLine'"*). With the first label changed to `Order.Updated`, the same `201: Order` is not reported, because the operation is no longer re-pointed. **Fix: declare the emitted type as the response schema.** Generated output does not change; only the spec stops contradicting it. A re-pointed operation whose 2xx declares no schema is not reported. `API_Handbook.md` §1.8 states the same rule from the endpoint side.
 
 **Cross-spec validation**:
 - The structure validator checks that every `x-emits.event` has a matching AsyncAPI message with the same `x-label`
@@ -4291,7 +4291,7 @@ x-ui:
 
 ## 14. Pillar Topology Extensions
 
-> **Availability.** The registry shipped in generator `0.6.0` as `info.x-services`, with `holds` and `Read{Entity}`. Generator `0.14.0` renamed it `info.x-pillars`, outright and with no alias (authoring#136); the entry shape, `domains` and `holds`, is unchanged. `extensions --format json` has published the `info`-level surface (`x-domains`, `x-pillars`, `x-roles`) since `0.11.0` (as `x-services` before `0.14.0`). Generator `<NEXT>` adds `x-references: { entity, resolve: remote }`, a cross-pillar reference with no replica (§14.11). Nothing here is retroactive: a spec that declares none of it is unaffected in every generator version. See `compatibility.md` §24 and §41.
+> **Availability.** The registry shipped in generator `0.6.0` as `info.x-services`, with `holds` and `Read{Entity}`. Generator `0.14.0` renamed it `info.x-pillars`, outright and with no alias (authoring#136); the entry shape, `domains` and `holds`, is unchanged. `extensions --format json` has published the `info`-level surface (`x-domains`, `x-pillars`, `x-roles`) since `0.11.0` (as `x-services` before `0.14.0`). Generator `0.15.0` adds `x-references: { entity, resolve: remote }`, a cross-pillar reference with no replica (§14.11). Nothing here is retroactive: a spec that declares none of it is unaffected in every generator version. See `compatibility.md` §24 and §41.
 
 > **Renamed from `info.x-services`.** A leftover `info.x-services` is never read. It is refused by name — `PILLAR_REGISTRY_LEGACY_KEY` (ERROR) in the generator, `specfuse-pillars-legacy-key` in the kit — whether or not `info.x-pillars` is also present, so a half-finished rename cannot pass for a finished one. Every `SERVICE_*` finding id is now `PILLAR_*` at the same severity, the kit's `specfuse-services-*` rules are now `specfuse-pillars-*`, and `groups[].service` is now `groups[].pillar` (`Project_File.md` §8.13.2). Migrating is a key rename: `x-services:` becomes `x-pillars:`, and any CI filter, suppression list or Spectral baseline keyed on an old id is re-keyed.
 
@@ -4447,7 +4447,7 @@ A replica is fed by the owner's events, so declaring one puts requirements on th
 
 `project.json` gains `groups[].pillar`, which binds a group to a pillar name in `info.x-pillars`; the pillar's owned domains expand into the ordinary include-filter that `groups[].domains` writes by hand. `pillar` and `domains` are **mutually exclusive**. See `Project_File.md` §8.13.2.
 
-Only a pillar-bound group applies holds (§14.3). At generator `<NEXT>`, a cross-pillar `belongsTo` or `x-references` with a hold, or a `resolve: remote` reference with none, generates in both pillars' groups. A cross-pillar reverse `hasMany`/`hasOne` and a child route nested under another pillar's parent still fail. See §14.10.
+Only a pillar-bound group applies holds (§14.3). At generator `0.15.0`, a cross-pillar `belongsTo` or `x-references` with a hold, or a `resolve: remote` reference with none, generates in both pillars' groups. A cross-pillar reverse `hasMany`/`hasOne` and a child route nested under another pillar's parent still fail. See §14.10.
 
 ### 14.7 One bundle or many — the choice this vocabulary does *not* make for you
 
@@ -4473,7 +4473,7 @@ Adoption is opt-in and the checks are gated on a declaration, so there is no for
 5. **Re-run validation and use its output as the work list.** Do not plan from a count someone measured against an older bundle — the ranking moves.
 6. **Validate the project file, then generate every pillar.** `validate` on a bundled spec runs the pillar rules in §14.9. Some failures only appear when a group's context is built for one pillar: `validate <project>.json` builds it, while spec-level `validate` and the Spectral layers do not. A spec can be green at the spec level and still fail to generate for every pillar. Give the project file one group per pillar, each with `groups[].pillar`, and validate that file.
 
-   Even that is not the whole bar. At generator `<NEXT>`, a child-create operation nested under a held parent's path still passes project-level `validate` and fails `generate`, in both pillars' groups (§14.10). Run `generate` for each pillar-bound group before calling the topology done. §14.10 lists the shapes that fail at generator `<NEXT>`.
+   Even that is not the whole bar. At generator `0.15.0`, a child-create operation nested under a held parent's path still passes project-level `validate` and fails `generate`, in both pillars' groups (§14.10). Run `generate` for each pillar-bound group before calling the topology done. §14.10 lists the shapes that fail at generator `0.15.0`.
 
 ### 14.9 Kit Spectral rules and their generator counterparts
 
@@ -4494,15 +4494,15 @@ The kit lints this vocabulary in the editor; the generator validates it at gener
 
 **Generator-only, with no kit rule** — each needs the AsyncAPI surface, the OpenAPI surface, or both at once, which no single Spectral run has:
 
-`PILLAR_REGISTRY_MISSING` (warn) · `PILLAR_DOMAIN_UNOWNED` (warn) · `PILLAR_HOLDS_OWNED_ENTITY` (warn) · `PILLAR_CROSS_BOUNDARY_REFERENCE` · `PILLAR_BOUNDARY_OWNER_UNKNOWN` (warn) · `PILLAR_REMOTE_REFERENCE_ALSO_HELD` (warn, `<NEXT>`) · `PILLAR_REMOTE_REFERENCE_SAME_PILLAR` (warn, `<NEXT>`) · `READ_MODEL_MISSING_TENANT_KEY` · `READ_MODEL_NOT_HYDRATABLE` · `READ_MODEL_SNAPSHOT_MISSING_KEY` · `READ_MODEL_NO_SNAPSHOT` (warn) · `READ_MODEL_NO_CREATE_EVENT` · `READ_MODEL_NO_UPDATE_EVENT` · `READ_MODEL_NO_REMOVAL_EVENT` · `READ_MODEL_EVENT_PAYLOAD_NOT_SNAPSHOT` · `READ_MODEL_SNAPSHOT_VERSION_DRIFT` (ERROR when the read model's field survives only in a deprecated snapshot version; warn when the canonical snapshot still carries it) · `READ_MODEL_NO_ORDERING_KEY` (warn) · `READ_MODEL_DUPLICATE_CONSUMER`
+`PILLAR_REGISTRY_MISSING` (warn) · `PILLAR_DOMAIN_UNOWNED` (warn) · `PILLAR_HOLDS_OWNED_ENTITY` (warn) · `PILLAR_CROSS_BOUNDARY_REFERENCE` · `PILLAR_BOUNDARY_OWNER_UNKNOWN` (warn) · `PILLAR_REMOTE_REFERENCE_ALSO_HELD` (warn, `0.15.0`) · `PILLAR_REMOTE_REFERENCE_SAME_PILLAR` (warn, `0.15.0`) · `READ_MODEL_MISSING_TENANT_KEY` · `READ_MODEL_NOT_HYDRATABLE` · `READ_MODEL_SNAPSHOT_MISSING_KEY` · `READ_MODEL_NO_SNAPSHOT` (warn) · `READ_MODEL_NO_CREATE_EVENT` · `READ_MODEL_NO_UPDATE_EVENT` · `READ_MODEL_NO_REMOVAL_EVENT` · `READ_MODEL_EVENT_PAYLOAD_NOT_SNAPSHOT` · `READ_MODEL_SNAPSHOT_VERSION_DRIFT` (ERROR when the read model's field survives only in a deprecated snapshot version; warn when the canonical snapshot still carries it) · `READ_MODEL_NO_ORDERING_KEY` (warn) · `READ_MODEL_DUPLICATE_CONSUMER`
 
-**`PILLAR_CROSS_BOUNDARY_REFERENCE` is the one finding that can turn a green `validate` red.** It reports every reference whose target is owned by a different pillar and is not covered by a `Read{Entity}` + `holds` pair. It fires **only** on a spec that declares `info.x-pillars`, so it cannot affect a project that has not adopted the vocabulary — but once you do adopt, it is an ERROR, not a warning. It is satisfiable by authoring the pairs, by declaring the reference `x-references: { entity: <Target>, resolve: remote }` (generator `<NEXT>`, §14.11), or by declaring it opaque with `x-references: none` (§1.7). The census accepts the first two and skips the third. Since generator `<NEXT>` it also reports a cross-pillar `hasMany`/`hasOne` **even when the target is held**: the child's `belongsTo` is the crossing, and the reverse edge must go (§14.10).
+**`PILLAR_CROSS_BOUNDARY_REFERENCE` is the one finding that can turn a green `validate` red.** It reports every reference whose target is owned by a different pillar and is not covered by a `Read{Entity}` + `holds` pair. It fires **only** on a spec that declares `info.x-pillars`, so it cannot affect a project that has not adopted the vocabulary — but once you do adopt, it is an ERROR, not a warning. It is satisfiable by authoring the pairs, by declaring the reference `x-references: { entity: <Target>, resolve: remote }` (generator `0.15.0`, §14.11), or by declaring it opaque with `x-references: none` (§1.7). The census accepts the first two and skips the third. Since generator `0.15.0` it also reports a cross-pillar `hasMany`/`hasOne` **even when the target is held**: the child's `belongsTo` is the crossing, and the reverse edge must go (§14.10).
 
-**Passing this census does not mean every pillar generates.** At generator `<NEXT>` the census and pillar-bound generation agree on every edge kind measured in §14.10. A child route nested under another pillar's parent still passes the census and fails `generate`. See §14.10.
+**Passing this census does not mean every pillar generates.** At generator `0.15.0` the census and pillar-bound generation agree on every edge kind measured in §14.10. A child route nested under another pillar's parent still passes the census and fails `generate`. See §14.10.
 
-### 14.10 Cross-pillar edges at generator `<NEXT>`: what generates
+### 14.10 Cross-pillar edges at generator `0.15.0`: what generates
 
-Everything below was measured at generator `<NEXT>`, on a copy of `examples/hello-orders` split into two pillars:
+Everything below was measured at generator `0.15.0`, on a copy of `examples/hello-orders` split into two pillars:
 
 - `core` owns `tenant` and `customer`;
 - `sales` owns `order`;
@@ -4530,10 +4530,10 @@ What follows from the table:
 - **Replacing a `belongsTo` still needs the retype.** An `entity` with no `belongsTo` is `ENTITY_ORPHAN`, whatever its `x-references` say. Measured with `resolve: remote` in place of the `belongsTo` above: the child as an `entity` failed both groups with `ENTITY_ORPHAN`, and as an `aggregate` it generated both.
 - **Do not nest a child's routes under a parent owned by another pillar.** With `POST /customers/{customerId}/orders` and `belongsTo` in place, the project-level `validate` passed and `generate` failed in **both** groups: "Create operation 'CreateOrder' is rooted under aggregate 'Customer' which does not own 'Order'". Neither group builds the cross-pillar edge as ownership: the holder sees a replica, the owner sees no inverse. With `resolve: remote` instead of `belongsTo`, the spec-level `validate` already fails, with `OPERATION_PARENT_NOT_OWNER` and `OPERATION_NESTED_LIST_NO_RELATIONSHIP`. Put the child's create and list operations at the child's own path, with the parent id in the body or as a query filter.
 - **The tenancy root has two working forms.** `belongsTo` to the tenant with a hold generates on both sides (second row), and the child carries the `I{Tenant}Scoped` marker. A `resolve: remote` reference to the tenant carries the marker with no `belongsTo` and no hold (§14.11). Measured with a `tenancy` block: under `belongsTo` and under `resolve: remote`, `Order` implemented the tenant marker. Under `x-references: Tenant` and under `x-references: none`, it did not. The generated `Order` events carried the marker in all four cases.
-- **The C# Domain no longer maps `Read{Entity}`** (`clabonte/generator#2392`). At `<NEXT>` the generated C# maps through Mapperly, and no group emits an `AutoMapperProfile.g.cs`. In the measured groups, no generated file names a `Read{Entity}` except the replica's own entity and configuration and the holder's entity whose FK binds to it. Dart and TypeScript `dto` groups no longer emit a `Read{Entity}` client type. Checked with `dotnet build` on an unbound C# group of the held spec, with the domain artifacts it needs to compile (`domainValidation`, `domainExceptions`, `serviceInterface`, `service`, `repositoryInterface`, `event`, `eventRuntime`, `tenancyMarker`, `snapshot`, and a `tenancy` block). At `<NEXT>` it built with 0 errors. At `0.14.0` it failed with `CS0246` on `ReadTenant`, `ReadOrder` and `ReadCustomer` in `AutoMapperProfile.g.cs`.
-- **A pillar-bound C# group with `snapshot` does not compile, at `<NEXT>` or `0.14.0`.** `snapshot` emits every `{Entity}Snapshot` under the AsyncAPI source root, not only the pillar's, and each one maps from its entity. In the holder's group, `CustomerSnapshot.g.cs` and `TenantSnapshot.g.cs` failed with `CS0246` on `Customer`, `CustomerStatus` and `Tenant`. `OrderSnapshot.g.cs` failed the same way in the owner's group. This is unrelated to replicas, and nothing in the spec avoids it.
+- **The C# Domain no longer maps `Read{Entity}`** (`clabonte/generator#2392`). At `0.15.0` the generated C# maps through Mapperly, and no group emits an `AutoMapperProfile.g.cs`. In the measured groups, no generated file names a `Read{Entity}` except the replica's own entity and configuration and the holder's entity whose FK binds to it. Dart and TypeScript `dto` groups no longer emit a `Read{Entity}` client type. Checked with `dotnet build` on an unbound C# group of the held spec, with the domain artifacts it needs to compile (`domainValidation`, `domainExceptions`, `serviceInterface`, `service`, `repositoryInterface`, `event`, `eventRuntime`, `tenancyMarker`, `snapshot`, and a `tenancy` block). At `0.15.0` it built with 0 errors. At `0.14.0` it failed with `CS0246` on `ReadTenant`, `ReadOrder` and `ReadCustomer` in `AutoMapperProfile.g.cs`.
+- **A pillar-bound C# group with `snapshot` does not compile, at `0.15.0` or `0.14.0`.** `snapshot` emits every `{Entity}Snapshot` under the AsyncAPI source root, not only the pillar's, and each one maps from its entity. In the holder's group, `CustomerSnapshot.g.cs` and `TenantSnapshot.g.cs` failed with `CS0246` on `Customer`, `CustomerStatus` and `Tenant`. `OrderSnapshot.g.cs` failed the same way in the owner's group. This is unrelated to replicas, and nothing in the spec avoids it.
 
-These verdicts are tied to `<NEXT>`; re-measure them at every pin bump (`compatibility.md` §44).
+These verdicts are tied to `0.15.0`; re-measure them at every pin bump (`compatibility.md` §44).
 
 ### 14.11 A pillar that reads without keeping a copy
 
@@ -4541,7 +4541,7 @@ These verdicts are tied to `<NEXT>`; re-measure them at every pin bump (`compati
 
 **Do not declare a hold for that.** A hold brings the replica table, the FK rebinding (§14.3), the hydration artifacts and the event-feed rules in §14.5. `READ_MODEL_NO_ORDERING_KEY` and its siblings would then describe hazards of a table that does not exist.
 
-**Declare the reference `resolve: remote`** (generator `<NEXT>`, `clabonte/generator#2397`):
+**Declare the reference `resolve: remote`** (generator `0.15.0`, `clabonte/generator#2397`):
 
 ```yaml
 customerId:
@@ -4553,7 +4553,7 @@ customerId:
   x-references: { entity: Customer, resolve: remote }
 ```
 
-Measured at `<NEXT>` on the two-pillar `hello-orders` split in §14.10, with `Order.customerId` and `Order.tenantId` both `resolve: remote` and no `holds`:
+Measured at `0.15.0` on the two-pillar `hello-orders` split in §14.10, with `Order.customerId` and `Order.tenantId` both `resolve: remote` and no `holds`:
 
 - **Both groups generate.** `PILLAR_CROSS_BOUNDARY_REFERENCE` accepts `resolve: remote` with no `holds` and no `Read{Entity}`. The holder's `Order` has `public Guid CustomerId { get; set; } = Guid.Empty;` and no navigation, FK configuration or replica.
 - **The relationship stays visible.** The `entityDiagram` Markdown artifact lists the column as ``→ `Customer` (remote)`` and draws a dashed edge to `Customer`. `x-references: none` records no target, so it cannot do this.
