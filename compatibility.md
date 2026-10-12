@@ -1349,9 +1349,27 @@ Of follow-up 23's four keys, `cascadeDelete` and `children` (§30) and now `requ
 6. **`#2570`, reshaped:** `customer.*` is not a wildcard grant by design (in the spec it is `ROLE_GRANT_INVALID`; grants take `<domain>[.<Entity>].<operation>` or `*`). The real gap is that `testGrants` grants are never shape-checked: an invalid grant silently moves its role into the forbidden-role tests, so the generated suite expects 403 for a role the author meant to allow.
 7. **`#2564`:** every generated C# namespace takes the project `name`, not `basePackage`, so a hyphenated name such as `hello-orders` gives namespaces that do not compile (138 errors on `examples/hello-orders`). Same on `0.14.0`.
 
-Lower priority, noted: `OPERATION_INDIVIDUAL_FILTER_PARAMS` never matches the kit's `{Resource}List` (`data` of `Basic{Resource}`) shape; the concurrency census does not count the new `#2481` `DELETE` gate ("0 get a generated gate"); generated functional-test URLs on a `hello-orders` copy showed a doubled `/v1/v1/` prefix (pre-existing). The last is the example's own doing, not the generator's: its `servers.url` ends in `/v1` and its paths also start with `/v1/`.
+Lower priority, noted: `OPERATION_INDIVIDUAL_FILTER_PARAMS` never matches the kit's `{Resource}List` (`data` of `Basic{Resource}`) shape; the concurrency census does not count the new `#2481` `DELETE` gate ("0 get a generated gate"); generated functional-test URLs on a `hello-orders` copy showed a doubled `/v1/v1/` prefix (pre-existing). The last was the example's own doing, not the generator's; fixed in §50.
 
 ---
+
+### 50. A server URL carries no version segment: the example's `/v1/v1/` routes
+
+**Found at the `0.15.0` pin bump (§49).** `examples/hello-orders` declared `servers: [{url: https://api.helloorders.example/v1}]` and paths starting `/v1/`, and the `project-init` scaffold shipped the same server URL. Measured on generator `0.15.0` with a C# `apiController` + `apiFunctionalTest` group and Dart / TypeScript client groups:
+
+| | `servers[0].url` ends in `/v1` | host only |
+|---|---|---|
+| C# controller `[Route]` | `/v1/v1/customers/{customerId}` | `/v1/customers/{customerId}` |
+| C# functional test URL | `/v1/v1/customers/{customerId}` | `/v1/customers/{customerId}` |
+| Dart / TypeScript client path | `/v1/customers/{customerId}` | `/v1/customers/{customerId}` |
+
+The C# server prefixes every route with the path part of the server URL; the clients use the path alone. With the version in both, the generated server listened on `/v1/v1/…` while the generated clients called `/v1/…`. The kit versions in the path (`API_Handbook.md` §4), so the server URL is the side that changes.
+
+- `examples/hello-orders` and the scaffold template now declare a host-only server URL. `validate` is unchanged; the example's C# routes lose the doubled prefix.
+- `API_Handbook.md` §4 says where the version goes and why.
+- **New Spectral rule `specfuse-server-url-no-version` (warn)** on any `servers[].url` (document, path or operation level) ending in a `/v{n}` segment. `fixtures/server-url-version.yaml` asserts two firings and three silences (a host-only URL, a non-version base path such as `/api`, and a host containing `v1`).
+
+**Spec-author action:** if a spec's server URL ends in `/v{n}` and its paths also start with `/v{n}/`, drop the segment from the server URL. If the paths do *not* carry the version, move it into the paths rather than suppressing the rule: the generated client paths never include the server URL's path.
 
 ## Outstanding kit-side work
 

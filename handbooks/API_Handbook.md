@@ -1294,6 +1294,7 @@ Through generator `0.14.0`, the generated C# `UnprocessableEntityException` desc
 ## 4) Versioning & deprecation
 
 - URL versioning: `/v{major}`; only current major served.
+- The version goes in each path (`/v1/customers`), never in `servers[].url`. The generated C# controllers and functional tests prefix every route with the path part of the server URL, while the generated Dart and TypeScript clients use the path alone, so `/v1` in both gives the server `/v1/v1/customers` and the clients `/v1/customers`. Declare the host, plus any non-version base path, as the server URL (`specfuse-server-url-no-version`, WARNING).
 - Deprecation headers during 180-day window: `Deprecation`, `Sunset`, `Link`(rel="deprecation").
 - After sunset: **410 Gone** if it existed in this major; **404 Not Found** if it never existed.
 - Discovery endpoints: `GET /versions`, `GET /changelogs` (path segments follow camelCase rule; here, lowercase is acceptable).
