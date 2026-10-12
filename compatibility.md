@@ -1258,6 +1258,17 @@ None of these is settled enough to document ahead of the pin (§24 precedent).
 
 **At the next pin bump:** re-run item 2 on the new jar. If the owner's group generates with `belongsTo`, revise §14.10 together with §44.
 
+### 48. `x-entity.requiresPagination` is retired: the last open key of follow-up 23
+
+**Status:** kit side **done**. The key has been read by nothing at every pin since `0.5.8` (§23, follow-up 23). Measured on the `0.14.0` jar: declaring it gives `ENTITY_SHAPE_UNKNOWN_PROPERTY` (WARNING), "*which the generator does not read … no effect on generated output*". The generator's unreleased CHANGELOG now formally retires it (generator `#1223`): same code, severity and location, and a suggested fix that says to remove it. The kit had kept teaching it as meaningful.
+
+- `API_Handbook.md` §9 and `Vendor_Extensions.md` §1.1 drop it from their examples, and mark it retired. Pagination follows the list operation's 2xx response: a `{Resource}List` envelope paginates, a bare array does not.
+- `specfuse-xentity-shape` still **accepts** it, on the §30 phantom-key precedent: rejecting it would fail lint on specs that generate exactly as they do today. Its `default: true` is gone.
+- New `specfuse-xentity-requires-pagination-retired` (WARN) carries the notice. The phantom-key CI step in `example-regen.yml` asserts that it fires on `CascadePhantom`, that the shape guard still accepts the key, and that it is silent on `CascadeClean`.
+- `check-extension-vocabulary.py --require-jar` output is unchanged: it still lists `requiresPagination` among the keys the ruleset accepts and the generator does not read, which is now the intended state.
+
+Of follow-up 23's four keys, `cascadeDelete` and `children` (§30) and now `requiresPagination` carry a retirement warning. `mutability` stays kit-only by declaration.
+
 ---
 
 ## Outstanding kit-side work

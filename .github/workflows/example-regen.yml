@@ -993,7 +993,8 @@ jobs:
           fail=0
 
           # Fires on the entity that declares them.
-          for rule in specfuse-xentity-cascade-phantom specfuse-xentity-children-phantom; do
+          for rule in specfuse-xentity-cascade-phantom specfuse-xentity-children-phantom \
+                      specfuse-xentity-requires-pagination-retired; do
             if ! grep "$rule" "$REPORT" | grep -q "CascadePhantom"; then
               echo "::error::${rule} did not fire on CascadePhantom." >&2
               fail=1
@@ -1009,7 +1010,7 @@ jobs:
           fi
 
           # Silent on an entity that declares neither.
-          if grep -E "specfuse-xentity-(cascade|children)-phantom" "$REPORT" | grep -q "CascadeClean"; then
+          if grep -E "specfuse-xentity-((cascade|children)-phantom|requires-pagination-retired)" "$REPORT" | grep -q "CascadeClean"; then
             echo "::error::A phantom-key rule fired on CascadeClean, which declares neither key." >&2
             fail=1
           fi

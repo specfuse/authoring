@@ -1352,7 +1352,6 @@ All write operations (POST/PUT/PATCH/DELETE) must support the `validateOnly` que
   "x-entity": {
     "domain": "order",
     "type": "aggregate",
-    "requiresPagination": true,
     "hasMany": ["OrderLine","Payment"],
     "hasOne": ["ShippingAddress"],
     "belongsTo": ["Tenant","Customer"],
@@ -1369,7 +1368,7 @@ All write operations (POST/PUT/PATCH/DELETE) must support the `validateOnly` que
 
 **Behavior:**
 - `domain` (string, required, leads the block): the kebab-case owning domain. MUST be a key in the project's domain registry `info.x-domains` (§0.1) — the closed universe of domains. An unregistered value is an ERROR (`ENTITY_DOMAIN_UNREGISTERED`). Matches the `domains/{domain}/` folder and the shared `x-domain` vocabulary in AsyncAPI/Arazzo. See `Vendor_Extensions.md §1.1`.
-- `requiresPagination` (boolean, default: true): indicates if this resource can grow large and requires pagination when returned in collections. When `true`, endpoints returning collections of this resource should use `{Resource}List` wrapper and support `page`, `pageSize`, `sort` parameters. When `false`, endpoints can return simple arrays.
+- `requiresPagination` is **retired and read by nothing**; remove it. Whether an entity's collection is paginated is decided by its list operation's declared 2xx response: a `{Resource}List` envelope (with `page`, `pageSize` and `sort`) paginates, a bare array does not. The generator reports the key as `ENTITY_SHAPE_UNKNOWN_PROPERTY` (WARNING) at every pin since `0.5.8`, and the kit's `specfuse-xentity-requires-pagination-retired` warns on it too.
 - Assistant may infer cardinality from `hasOne` / `hasMany` / `belongsTo`, but asks if in doubt.
 - One-sided declarations are allowed; assistants warn on likely mismatches.
 - `filterableProperties` / `searchableProperties` must reference existing **top-level** fields (no nested paths, except for BilingualText subfields like `title.en`).
