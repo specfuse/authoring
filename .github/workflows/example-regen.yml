@@ -373,6 +373,9 @@ jobs:
             fi
           }
           check "components.schemas.BadReferenceValue"  "specfuse-x-references-shape"
+          check "specfuse-x-references-shape.*components.schemas.BadRemoteResolve" "specfuse-x-references-shape"
+          check "specfuse-x-references-shape.*components.schemas.BadRemoteEntity"  "specfuse-x-references-shape"
+          check "specfuse-x-references-shape.*components.schemas.BadRemoteKey"     "specfuse-x-references-shape"
           check "components.schemas.UnjustifiedOpaque.properties.token" "specfuse-opaque-reference-justified"
           check "components.schemas.BadFkForValue"      "specfuse-x-fk-for-shape"
           check "components.schemas.ConflictingMarkers" "specfuse-fk-marker-exclusive"
