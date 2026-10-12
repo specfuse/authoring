@@ -451,8 +451,13 @@ strictly larger.
 
 **The `reason` vocabulary — a closed set as of generator 0.5.7.** It was a
 recommendation until then and is now enforced: anything outside the set is
-`INVALID_EXTENSION_VALUE` at parse time, and the kit's `specfuse-xentity-shape`
-guard rejects it at lint. The point of closing it is that the declarations are
+refused at parse time, and the kit's `specfuse-xentity-shape` guard rejects it
+at lint. The parse-time code is `ENTITY_INVALID_CONFIG` through generator
+`0.14.0` (measured; this paragraph used to name the later code) and
+`INVALID_EXTENSION_VALUE` from `<NEXT>`. The same move covers an unknown
+`concurrency` mode, `delete` mode and `archiveVisibility`; an unknown `type` and
+the retired `encryptedProperties` keep `ENTITY_INVALID_CONFIG` (all measured).
+Both codes are ERROR. The point of closing it is that the declarations are
 auditable in aggregate — *"find every `none` whose claim is not true"* — which
 80 near-identical sentences cannot support:
 
@@ -811,7 +816,13 @@ from one key to the other.
 
 Malformed shapes are refused at parse time, before those rules run: a constraint
 with no `properties`, an empty `properties` list, a `properties` that is not a
-list, and a non-string `name` are each an `ENTITY_INVALID_CONFIG`.
+list, and a non-string `name` are each an `ENTITY_INVALID_CONFIG` through
+`0.14.0`, and an `INVALID_EXTENSION_VALUE` from generator `<NEXT>` (both
+ERROR; measured on all four). A CI filter matching the old code stops seeing
+them. The new finding's location is `x-entity.uniqueBy` (or
+`x-entity.uniqueBy.name`) **without the schema name**, and the message does not
+name it either, so in a multi-entity spec find the entity by the offending
+value.
 `specfuse-xentity-shape` catches the same four at lint, and additionally rejects
 a repeated member within one tuple and an unknown member on a constraint — both
 of which the jar takes silently. The key is new in `0.8.0`, so no spec predates
@@ -1057,17 +1068,34 @@ User:
       type: string
       format: email
       x-classification: [pii]
+      x-protection: { atRest: none, rationale: Read in plaintext to send mail. }
     passwordHash:
       type: string
       x-internal-only: true        # stored + queried server-side; never in any DTO
+      x-classification: [credential]
+      x-protection: { atRest: hashed }   # required on a *Hash / *Digest name from generator <NEXT>
     password:
       type: string
       writeOnly: true              # client SETS on New*/Update*; never returned
 ```
 
+`x-internal-only` says where a value goes, not how it is protected. From generator `<NEXT>` a `*Hash` / `*Digest` string property on an entity that declares no `x-protection` is an ERROR (`PROTECTION_DIGEST_UNDECLARED`, §1.5), and `x-internal-only` alone does not satisfy it. Measured: a `passwordHash` carrying `x-internal-only` alone is clean on `0.14.0` and an ERROR on `<NEXT>`.
+
 ### 1.4 x-enum-case
 
-**Purpose**: Overrides the default camelCase formatting applied by the code generator to enum values when the standard convention doesn't make sense (e.g., industry-standard codes that must be preserved as-is).
+**Purpose**: Sets how the code generator cases one enum's serialized wire values, overriding the project-wide `namingOverrides.enumValue` (`Project_File.md` §3.1) for that enum. The typical use is industry-standard codes that must be preserved as-is.
+
+> **⚠ Corrected (generator `<NEXT>` pin).** This section used to say the generator
+> applies camelCase to enum values when `x-enum-case` is absent, and that a
+> domain enum should be written in camelCase so the generator's "default
+> transformation" applies. **There is no such transformation.** With no
+> `x-enum-case` and no `namingOverrides.enumValue`, the C#, Python and Dart
+> profiles `Preserve` the value (`Project_File.md` §3.2), and so does
+> TypeScript. Measured on `0.14.0` and the `<NEXT>` candidate: an enum value
+> written `placedOrder` is emitted as `placedOrder` in all four. Write domain
+> enum values in camelCase because that *is* the wire value (and
+> `specfuse-enum-camel` holds you to it), not because the generator
+> converts them.
 
 **Scope**: Applied to enum schemas only (schemas with `type: string` and `enum` values)
 
@@ -1080,10 +1108,12 @@ x-enum-case: string  # One of: preserve | PascalCase | camelCase | snake_case | 
 
 > **Naming note:** the generator also accepts the camelCase alias `x-enumCase`. The kit's canonical form is `x-enum-case`.
 
+> **Listed by `extensions` from generator `<NEXT>`.** `extensions --format json` gains an `enum` section naming the two enum-level keys, `x-enum-case` (*"member naming case; overrides namingOverrides.enumValue"*) and `x-extensible` (§1.4.1). It lists the kebab-case spelling, which is the kit's. Through `0.14.0` neither key appeared in the output. The kit's vocabulary check reads the section, but no kit guard on enum schemas is closed, so it compares nothing there.
+
 **Allowed Values**:
 - `preserve` — emit enum values exactly as written in the spec, no transformation
 - `PascalCase` — transform values to PascalCase
-- `camelCase` — transform values to camelCase (this is the default when `x-enum-case` is absent)
+- `camelCase` — transform values to camelCase
 - `snake_case` — transform values to snake_case
 - `kebab-case` — transform values to kebab-case
 - `SCREAMING_SNAKE_CASE` — transform values to SCREAMING_SNAKE_CASE
@@ -1098,7 +1128,9 @@ Use `x-enum-case: preserve` **only** when the enum represents externally-defined
 - IANA timezone identifiers (e.g., `America/New_York`)
 - Other industry-standard identifiers where casing is normative
 
-Do **not** use `x-enum-case` for regular domain enums — define values in camelCase and let the generator apply its default transformation.
+Do **not** use `x-enum-case` for regular domain enums — define values in camelCase, which the generator then preserves as written.
+
+Measured on the `<NEXT>` candidate with `x-enum-case: SCREAMING_SNAKE_CASE` on an enum of `draft` / `placedOrder`: the wire values become `DRAFT` / `PLACED_ORDER` in C# (`[EnumMember(Value = …)]`), Python, Dart (`@JsonValue`) and TypeScript, while each language keeps its own member-name convention (C# and TypeScript `PlacedOrder`, Python `PLACED_ORDER`, Dart `placedOrder`). The key re-cases what goes on the wire, so changing it on a live enum is a contract change.
 
 **Example**:
 ```yaml
@@ -1122,7 +1154,7 @@ RegionCode:
     - CA-ON
     - CA-QC
 
-# Regular domain enum — no x-enum-case needed, generator uses camelCase default
+# Regular domain enum — no x-enum-case needed, values are emitted as written
 OrderStatus:
   type: string
   enum:
@@ -1131,6 +1163,52 @@ OrderStatus:
     - fulfilled
     - cancelled
 ```
+
+### 1.4.1 x-extensible — decode an unknown value instead of throwing (generator `<NEXT>`)
+
+**Purpose**: Lets a generated client survive an enum value the server added after the client was built. A marked enum decodes a wire value it does not recognise to a generated `unknown` member instead of failing the whole payload (`clabonte/generator#1865`).
+
+**Scope**: An enum schema (`type: string` + `enum:`). **Opt-in**: an enum without the key generates byte-identical output, and that is the right default for an enum whose value set is a contract — a client that does not know a value should fail loudly.
+
+**Schema**:
+```yaml
+x-extensible: true   # boolean; absent or false means "an unknown value is an error"
+```
+
+**Example**:
+```yaml
+# A value set the server is expected to grow: an older client must keep
+# decoding the payload around it.
+ShipmentCarrier:
+  type: string
+  x-extensible: true
+  enum: [postal, courier, freight]
+```
+
+**What each language emits** — measured on the `<NEXT>` candidate with `x-extensible: true` on `hello-orders`' `OrderStatus`:
+
+| Language | Marked enum | Unmarked enum |
+|---|---|---|
+| C# | `[ExtensibleEnum]` on the enum; `EnumMemberJsonConverter<T>` returns `UNKNOWN` for an unrecognised value | `UNKNOWN = 0` exists here too, but the JSON converter throws on an unrecognised value |
+| Python | `UNKNOWN = "unknown"` plus a `_missing_` that returns `UNKNOWN` for an unrecognised **string**; a non-string still raises `ValueError` | `UNKNOWN` is a member, but there is no `_missing_`, so `OrderStatus("bogus")` raises |
+| Dart | an `unknown` member (`@JsonValue('unknown')`, in `wireNames`); `fromWire` falls back to it; every DTO field typed by the enum carries `@JsonKey(unknownEnumValue: …unknown)` | no `unknown` member |
+| TypeScript | the type widens to `X \| (string & {})`; there is **no** `unknown` constant, the runtime object is unchanged | the literal union only |
+
+**What it does not do.**
+
+- **Persistence still throws.** The C# column converters (`EnumValueConverter`, `EnumListValueConverter`) and the route/query `CustomEnumConverter<T>` are not gated by the key: a row read as `UNKNOWN` and saved back would write `"unknown"` into the column. A renamed stored value is still a data migration.
+- **`unknown` is decode-only.** The original string is not kept, and sending `unknown` back to the server is undefined. A client must not echo it.
+- **A spec member literally named `unknown` folds into the sentinel** rather than producing a second one. Test support (fixtures, builders, fakes) never seeds the sentinel.
+- **A Dart `switch` over a marked enum gains an arm, and a TypeScript `Record<X, …>` over it widens.** Marking an existing enum is a source change for every consumer that does either.
+
+**Validation** — both ERROR, measured on the `<NEXT>` candidate:
+
+| Code | Fires when |
+|---|---|
+| `EXTENSIBLE_ON_NON_ENUM` | the key is on a schema that declares no `enum:` list |
+| `EXTENSIBLE_NOT_BOOLEAN` | the value is not a YAML/JSON boolean (`"yes"`, `1`) |
+
+`x-extensible: false` is accepted and means the same as omitting the key. Generator `0.14.0` ignores the key entirely, so a spec that sets it validates there too and gets no `unknown` member. **No kit Spectral rule**: both mistakes are refused by `validate`, and an author reaches for this key deliberately, one enum at a time.
 
 ### 1.5 x-classification
 
@@ -1245,6 +1323,9 @@ Customer:
       type: string
       description: Content-address of the public avatar image; not a credential. Safe on responses despite the secret-shaped name.
       x-classification: [exposed]   # override SENSITIVE_FIELD_IN_RESPONSE — reviewed, public
+      x-protection:                 # required by rule 9, and by rule 16 for any *Hash name
+        atRest: none
+        rationale: A public content address; nothing to protect.
     avatarUrl:
       type: string
       # no classification — unclassified
@@ -1532,6 +1613,7 @@ The two sides split cleanly, and the split is the generator's own: `PiiClassific
 | 6 | A property carrying `x-classification: [exposed]` MUST carry a non-empty `description` justifying why exposure is safe. | kit — `specfuse-classification-exposed-needs-description` (error) |
 | 7 | A property the validator reads as PII MUST declare `x-classification` (see "Where it is required" above). | generator — `PII_FIELD_MISSING_CLASSIFICATION` (error); mirrored in the editor by kit `specfuse-classification-pii-required` |
 | 15 | An entity declaring `x-protection.atRest: encrypted` on one of its own properties MUST expose a `readOnly` string array `unavailableProperties`. Generator `0.13.0`; **breaks specs that validated on `0.12.0`**. Not required when the only encrypted target is a flattened value object. | generator — `UNAVAILABLE_PROPERTIES_NOT_DECLARED` (error); mirrored by kit `specfuse-xprotection-unavailable-properties-required` |
+| 16 | A `type: string` property of an `x-entity` schema whose name ends in `hash` or `digest` (case-insensitive; `api_key_hash` counts) MUST declare `x-protection`, whether or not it is classified. `atRest: hashed` is the expected answer for a stored digest (with `x-internal-only`, rule 13), `atRest: none` with a rationale for a public content digest. Presence only — any `x-protection` silences it. Out of scope: a `$ref`-typed or `allOf`-wrapped property, a non-string, and a non-entity schema. **No temporal exclusion**, unlike `SENSITIVE_FIELD_IN_RESPONSE`: a `format: date-time` property named `*Hash` fires. Generator `<NEXT>`; **opens at ERROR, so it can break a spec that validated on `0.14.0`** — `x-internal-only` or `writeOnly` alone used to be enough for such a property. | generator — `PROTECTION_DIGEST_UNDECLARED` (error); mirrored by kit `specfuse-xprotection-digest-undeclared` |
 
 Rules 5 and 6 were documented here for some time and enforced by **nothing** on either side — rule 5 even named a finding id (`CLASSIFICATION_EXPOSED_CONTRADICTION`) that exists in neither the kit nor the jar. They are kit Spectral rules now. Rule 2 warns rather than fails: a refused target generates, in plaintext, so read the warning as a protection decision that did not happen.
 
@@ -1555,6 +1637,8 @@ A secret-shaped, response-bound property **passes** the rule only if it carries 
 - `x-classification: [exposed]` — a reviewer has confirmed the field is safe to return as-is.
 
 `x-classification: [sensitive]` alone does **not** satisfy the rule: `sensitive` means *must be masked*, not *may be exposed*. Using `exposed` is an explicit, reviewed override — reach for it only when the secret-shaped name is a false positive, e.g. a public `avatarHash` content-address. Not for a `*Token`: that suffix is not in the heuristic at all, so there is nothing to override.
+
+**Two rules read a `*Hash` name, and they ask different questions.** `SENSITIVE_FIELD_IN_RESPONSE` asks whether the value may reach a response; `PROTECTION_DIGEST_UNDECLARED` (rule 16, generator `<NEXT>`) asks how it is protected at rest. Each exit above answers only the first: `writeOnly`, `x-internal-only` and `[exposed]` without an `x-protection` all fail rule 16 from `<NEXT>`. The public `avatarHash` therefore carries `[exposed]` **and** `x-protection: {atRest: none, rationale: …}`, as in the §1.5 example; a stored credential digest carries `x-internal-only` **and** `atRest: hashed`. Rule 16 also reads `*Digest`, which `SENSITIVE_FIELD_IN_RESPONSE` does not.
 
 ### 1.6 x-content
 
@@ -1823,6 +1907,69 @@ Note:
 
 - **`x-references` (§1.7)**: a scalar projection almost always expands an association FK. The FK carries the relationship; the projection carries the convenience copy.
 - **`Basic*` derivatives**: projections typically reference the lightweight shape of the target, not its full read model.
+
+---
+
+### 1.10 x-copied-from — a value copied from a related row at creation (generator `<NEXT>`)
+
+**Purpose**: Declares that a property's value is **copied once, at create time**, from a field of the row a foreign key in the create body names. The value is then the entity's own: it is not kept in step with the source afterwards. Contrast `x-expand-of` (§1.9), which is a read-time display projection and is never stored (`clabonte/generator#2348`).
+
+**Scope**: A property of a main resource (`x-entity`). It belongs on a property the client does not send, so mark it `readOnly` — the generator does not check that, but a client-supplied value would contradict the declaration.
+
+**Schema**:
+```yaml
+x-copied-from:
+  via: <property>        # a property of New{Entity} that is a declared reference
+  property: <property>   # a property of the entity that reference resolves to
+```
+
+It is an object, not two sibling keys. Generator `0.14.0` ignores it outright (measured: none of the findings below fire there), so a spec using it validates on the old pin and simply gets nothing.
+
+**Example**:
+```yaml
+Customer:
+  type: object
+  x-entity: { domain: customer, type: aggregate, concurrency: none }
+  properties:
+    id: { type: string, format: uuid }
+    preferredCurrency: { $ref: './Currency.yaml' }
+
+Order:
+  type: object
+  x-entity: { domain: order, type: aggregate, concurrency: none }
+  properties:
+    id: { type: string, format: uuid }
+    customerId: { type: string, format: uuid, x-references: Customer }
+    currency:
+      # Fixed when the order is placed; a later change to the customer's
+      # preference does not reach existing orders.
+      readOnly: true
+      allOf: [{ $ref: './Currency.yaml' }]
+      x-copied-from: { via: customerId, property: preferredCurrency }
+
+NewOrder:
+  type: object
+  required: [customerId]
+  properties:
+    customerId: { type: string, format: uuid, x-references: Customer }
+```
+
+**`via` is resolved against `New{Entity}`, not the entity.** It must name a property of the create body that is a declared reference — `x-references: <Target>`, or a `{target}Id` name that resolves to a modelled entity (measured: `NewOrder.customerId` with no `x-references` still resolves to `Customer`). An entity with no `New{Entity}` schema has nothing for `via` to name, and the declaration fails.
+
+**Validation** — measured on the `<NEXT>` candidate, all ERROR, all at `validate <spec>`:
+
+| Code | Fires when |
+|---|---|
+| `DDD_COPIED_FROM_VIA_NOT_REFERENCE` | `via` is not a property of `New{Entity}`, or is one that is not a declared reference (a plain `note: string` fails) |
+| `DDD_COPIED_FROM_UNKNOWN_PROPERTY` | `property` is not a property of the referenced entity |
+| `DDD_COPIED_FROM_TYPE_MISMATCH` | the two properties resolve to different types (compared by `$ref` / `allOf` schema name, else `type[:format]`); `Currency` against `string` fails |
+| `INVALID_EXTENSION_VALUE` | the value is not an object (`customerId.preferredCurrency` as a string), or `via` / `property` is missing or not a string |
+
+**What it generates.** Only the TypeScript repository fake (`typescriptRepositoryFake`) reads it. Its `create` copies the field from the referenced row in the shared `RepositoryFakeStores`, where it would otherwise invent a value (for an enum, its first member). If that row is absent, it throws instead of falling back. Measured on a `hello-orders` copy with a required `Order.billingFirstName` copied from `Customer.firstName` via `NewOrder.billingCustomerId`. The generated `createOrder` reads `this.stores.customer.get(newOrder.billingCustomerId)?.firstName`, and otherwise throws *"Order: billingFirstName is x-copied-from Customer.firstName via billingCustomerId, but no Customer row with id … is in the shared store. Seed it first."* A test that creates through the fake must seed the source row first. The copy applies only to a property the fake has to seed: in the same run, a non-required, nullable copied property got no copy. Server code, the C# and Dart fakes and the database are unchanged, per the generator's CHANGELOG.
+
+**It does not satisfy `REQUIRED_ENUM_MISSING_DEFAULT`.** Measured: a `required` enum property declared by `$ref` with `x-copied-from` and no default still fails that rule. Keep `x-skip-default-validation: true` beside it (§4.6) — the declaration now records the source the marker used to leave to `description`.
+
+**No kit Spectral rule.** All three cross-schema checks need `New{Entity}` and the referenced entity resolved together, which is the generator's job, and the generator refuses a malformed value itself. The kit has no closed guard on property-level keys, so nothing rejects the key either.
 
 ---
 
@@ -2284,7 +2431,7 @@ paths:
 
 **Purpose**: Declares that an operation is reachable by a **kiosk-session principal** — a shared device signed in under its own authentication scheme rather than as a person.
 
-**Scope**: Applied to OpenAPI operations. Read by the generated C# authorization runtime only (`authorizationRuntime`, `Project_File.md` §11.1), from generator `0.14.0`. No validation rule reads it, and `extensions --format json` does not list it, since it publishes `x-entity` and `info`-level keys only.
+**Scope**: Applied to OpenAPI operations. Read by the generated C# authorization runtime (`authorizationRuntime`, `Project_File.md` §11.1), from generator `0.14.0`, and validated from generator `<NEXT>` (below). `extensions --format json` does not list it; it publishes `x-entity`, `info`-level and, from `<NEXT>`, enum-level keys only.
 
 **Schema**:
 ```yaml
@@ -2296,6 +2443,17 @@ x-kiosk-session: true   # boolean; absent means false
 **It is inert until the scheme is declared.** With no `authorization.kioskSession.scheme`, no principal is ever recognised as a kiosk session, and the generated policy allows every route. Measured on a `hello-orders` copy with `x-kiosk-session: true` on `getCustomer`: without the scheme `KioskSessionPolicy.IsAllowed` returns `true` unconditionally; with `scheme: KioskSession` the filter tests `AuthenticationType == "KioskSession"` and the allowlist holds exactly that operation's route.
 
 **Not a role.** It narrows what a kiosk session can reach; it grants nothing. The operation still needs `x-roles` (and `x-scopes`) that admit the kiosk principal's role. A kiosk-status check (a deactivated device) belongs in a host-implemented `IPrincipalPolicy`, which the generated runtime evaluates before any role logic.
+
+**Validation** (generator `<NEXT>`, `clabonte/generator#782`). Two ERRORs, both measured on a `hello-orders` copy; neither changes a generated byte.
+
+| Code | Fires when | Seen by |
+|---|---|---|
+| `KIOSK_SESSION_INVALID_VALUE` | the value is anything but the literal boolean `true` — `"true"`, `1`, **and `false`**. The runtime reads the flag as exactly `true`, so any other value silently leaves the operation off the allowlist. To exclude an operation, omit the key. | `validate <spec>`, `validate <project.json>`, `generate` |
+| `KIOSK_SESSION_ROLE_UNSATISFIABLE` | an operation flagged `true` whose `x-roles` does not list the kiosk principal's role, compared ignoring case — including an operation with no `x-roles` at all. The kiosk check runs before the role gate, not instead of it, so every kiosk call to that operation would be `403`. | `validate <project.json>` and `generate` only |
+
+The second rule is **armed by `authorization.kioskSession.role`** in the project file (`Project_File.md` §16), the role the kiosk principal carries. A project that declares no role gets only the value rule, and `validate <spec.yaml>` never sees the role, because it reads no project file. The role arms the rule with or without `kioskSession.scheme`. Measured with `role: customer` against operations whose `x-roles` list `Customer`: silent. Generator `0.14.0` reports neither code, and its project loader drops the unknown `role` key without complaint.
+
+**No kit Spectral rule.** The value rule is a one-line check, but the generator makes it on the spec itself, and the role rule needs the project file, which lint never reads.
 
 ---
 
@@ -2411,7 +2569,7 @@ x-default: active      # must match `default`
 enum: [active, inactive, suspended]
 ```
 
-**A required enum property needs one.** An entity with a required enum property and no default has no defined state at creation, which is an error (`REQUIRED_ENUM_MISSING_DEFAULT`). Either give the enum a default as above, or make the property required in the `New{Entity}` schema so the client must supply it. Suppress deliberately with `x-skip-default-validation: true` on the property. That marker is also the only option today for a value copied from a related row at creation; see `compatibility.md` §40.
+**A required enum property needs one.** An entity with a required enum property and no default has no defined state at creation, which is an error (`REQUIRED_ENUM_MISSING_DEFAULT`). Either give the enum a default as above, or make the property required in the `New{Entity}` schema so the client must supply it. Suppress deliberately with `x-skip-default-validation: true` on the property. That marker is also the only exit for a value copied from a related row at creation. From generator `<NEXT>`, declare where the value comes from with `x-copied-from` (§1.10) as well — measured, `x-copied-from` alone does not satisfy `REQUIRED_ENUM_MISSING_DEFAULT`. See `compatibility.md` §40.
 
 **Where it goes.** On the **enum schema**, not beside the `$ref` that points at it — OpenAPI 3.0 ignores keywords declared as siblings of `$ref`, so a default written next to the reference is silently dropped. The generator reports this directly as `ENUM_PROPERTY_LEVEL_DEFAULT_IGNORED`: move the `default` to the enum schema and add a matching `x-default` there. If the two are present but disagree, that is `ENUM_DEFAULT_MISMATCH`.
 
@@ -2615,6 +2773,10 @@ post:
 - The code generator wires up event publishing in the API layer (outbox pattern)
 - Each event in `x-emits` generates a publish call at the end of the successful operation
 - The Label is set to `{Entity}.{Action}` per the AsyncAPI Label convention (two segments only — tenancy lives in envelope ApplicationProperties)
+
+**The first label also decides the response type of a child create.** When a write's request body is an `x-entity`'s `New*`, its **first** `x-emits` label names that body entity, and the URL's aggregate is a different entity, the generator treats the operation as acting on the body entity. Its domain service returns the child, and every generated surface — controller, mapper, every client — returns the child too, whatever the spec's 2xx says. `hello-orders`' `addOrderLine` is that shape: `POST /orders/{orderId}/lines`, body `NewOrderLine`, first label `OrderLine.Created`, `201` → `OrderLine`.
+
+From generator `<NEXT>`, a 2xx that declares the **URL aggregate** instead is `OPERATION_RESPONSE_TYPE_OVERRIDDEN` (ERROR), on `validate <spec>`, `validate <project.json>` and `generate`. Measured on a `hello-orders` copy with `addOrderLine`'s `201` changed to `Order`: `0.14.0` validates it clean; the `<NEXT>` candidate refuses it, at `validate` and at `generate` (*"declares its 201 response as 'Order', but every generated surface returns 'OrderLine'"*). With the first label changed to `Order.Updated`, the same `201: Order` is not reported, because the operation is no longer re-pointed. **Fix: declare the emitted type as the response schema.** Generated output does not change; only the spec stops contradicting it. A re-pointed operation whose 2xx declares no schema is not reported. `API_Handbook.md` §1.8 states the same rule from the endpoint side.
 
 **Cross-spec validation**:
 - The structure validator checks that every `x-emits.event` has a matching AsyncAPI message with the same `x-label`

@@ -48,6 +48,15 @@
 #     nickname      x-classification: [secret]     -> values STILL fires; the
 #                   value set is the same wherever it is written.
 #
+#   DigestShaped (specfuse-xprotection-digest-undeclared, generator <NEXT>)
+#     bareDigestHash, exportDigest, api_key_hash, lastSeenHash
+#                   *Hash / *Digest string, no x-protection   -> digest-undeclared
+#     declaredHash  [credential] + atRest: hashed             -> clean
+#     refDigest, wrappedHash  $ref / allOf, no inline type    -> clean (jar skips)
+#     blockHash, hashCount    integer                         -> clean
+#   DigestShapedDto (no x-entity)
+#     undeclaredDtoHash                                       -> clean
+#
 # Not a Specfuse-conformant example — do not copy.
 # =============================================================================
 openapi: 3.0.3
@@ -488,3 +497,62 @@ components:
         id: { type: string, format: uuid }
         residenceAddress:
           type: object
+
+    # ---- Digest-shaped names (PROTECTION_DIGEST_UNDECLARED, generator <NEXT>).
+    # Every case below was measured against the candidate jar: the four that
+    # fire here are exactly the four the jar reports, and the jar is silent on
+    # every control. Keep the two in step — a kit rule stricter than the jar
+    # fails specs that generate.
+    DigestShaped:
+      type: object
+      x-entity:
+        domain: identity
+        type: aggregate
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
+        # MUST fire: x-internal-only says where the value goes, not how it is
+        # protected. This is the shape the handbook's §1.3 example used to show.
+        bareDigestHash:
+          type: string
+          x-internal-only: true
+        # MUST fire: the `Digest` suffix counts as well as `Hash`.
+        exportDigest:
+          type: string
+          writeOnly: true
+        # MUST fire: case-insensitive suffix, separator included.
+        api_key_hash:
+          type: string
+          writeOnly: true
+        # MUST fire: unlike SENSITIVE_FIELD_IN_RESPONSE, this rule has NO
+        # temporal exclusion. Measured: the jar reports a date-time *Hash.
+        lastSeenHash:
+          type: string
+          format: date-time
+          writeOnly: true
+        # MUST NOT fire: the declaration the rule asks for.
+        declaredHash:
+          type: string
+          x-internal-only: true
+          x-classification: [credential]
+          x-protection: { atRest: hashed }
+        # MUST NOT fire: the jar skips a $ref-typed property (its declaration
+        # lives on the component) and an allOf wrapper, which has no `type`.
+        refDigest:
+          $ref: '#/components/schemas/DigestValue'
+        wrappedHash:
+          allOf: [{ $ref: '#/components/schemas/DigestValue' }]
+        # MUST NOT fire: not a string, and a name that does not END in hash.
+        blockHash: { type: integer }
+        hashCount: { type: integer }
+
+    DigestValue:
+      type: string
+      description: A lowercase hex SHA-256.
+      pattern: '^[a-f0-9]{64}$'
+
+    # MUST NOT fire: entity schemas only, exactly as the jar scopes it.
+    DigestShapedDto:
+      type: object
+      properties:
+        undeclaredDtoHash: { type: string, writeOnly: true }

@@ -2375,6 +2375,31 @@ rules:
             - { type: object, properties: { writeOnly: { const: true } }, required: [writeOnly] }
             - { type: object, properties: { x-internal-only: { const: true } }, required: [x-internal-only] }
 
+  specfuse-xprotection-digest-undeclared:
+    description: >-
+      A *Hash / *Digest string property on an x-entity schema must declare x-protection.
+    # Mirrors PROTECTION_DIGEST_UNDECLARED (error, generator <NEXT>,
+    # UndeclaredDigestValidationRule). The jar's scope, copied exactly so the
+    # two agree in both directions: an x-entity schema's own properties whose
+    # name ends in `hash` or `digest` (case-insensitive, so `api_key_hash`
+    # too), typed `type: string` inline. A `$ref`-typed property, a non-string,
+    # and any non-entity schema are out of scope. Unlike
+    # SENSITIVE_FIELD_IN_RESPONSE there is NO temporal exclusion — measured, a
+    # `format: date-time` property named `*Hash` fires — so none here either.
+    # Presence only: any x-protection silences it; atRest: none with a
+    # rationale is a legitimate answer for a public content digest.
+    message: "Property name ends in Hash / Digest but declares no x-protection. Declare atRest: hashed (with x-internal-only if this is the stored digest), or atRest: none with a rationale for a public content digest."
+    severity: error
+    # Unresolved, because the jar skips a `$ref`-typed property (and an
+    # `allOf` wrapper, which has no `type`). Resolved, Spectral follows the
+    # `$ref` and reports the referenced string component instead — a finding
+    # the jar does not make, at a location that is not the property.
+    resolved: false
+    given: $.components.schemas[?(@ && @["x-entity"])].properties[?(@ && @property.match(/(hash|digest)$/i) && @.type === "string" && !@["$ref"])]
+    then:
+      field: x-protection
+      function: truthy
+
   specfuse-xprotection-sad-not-persisted:
     description: >-
       x-classification 'sad' must not appear on an x-entity property.
