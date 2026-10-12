@@ -10,9 +10,11 @@
 #   - The recipe's single step calls createCustomer (a real OpenAPI op),
 #     keeping Arazzo's "workflows[].steps must be non-empty" rule satisfied
 #     and giving downstream recipes/scenarios a real customer to bind to.
-#   - No User/Auth/Token outputs — actor binding for scenarios uses the
-#     customerId directly as the principal reference; the Specfuse runtime's
-#     auth layer maps that to a Customer-role test token at runtime.
+#   - No User/Auth/Token operations either, so the principal is a fixed-
+#     fixture userId input, passed through as an output. Scenarios bind
+#     x-actors[].ref to it: ref is the principal's own id (the
+#     authorization.claims.userId claim), never the customerId of the
+#     domain row the principal acts on (Arazzo_Handbook.md §4.6).
 #
 # This is intentionally simpler than the canonical minimal-tenant + minimal-
 # customer chain. A real project should use the full chain; this example
@@ -55,6 +57,11 @@ workflows:
           format: uuid
           default: "00000000-0000-0000-0000-000000000001"
           description: Fixed-fixture tenant UUID (hello-orders has no createTenant op).
+        userId:
+          type: string
+          format: uuid
+          default: "00000000-0000-0000-0000-0000000000a1"
+          description: Fixed-fixture principal id (hello-orders has no user or token operations).
         firstName:
           type: string
           default: "Pat"
@@ -80,4 +87,5 @@ workflows:
 
     outputs:
       tenantId: $inputs.tenantId
+      userId: $inputs.userId
       customerId: $steps.create-customer.outputs.customerId

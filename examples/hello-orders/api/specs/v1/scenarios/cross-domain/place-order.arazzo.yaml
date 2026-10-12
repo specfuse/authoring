@@ -48,7 +48,7 @@ x-actors:
   customer:
     role: Customer
     description: "The customer who owns the draft order"
-    ref: $setup.outputs.customerId
+    ref: $setup.outputs.userId
 
 x-setup:
   recipe: customer-with-draft-order

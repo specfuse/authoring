@@ -2102,7 +2102,7 @@ info:
 |---|---|---|
 | `grants` | string[] | Scopes this role holds, in §3.2's grammar, or `"*"`. |
 | `implicit` | boolean | Every authenticated principal holds this role without a claim. The scope-model counterpart of the `Authenticated` convention below. |
-| `superuser` | boolean | Passes every coherence and runtime check regardless of its grants — a declared fact, replacing an `Admin`-by-name short-circuit. |
+| `superuser` | boolean | Passes every coherence and runtime check regardless of its grants — a declared fact, replacing an `Admin`-by-name short-circuit. A role that is both `superuser` and `implicit` is `ROLE_IMPLICIT_SUPERUSER` (ERROR): every authenticated principal would pass every gate. |
 | `delegable` | boolean | A role another role may grant. **Declared, not enforced** at `0.14.0`: it is published per role in the `role-grants.json` companion of `authorizationMatrix` (`Project_File.md` §11.5), and read by no validation rule and none of the generated C# `Authorization/` runtime files. Enforcement is planned generator-side (`FEAT-2026-0203`, `clabonte/generator#2180`). |
 | `description` | string | Free text. Read by nothing. |
 
@@ -2131,13 +2131,14 @@ validation and in every generated runtime:
 A principal's effective roles at runtime are its claimed roles plus every
 `implicit: true` role.
 
-**The coherence rules.** Nine codes, all category `DDD`. Their severity is set
+**The coherence rules.** Ten codes, all category `DDD`. Their severity is set
 by the project file's `authorization.mode` (`Project_File.md` §16): `scopes`
 raises every WARNING row except the last two to ERROR.
 
 | Code | Fires when | `roles` (default) | `scopes` |
 |---|---|---|---|
 | `ROLE_REGISTRY_SHAPE_INVALID` | `info.x-roles` is neither a sequence nor a mapping of role objects | ERROR | ERROR |
+| `ROLE_IMPLICIT_SUPERUSER` | a role declares both `implicit: true` and `superuser: true`: every authenticated principal would pass every gate | ERROR | ERROR |
 | `ROLE_GRANT_INVALID` | a grant is not `"*"` and not a well-shaped scope — `<domain>.*` included | ERROR | ERROR |
 | `ROLE_GRANT_UNBOUND` | a grant's domain is not in `info.x-domains`, or its entity segment is not an `x-entity` of that domain | WARNING | ERROR |
 | `OPERATION_SCOPE_UNBOUND` | the same, for an operation's `x-scopes` entry | WARNING | ERROR |
@@ -4331,7 +4332,7 @@ Everything below was measured against the released `0.14.0` jar, on a copy of `e
 What follows from the table:
 
 - **Never declare a reverse `hasMany`/`hasOne` across a pillar boundary.** A parent cannot navigate to children stored in another pillar's database, and declaring the reverse edge breaks both groups. When the child's pillar holds the parent, `RELATIONSHIP_SYMMETRY` does not require the reverse edge, so dropping it is legal.
-- **The one form that generates on both sides at `0.14.0` is `x-references: <Parent>` plus a hold.** It keeps the relationship declared. It gives up composition semantics (§1.7), which cannot hold across pillar databases anyway. A cross-pillar `belongsTo` generates only in the holder's group until `#2394` is fixed. The generator's own `#2250` regression fixture fails the same way when generated from the owner's side.
+- **The one form that generates on both sides at `0.14.0` is `x-references: <Parent>` plus a hold.** It keeps the relationship declared. It gives up composition semantics (§1.7), which cannot hold across pillar databases anyway. **A child declared `type: entity` must become `type: aggregate` when its `belongsTo` is replaced:** an `entity` with no `belongsTo` is `ENTITY_ORPHAN`. Measured on `0.14.0` with a parent in one pillar and a child in another, each pillar holding the other's entity: `belongsTo` failed the parent's group with `CROSS_DOMAIN_ENTITY_REFERENCE`, while `x-references: <Parent>` on the child's `{parent}Id` with the child as an `aggregate` generated both groups, and the child's FK bound to `Read{Parent}`. A cross-pillar `belongsTo` generates only in the holder's group until `#2394` is fixed. The generator's own `#2250` regression fixture fails the same way when generated from the owner's side.
 - **Do not nest a child's routes under a parent owned by another pillar.** With `POST /customers/{customerId}/orders` in place, the holder's group failed to resolve `createOrder`: "rooted under aggregate 'Customer' which does not own 'Order'". The owner's group failed the same way once the `belongsTo` was gone, because operations are resolved for the whole spec, not only the pillar's domains. Put the child's create and list operations at the child's own path, with the parent id in the body or as a query filter.
 - **The tenancy root has no safe form at `0.14.0`.** The `I{Tenant}Scoped` marker follows `belongsTo` only (`Project_File.md` §4.1). A child in another pillar therefore needs a `belongsTo` to its tenant, and that `belongsTo` breaks the tenant owner's group. A split bundle (§14.7) keeps the child out of the owner's bundle, which should avoid the inverse, but this is unmeasured. A multi-pillar tenancy otherwise waits on `#2394`.
 - **No C# group with `domainProject` compiles while the spec declares `Read{Entity}` schemas** (`clabonte/generator#2392`). The Domain `AutoMapperProfile.g.cs` maps every `Read{Entity}` to its entity. An unbound group emits no `Read{Entity}` type. A holder's group emits the replica but not the owner's entity it is mapped to. Either way the result is `CS0246`. Dart and TypeScript groups emit an unused `Read{Entity}` client type.
