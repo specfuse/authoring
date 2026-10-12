@@ -1248,6 +1248,16 @@ None of these is settled enough to document ahead of the pin (§24 precedent).
 - confirm `#2477` is in the jar, and drop the "still reads from the body" sentence in AsyncAPI §0.8;
 - if `#2502` landed, drop the `UnprocessableEntityException` sentence in `API_Handbook.md` §2.2.
 
+### 47. Pre-release sweep 2026-10-12: the example's actor binding, the parent side of a cross-pillar edge, one undocumented role code
+
+**Status:** kit side **done**; each item measured on the released `0.14.0` jar (sha256 `5cd33122…cbd0`).
+
+1. **`hello-orders` broke its own `x-actors[].ref` rule.** `place-order.arazzo.yaml` bound `ref` to `$setup.outputs.customerId`, the id of a domain row, which `Arazzo_Handbook.md` §4.6 has forbidden since #147. hello-orders has no user or token operations, so the root recipe `minimal-customer` now takes a fixed-fixture `userId` input, the same way it takes `tenantId`, and outputs it. The scenario binds `ref` to `$setup.outputs.userId`. The bundle still validates on the jar, and Spectral's Arazzo ruleset stays clean.
+2. **Parent side of a cross-pillar `belongsTo` (#146).** Reproduced: with a parent in one pillar, a child in another and each pillar holding the other's entity, the child's pillar generates and the parent's pillar fails with `CROSS_DOMAIN_ENTITY_REFERENCE`. This is the same generator bug as §44's owner-group row, tracked generator-side. The §14.10 workaround (`x-references: <Parent>` plus a hold) generated both pillars, with the child's FK bound to `Read{Parent}`, **once the child was retyped from `entity` to `aggregate`**. An `entity` with no `belongsTo` is `ENTITY_ORPHAN`, which is what the reporter hit when they dropped the `belongsTo`. `Vendor_Extensions.md` §14.10 now says so.
+3. **`ROLE_IMPLICIT_SUPERUSER` was undocumented.** It is an ERROR in `RoleScopeCoherenceValidationRule` whenever a role declares both `implicit: true` and `superuser: true`. Measured on a mapping-form copy of `hello-orders`. It is now in the `Vendor_Extensions.md` §3.1 role-key table and in the coherence table, which therefore lists ten codes. The v0.23.0 row and §43 still say "nine". They are left as written, because they record what that release documented. This closes the last open item of #128.
+
+**At the next pin bump:** re-run item 2 on the new jar. If the owner's group generates with `belongsTo`, revise §14.10 together with §44.
+
 ---
 
 ## Outstanding kit-side work

@@ -1,7 +1,7 @@
 # =============================================================================
 # customer-with-draft-order.recipe.yaml
 # =============================================================================
-# Extends minimal-customer. Inherits tenantId + customerId. Creates one Order
+# Extends minimal-customer. Inherits tenantId, userId + customerId. Creates one Order
 # in draft status (the only status createOrder produces) so scenarios that
 # need an order-in-progress have one to place.
 # =============================================================================
@@ -58,6 +58,6 @@ workflows:
           orderId: $response.body#/id
 
     # Inherited from minimal-customer (not redeclared):
-    #   tenantId, customerId
+    #   tenantId, userId, customerId
     outputs:
       orderId: $steps.create-order.outputs.orderId
