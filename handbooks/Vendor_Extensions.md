@@ -75,7 +75,7 @@ Error:                  # shared shape, no owning domain
 - **Exempt:** `x-entity` schemas, pure `$ref` aliases, and the derived shapes of an entity (`New{E}`, `Basic{E}`, `Update{E}`, `{E}List`) — the generator resolves those to their main model's domain.
 - **`common` is reserved.** It means *shared, no owning domain*, and it MUST NOT itself be registered in `info.x-domains` — registering it is `SCHEMA_DOMAIN_UNREGISTERED` against the registry.
 - **What counts is `components.schemas` after bundling.** A shape you only `$ref` from an operation file is hoisted there by `redocly bundle`, so it needs the key in its source file even though no hand-written `components` block names it. The bundle is the contract: folder layout does not survive bundling, so a schema's `domains/{domain}/` location says nothing to the generator, and the key is the only record of its owner that does.
-- A schema that references a schema owned by **another** domain is reported as `SCHEMA_DOMAIN_CROSS_REFERENCED` (WARNING) — a boundary hint, not a failure; `common` is never a cross-reference. **Entity projections are exempt**: a `Basic{E}` (or other derived shape of a registered entity) embedded in another domain's schema — a work item holding a `BasicUser` summary — is normal DDD and is not reported. Referencing the full entity, or a domain-owned enum or value shape, across the boundary is.
+- A schema that references a schema owned by **another** domain is reported as `SCHEMA_DOMAIN_CROSS_REFERENCED` (WARNING) — a boundary hint, not a failure; `common` is never a cross-reference. **Entity projections are exempt**: a `Basic{E}` (or other derived shape of a registered entity) embedded in another domain's schema — a work item holding a `BasicUser` summary — is normal DDD and is not reported. Referencing the full entity, or a domain-owned enum or value shape, across the boundary is. **`validate` does not report it on a bundled spec**, though: the rule reads each property's `$ref`, which the validator's parse has already resolved. Measured on a copy of `hello-orders` with an `order` entity property referencing the `customer` domain's status enum, directly and through a bundler alias (`CrmStatus: {$ref: …/CustomerStatus}`): no finding on `0.14.0` or on a build of generator main, through the project file or the spec alone. Generator `<NEXT>` follows the alias to its target (`clabonte/generator#1929`), which matters only once the rule reads the resolved document. Find cross-domain references by review until then.
 
 **Spec-author action on the `0.13.0` pin.** Run `validate` on a fresh bundle and add `x-domain` to every schema it names. This rule shipped in `0.13.0` and the kit missed it at that pin bump (`compatibility.md`, `v0.20.0` row); the kit's own example and new-project scaffold both failed it until the fix that added this paragraph. No kit Spectral mirror yet — the derived-shape exemption needs the entity set, which a schema-local rule does not have.
 
@@ -259,7 +259,7 @@ FEAT-2026-0080 adds six ERROR and two WARNING coherence rules:
 | `DELETE_SEMANTICS_UNDECLARED` | WARNING | the entity is the target of a DELETE operation and declares no `delete` |
 | `DELETE_SOFT_STATUS_ENUM_OVERLAP` | WARNING | a soft-delete entity whose status enum also carries a `deleted`/`archived` member |
 | `DELETE_SOFT_BOOLEAN_FLAG_OVERLAP` | WARNING | a soft-delete entity also carrying a boolean `isArchived` / `isDeleted` property (generator 0.7.0) |
-| `DELETE_SOFT_TIMESTAMP_OVERLAP` | WARNING | a soft-delete entity also carrying a date-time property named `leftAt`, `revokedAt` or `removedAt` (generator 0.8.0). **Read the caveat below before acting on this one** |
+| `DELETE_SOFT_TIMESTAMP_OVERLAP` | WARNING | a soft-delete entity also carrying a date-time property named `revokedAt` or `removedAt` (generator 0.8.0; `leftAt` too, through `0.14.0`). **Read the caveat below before acting on this one** |
 | `DELETE_REASON_INVALID` | ERROR | `reason` outside the closed set |
 | `DELETE_REASON_REQUIRES_HARD` | ERROR | `reason` alongside `mode: soft` |
 | `DELETE_REASON_TEXT_REQUIRED` | ERROR | `reason: other` without `reasonText`, **or** `reasonText` beside any other reason |
@@ -278,7 +278,8 @@ whatever preceded it, a restore cannot recover the prior state.
 
 `DELETE_SOFT_TIMESTAMP_OVERLAP` is different, and its fix text is wrong about
 half the time. **It matches on the property name and nothing else** — the literal
-set is `leftAt`, `revokedAt`, `removedAt`, compared case-insensitively. It does
+set is `revokedAt`, `removedAt` (plus `leftAt` through `0.14.0`), compared
+case-insensitively. It does
 not ask whether anything else in the specification reads the field. Its fix text
 offers *"remove 'X' and rely on `deletedAt`, or — if it records something other
 than removal — rename it to say so"*, and following that on a true positive is
@@ -301,11 +302,15 @@ be read after the event**:
   is a true positive and removing it is correct.
 
 Reported by a consumer whose bundle ran the rule at 1-of-4 precision: one true
-positive, three fields the row is deliberately meant to outlive. A narrowing is
-filed as `clabonte/generator#1441` — check whether the timestamp is referenced
-anywhere else in the specification, since a field nothing else reads is a
-plausible duplicate while one other machinery depends on is not. Until that
-ships, this rule needs a human on every hit.
+positive, three fields the row is deliberately meant to outlive. The narrowing
+filed as `clabonte/generator#1441` asked the rule to check whether the timestamp
+is referenced anywhere else in the specification, since a field nothing else
+reads is a plausible duplicate while one other machinery depends on is not.
+Generator `<NEXT>` takes a smaller step: it drops `leftAt` from the name set, as
+a membership ending on a row kept readable afterwards, and defers the reference
+check. Measured on a soft-delete copy of `hello-orders` carrying `leftAt` and
+`revokedAt`: two findings on `0.14.0`, one (`revokedAt`) on a build of generator
+main. `revokedAt` and `removedAt` still need a human on every hit.
 
 ### `delete.reason` — why an entity is `hard` (generator 0.6.0)
 
@@ -566,9 +571,9 @@ version column says which release each family first shipped in.
 | Rule | Severity | Fires when |
 |---|---|---|
 | `ENTITY_CONCURRENCY_INVALID` | ERROR | a value outside `{ optimistic, none, delegated }`, a malformed object form, or a sub-key that reads as a misspelling of `concurrency` |
-| `ENTITY_CONCURRENCY_UNDECLARED` | WARNING | an `x-entity` schema declares no `concurrency` at all |
-| `ENTITY_CONCURRENCY_REASON_REQUIRED` | WARNING | `mode: none` on an entity that exposes an unsafe write (`PATCH`/`PUT`/`DELETE`), with no `reason` |
-| `ENTITY_CONCURRENCY_WRITER_ROLE_UNREADABLE` | WARNING | the entity's unsafe-write roles are not a subset of the roles that can read it from a safe operation |
+| `ENTITY_CONCURRENCY_UNDECLARED` | **ERROR** | an `x-entity` schema declares no `concurrency` at all |
+| `ENTITY_CONCURRENCY_REASON_REQUIRED` | **ERROR** | `mode: none` on an entity that exposes an unsafe write (`PATCH`/`PUT`/`DELETE`), with no `reason`. Through `0.14.0` a write naming the entity only by its request body (no entity in the path) was not counted; from generator `<NEXT>` it is |
+| `ENTITY_CONCURRENCY_WRITER_ROLE_UNREADABLE` | WARNING | the entity's unsafe-write roles are not a subset of the roles that can read it from a safe operation. Skipped for `mode: none`. Same body-only gap through `0.14.0`, closed from generator `<NEXT>` |
 | `ENTITY_CONCURRENCY_CENSUS` | SUGGESTION | always — reports `optimistic` / `none` / `delegated` / undeclared counts with a `reason` breakdown, in one `validate` run |
 
 **Operation-level preconditions** — generator **0.7.0**, extended in **0.8.0** and **0.12.0**.
@@ -649,10 +654,13 @@ a reason to promote or suppress: the census lines exist so a severity decision
 reads a population rather than a warning count, and `ENTITY_TAG_CENSUS` says so
 in its own text. Adopt entity by entity and watch the census move.
 
-`ENTITY_CONCURRENCY_UNDECLARED` is a WARNING on purpose: adopting the key across
-an existing project should not turn `validate` red mid-migration. The ERROR
-promotion is FEAT-2026-0092, gated on the sweep reaching zero `not-assessed`.
-Use `ENTITY_CONCURRENCY_CENSUS` to track that.
+`ENTITY_CONCURRENCY_UNDECLARED` shipped as a WARNING so that adopting the key
+across an existing project would not turn `validate` red mid-migration.
+FEAT-2026-0092 has since promoted it, and `ENTITY_CONCURRENCY_REASON_REQUIRED`
+with it: both are ERRORs on the `0.14.0` jar (measured on a copy of
+`hello-orders` with one entity's `concurrency` removed and another set to
+`none`). An entity with no `concurrency` now fails `validate`; use
+`ENTITY_CONCURRENCY_CENSUS` to find the rest before regenerating.
 
 > **Both `concurrency: none` and `{ mode: none }` pass lint.** The shorthand is
 > accepted because the generator accepts it, and a lint rule that rejects a form
@@ -1362,14 +1370,14 @@ What the generated C# controller does, measured on a generated fixture:
 
 | code | severity | fires on |
 |---|---|---|
-| `UNMASK_PARAMETER_ON_LIST` | **ERROR** | `x-unmask` on a non-GET operation, or on a GET whose response is a bare `type: array` |
+| `UNMASK_PARAMETER_ON_LIST` | **ERROR** | `x-unmask` on a non-GET operation, or on a GET whose response is a bare `type: array` or, from generator `<NEXT>`, a `{Resource}List` wrapper |
 | `UNMASK_VALUE_NOT_MASKED` | **ERROR** | an enum value that is not a **top-level** masked field of the response entity — a field masked only inside a nested DTO counts as not masked |
 | `UNMASK_FORBIDDEN_TYPE_NOT_DECLARED` | WARNING | the spec declares `x-unmask`, its `Error.type` is typed by an `ErrorType` enum, and that enum lacks `unmaskForbidden` |
 | `UNMASK_UNDECLARED` | INFO (printed as `SUGGESTION`) | a single-resource GET returns masked fields and declares no `x-unmask` — legitimate when the fields must never be revealed there |
 
 The parameter is exempt from `OPERATION_NON_SEARCHABLE_QUERY_PARAM`.
 
-> **On a list GET returning `{Resource}List`, the jar reports the wrong code.** Measured against `0.14.0`: `x-unmask` on `GET /tenants/{tenantId}/customers` returning `CustomerList` is not `UNMASK_PARAMETER_ON_LIST` but `UNMASK_VALUE_NOT_MASKED` for every enum value (*"masked: []"*), because the validator sees the response with its `$ref` already resolved and cannot recognise the paginated wrapper. The spec is still refused, and the fix is the same — move the parameter to the single-resource GET. See `compatibility.md` §42.
+> **On a list GET returning `{Resource}List`, `0.14.0` reports the wrong code.** `x-unmask` on `GET /tenants/{tenantId}/customers` returning `CustomerList` is not `UNMASK_PARAMETER_ON_LIST` but `UNMASK_VALUE_NOT_MASKED` for every enum value (*"masked: []"*), because the validator sees the response with its `$ref` already resolved and cannot recognise the paginated wrapper. From generator `<NEXT>` it is `UNMASK_PARAMETER_ON_LIST` (`clabonte/generator#2370`), measured on a build of generator main. Either way the spec is refused, and the fix is the same — move the parameter to the single-resource GET. See `compatibility.md` §42.
 
 #### `unavailableProperties` — every encrypting entity owes a poisoned-read surface
 
@@ -1910,6 +1918,8 @@ The disambiguation is the generator's own (`ProtectionDefinition.isSubKey` over 
 
 The trap is the word *effective*: the set is the usage site's `queryable` **if it declares one**, and the definition's `defaultQueryable` otherwise. So a usage site that declares no `queryable` at all inherits one and fails, and the fix is to declare `queryable: []` explicitly rather than to remove the key.
 
+> **Do not count on `validate` to catch the inherited case.** Measured on a copy of `hello-orders`: a usage site declaring a non-empty `queryable` itself is reported on `0.14.0` and after it. An inherited `defaultQueryable` is not reported on `0.14.0`. From generator `<NEXT>` it is, when the embed is a direct `$ref`, but measured on a build of generator main it is still not reported through a one-item `allOf` embed, the form this section uses. Declare `queryable: []` at every encrypted usage site.
+
 **The embed property is a second declaration site, and the usage site wins outright.** From generator `0.13.0` an `x-protection` on the entity's own embed property — `components.schemas.<Entity>.properties.<prop>`, where `x-classification` already sits — emits the same columns the usage-site form does. (A `protection` key under `x-value-object` on the value object's own schema is not one of the sites: the generator does not read it.) Where both declare, **the embed's block is discarded in full — not layered underneath**:
 
 ```yaml
@@ -1929,7 +1939,7 @@ Person:
 
 Every member is `encrypted`; the embed's per-member map does not survive. So a usage site declaring a scalar over an embed that declared per-member nuance discards it — and can *weaken* protection at a site whose author believed they were inheriting. From generator `0.13.0` this is reported as `VALUE_OBJECT_PROTECTION_DECLARED_TWICE` (WARNING): declare protection at one site. The precedence itself is settled and intentional.
 
-**Prefer the usage site even when it is the only declaration.** The embed form alone — `x-classification` plus `x-protection: { atRest: encrypted }` on an `allOf` embed of a value object whose members all have a sound canonical round-trip — **is** encrypted per member at generator `0.14.0`, but it is missing from `data-protection-audit.md` entirely (`clabonte/generator#2417`). Until that lands, `x-entity.valueObjects.<prop>.protection` is the form to use: it is the one the audit sees.
+**Prefer the usage site even when it is the only declaration.** The embed form alone — `x-classification` plus `x-protection: { atRest: encrypted }` on an `allOf` embed of a value object whose members all have a sound canonical round-trip — **is** encrypted per member at generator `0.14.0`. Through `0.14.0` it was missing from `data-protection-audit.md` whenever `x-entity.valueObjects` also listed the property with no `protection` of its own (for its `storage`, say); measured, the same embed with no `valueObjects` entry was audited. From generator `<NEXT>` the audit lists it either way (`clabonte/generator#2417`). On `0.14.0`, `x-entity.valueObjects.<prop>.protection` is the form to use: it is the one the audit always sees.
 
 > **The audit is coarser than the storage, deliberately.** A value object protected by a scalar usage-site declaration appears as **one row keyed by the embed property name** in both section 1 and the section 2 matrix of `data-protection-audit.md`, while `0.13.0` encrypts **per member**. An assessor reading `residenceAddress | encrypted` is seeing a summary of several columns, not one.
 
@@ -2052,7 +2062,8 @@ info:
 |---|---|---|
 | generator `OPERATION_UNKNOWN_ROLE` | an `x-roles` member is not in `info.x-roles` | **ERROR** |
 | generator `OPERATION_ROLE_REGISTRY_MISSING` | no `info.x-roles` at all — *"role membership validation disabled"* | WARNING |
-| generator `OPERATION_MISSING_ROLES` | a secured operation declares neither `x-roles` nor `x-public` | **ERROR** |
+| generator `OPERATION_MISSING_ROLES` | a secured operation declares neither `x-roles` nor `x-public`. From generator `<NEXT>`, not under `authorization.mode: scopes` without `shadow` | **ERROR** |
+| generator `OPERATION_MISSING_SCOPES` | from generator `<NEXT>`, under `authorization.mode: scopes` without `shadow`: a secured operation declares no `x-scopes`, even if it declares `x-roles` | **ERROR** |
 | generator `OPERATION_EMPTY_ROLES` / `OPERATION_INVALID_ROLE` / `OPERATION_INVALID_ROLES_FORMAT` | an empty list, an empty member, or a non-array | — |
 | kit `specfuse-auth-roles-pascal` | the **shape** only: PascalCase identifiers | error |
 
@@ -2167,7 +2178,12 @@ no coherence diagnostic to a sequence-form spec. Measured on `hello-orders`
 on either shape, and it overlaps the kit's `specfuse-auth-scopes-registry`
 (§3.2). Arazzo carries the same check for actors: `ARAZZO_ACTOR_LACKS_SCOPE`
 mirrors `OPERATION_ROLE_LACKS_SCOPE`, under `authorization.mode: scopes` only
-(`Arazzo_Handbook.md` §4.6 records its limits).
+(`Arazzo_Handbook.md` §4.6 records its limits). It fires from generator
+`<NEXT>`, and it is **not** inert on a sequence-form registry: a role with no
+grants covers no scope, so under `scopes` every scenario step whose operation
+declares `x-scopes` fails. Measured: unmodified `hello-orders` with
+`"authorization": {"mode": "scopes"}` passes on `0.14.0` and fails with three
+`ARAZZO_ACTOR_LACKS_SCOPE` ERRORs on a build of generator main.
 
 `OPERATION_ROLE_UNLISTED` is the one to read twice. The coherence target is
 that an operation's `x-roles` **equals** the set of roles whose grants cover its
@@ -2206,7 +2222,7 @@ x-scopes: string[]  # Array of scope names, each matching the grammar below
 >
 > 1. **Shape**, from generator `0.11.0`: `OPERATION_SCOPE_SHAPE_INVALID` (WARNING in either mode) checks segment count and the closed operation set, parsed right to left. It deliberately does **not** check casing.
 > 2. **Registry binding and role coherence**, from `0.14.0`: `OPERATION_SCOPE_UNBOUND` (a domain outside `info.x-domains`, or an entity segment that is not an `x-entity` of that domain), and — when `info.x-roles` is in the mapping form — the coherence rules of §3.1, which check an operation's `x-roles` against the roles whose grants cover its scopes.
-> 3. **Runtime**, from `0.14.0`: under `authorization.mode: scopes` a generated C# controller carries `[ScopesRequired("<scope>", …)]` instead of `[RoleRequired(…)]`. Under the default `roles` mode `x-scopes` changes no generated code.
+> 3. **Runtime**, from `0.14.0`: under `authorization.mode: scopes` a generated C# controller carries `[ScopesRequired("<scope>", …)]` instead of `[RoleRequired(…)]`. Under the default `roles` mode `x-scopes` changes no generated code. From generator `<NEXT>`, `scopes` without `shadow` also makes `x-scopes` the key a secured operation must declare: `OPERATION_MISSING_SCOPES` (ERROR) replaces `OPERATION_MISSING_ROLES` there (§3.1), so the generator no longer requires `x-roles`. Through `0.14.0`, `OPERATION_MISSING_ROLES` fired in every mode, so a scopes-mode spec kept a role list on every operation that decided nothing at runtime.
 >
 > Through `0.13.0` only (1) existed, and `compatibility.md` §28's *"read by nothing"* was measured on `0.5.8` and `0.9.0`, before it. The kit is **stricter than the jar** on two points and that is deliberate: `specfuse-auth-scopes-shape` is an `error` and checks casing; `specfuse-auth-scopes-registry` is an `error` where `OPERATION_SCOPE_UNBOUND` is a WARNING under the default mode. See `compatibility.md` §43.
 
