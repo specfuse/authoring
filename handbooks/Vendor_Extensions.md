@@ -825,11 +825,12 @@ Malformed shapes are refused at parse time, before those rules run: a constraint
 with no `properties`, an empty `properties` list, a `properties` that is not a
 list, and a non-string `name` are each an `ENTITY_INVALID_CONFIG` through
 `0.14.0`, and an `INVALID_EXTENSION_VALUE` from generator `<NEXT>` (both
-ERROR; measured on all four). A CI filter matching the old code stops seeing
-them. The new finding's location is `x-entity.uniqueBy` (or
-`x-entity.uniqueBy.name`) **without the schema name**, and the message does not
-name it either, so in a multi-entity spec find the entity by the offending
-value.
+ERROR; measured on all four). A CI filter or findings baseline keyed on
+`ENTITY_INVALID_CONFIG` should match both codes. The new finding's location is
+`x-entity.uniqueBy` (or `x-entity.uniqueBy.name`) **without the schema name**,
+and the message does not name it either, so in a multi-entity spec find the
+entity by the offending value. A retired `x-entity` key such as
+`encryptedProperties` keeps `ENTITY_INVALID_CONFIG`.
 `specfuse-xentity-shape` catches the same four at lint, and additionally rejects
 a repeated member within one tuple and an unknown member on a constraint — both
 of which the jar takes silently. The key is new in `0.8.0`, so no spec predates
@@ -2271,7 +2272,7 @@ info:
 |---|---|---|
 | `grants` | string[] | Scopes this role holds, in §3.2's grammar, or `"*"`. |
 | `implicit` | boolean | Every authenticated principal holds this role without a claim. The scope-model counterpart of the `Authenticated` convention below. |
-| `superuser` | boolean | Passes every coherence and runtime check regardless of its grants — a declared fact, replacing an `Admin`-by-name short-circuit. A role that is both `superuser` and `implicit` is `ROLE_IMPLICIT_SUPERUSER` (ERROR): every authenticated principal would pass every gate. |
+| `superuser` | boolean | Passes every coherence and runtime check regardless of its grants — a declared fact, replacing an `Admin`-by-name short-circuit. A role that is both `superuser` and `implicit` is `ROLE_IMPLICIT_SUPERUSER` (ERROR): every authenticated principal would pass every gate. From generator `<NEXT>` it also decides who may send `If-Match: *`: a superuser role and a system caller only, every other caller gets `412` (`API_Handbook.md` §"Concurrency Control"). This applies whether or not the project generates an authorization runtime. |
 | `delegable` | boolean | A role another role may grant. **Declared, not enforced** at `0.14.0`: it is published per role in the `role-grants.json` companion of `authorizationMatrix` (`Project_File.md` §11.5), and read by no validation rule and none of the generated C# `Authorization/` runtime files. Enforcement is planned generator-side (`FEAT-2026-0203`, `clabonte/generator#2180`). |
 | `description` | string | Free text. Read by nothing. |
 
@@ -2598,11 +2599,11 @@ enum: [active, inactive, suspended]
 
 **A required enum property needs one.** An entity with a required enum property and no default has no defined state at creation, which is an error (`REQUIRED_ENUM_MISSING_DEFAULT`). Either give the enum a default as above, or make the property required in the `New{Entity}` schema so the client must supply it. Suppress deliberately with `x-skip-default-validation: true` on the property. That marker is also the only exit for a value copied from a related row at creation. From generator `<NEXT>`, declare where the value comes from with `x-copied-from` (§1.10) as well — measured, `x-copied-from` alone does not satisfy `REQUIRED_ENUM_MISSING_DEFAULT`. See `compatibility.md` §40.
 
-**Where it goes.** On the **enum schema**, not beside the `$ref` that points at it — OpenAPI 3.0 ignores keywords declared as siblings of `$ref`, so a default written next to the reference is silently dropped. The generator reports this directly as `ENUM_PROPERTY_LEVEL_DEFAULT_IGNORED`: move the `default` to the enum schema and add a matching `x-default` there. If the two are present but disagree, that is `ENUM_DEFAULT_MISMATCH`.
+**Where it goes.** On the **enum schema**, not beside the `$ref` that points at it — OpenAPI 3.0 ignores keywords declared as siblings of `$ref`, so a default written next to the reference is silently dropped. **Nothing reports it, so check it by eye:** move the `default` to the enum schema and add a matching `x-default` there. Earlier versions of this section named `ENUM_PROPERTY_LEVEL_DEFAULT_IGNORED` (WARNING) as the check. It never fired on a spec file, because `validate` resolves every `$ref` before the rule runs, and generator `<NEXT>` removes it. A suppression keyed on the code is inert. If the two keywords on the enum schema are present but disagree, that is `ENUM_DEFAULT_MISMATCH`.
 
 Outside enum schemas, prefer the standard `default` keyword on its own. Use `x-default` alone for cases the standard keyword does not cover — e.g. a value the generator should use for test data without declaring it as a schema-level default.
 
-**What `default` means next to `required`** — including the `readOnly` case, where it becomes a persistence default rather than a client-side suggestion — is `API_Handbook.md` §1.9. All four diagnostics above are the enum-specific enforcement of that rule.
+**What `default` means next to `required`** — including the `readOnly` case, where it becomes a persistence default rather than a client-side suggestion — is `API_Handbook.md` §1.9. The three diagnostics above are the enum-specific enforcement of that rule.
 
 ---
 
