@@ -1807,6 +1807,7 @@ Since implicit `{Entity}Id` → `belongsTo` inference was retired (kit `0.5.4`),
 |---|---|---|---|
 | Entity is part of the target's aggregate | `belongsTo: <Target>` on `x-entity` | Cascade | Yes |
 | Entity points at the target but is not owned | `x-references: <Target>` on the property | NoAction | No |
+| Entity points at a target **another pillar owns**, with no local copy (from generator `<NEXT>`) | `x-references: { entity: <Target>, resolve: remote }` on the property | n/a: plain uuid column, no FK | No |
 | The uuid is not a foreign key at all | `x-references: none` + justifying `description` | n/a | n/a |
 | Owning FK under a name that is not `{Entity}Id` | `x-fk-for: <Target>` on the property, bound to a declared `belongsTo` | Cascade | Yes |
 
@@ -2747,7 +2748,7 @@ async function retryWithBackoff(operation, maxRetries = 3) {
 - **Query Parameters**: All fields usable in OData `filter` expressions MUST be declared in `filterableProperties`. All fields used in free-text `search` MUST be declared in `searchableProperties`.
 - **BilingualText**: Reference subfields in `searchableProperties` (e.g., `title.en`, `title.fr`).
 - **Parameter Naming**: Use `search` (not `q`) for free-text search, `filter` for OData filtering, `sort` (not `sortBy` or `sortOrder`) for sorting.
-- **Relationship classification**: Classify every `format: uuid` FK-shaped property exactly once — `belongsTo` for composition, `x-references: <Entity>` for a non-owning association, `x-references: none` (with a justifying description) for a uuid that is not a foreign key. Inference was retired; an unmarked property is an omission, not a default. See §9.5.
+- **Relationship classification**: Classify every `format: uuid` FK-shaped property exactly once — `belongsTo` for composition, `x-references: <Entity>` for a non-owning association, `x-references: { entity: <Entity>, resolve: remote }` for a reference into another pillar with no replica (`Vendor_Extensions.md` §14.11), `x-references: none` (with a justifying description) for a uuid that is not a foreign key. Inference was retired; an unmarked property is an omission, not a default. See §9.5.
 - **Legacy FK names**: When an owning FK cannot be named `{Entity}Id`, bind it with `x-fk-for: <Entity>` alongside the declared `belongsTo`, so composition and Cascade survive the naming exception.
 - **Projections**: Mark read-only embeds — `x-expand-of: <twin>` for a scalar projection, `x-projection: true` for a non-owned collection. An unmarked projection embed is persisted as owned state.
 - **PATCH collections are complete sets**: a collection property present in an `Update{Resource}` body replaces the stored set — value-object arrays wholesale, child-entity arrays by identity reconcile (known `id` updates in place, no `id` creates, unknown `id` is `404`, omitted children are permanently deleted). Give `Update{Child}` an optional `id`, and say in the property description that omitted children are not recoverable. See §1.5.1.

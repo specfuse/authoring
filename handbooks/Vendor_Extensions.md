@@ -1371,7 +1371,7 @@ email:
 
 > **These declarations have a deliverable, from generator 0.9.0.** The
 > `dataProtectionAudit` markdown artifact (`Project_File.md` §11.5) renders
-> `x-classification` and `x-protection` into `data-protection-audit.md` and a
+> `x-classification` and `x-protection` into `DATA_PROTECTION_AUDIT.md` and a
 > JSON companion: inventory, protection matrix, exceptions register, key
 > management, egress map, and erasure capability. It is the reason `rationale`,
 > `reviewedBy` and `reviewedOn` are worth filling in properly rather than

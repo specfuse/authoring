@@ -162,7 +162,7 @@ The three spec-path fields tell the generator where to find the bundled inputs.
 
 **Required**: Optional. When set, Arazzo files are parsed, validated, cross-linked against the OpenAPI build context, and made available to scenario / recipe artifacts (Markdown docs, C# fixture & test classes).
 
-**Validation severity**: Arazzo errors are **downgraded to warnings** before being merged into the overall result. Arazzo does not yet drive code generation in lockstep with OpenAPI/AsyncAPI.
+**Validation severity**: Arazzo errors are **not** downgraded: an Arazzo ERROR fails `validate` like any other (measured on `0.14.0` and `<NEXT>`; earlier revisions of this line said they were downgraded to warnings). Arazzo does not yet drive code generation in lockstep with OpenAPI/AsyncAPI.
 
 ```json
 { "arazzoSpecifications": "./api/specs/v3" }
@@ -1057,7 +1057,7 @@ These ids still generate the same files as their replacement, and each logs a `W
 
 #### `dataProtectionAudit` (generator 0.9.0)
 
-Emits `data-protection-audit.md` plus a machine-readable companion `data-protection-audit.json` carrying the same record. It reads the `x-classification` and `x-protection` declarations already in the specifications and turns them into the compliance deliverable those declarations exist to support, in six sections:
+Emits `DATA_PROTECTION_AUDIT.md` plus a machine-readable companion `data-protection-audit.json` carrying the same record. It reads the `x-classification` and `x-protection` declarations already in the specifications and turns them into the compliance deliverable those declarations exist to support, in six sections:
 
 | Section | What it states |
 |---|---|
