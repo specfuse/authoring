@@ -1648,6 +1648,9 @@ Article:
 
 ```yaml
 x-references: Customer      # target entity name (PascalCase), or the literal `none`
+
+# Object form (generator <NEXT>):
+x-references: { entity: Customer, resolve: remote }   # resolve: local | remote, default local
 ```
 
 **Semantics**:
@@ -1659,7 +1662,14 @@ x-references: Customer      # target entity name (PascalCase), or the literal `n
 
 **`x-references: none`** marks a `format: uuid` property that is **not a foreign key at all** — a correlation id, an idempotency token, an externally-minted identifier. Because this suppresses relationship classification entirely, it MUST be accompanied by a `description` justifying why the value is opaque. An unjustified `none` is indistinguishable from an author who did not want to think about the relationship.
 
-`none` is also the current form for **an id owned by another pillar that this pillar reads through the owner's API and does not replicate**. The value is a real foreign key in the business sense, but it cannot be a database FK across pillar databases. The `description` then names the owner pillar, the entity, and how the value is resolved. See §14.11. At generator `0.14.0`, `none` on a property named after an entity (`customerId`) still binds it to that entity by name (`clabonte/generator#2400`). No relationship is built either way. But in a pillar-bound group that does not own the entity, generation fails.
+At generator `0.14.0`, `none` on a property named after an entity (`customerId`) still bound it to that entity by name, and a pillar-bound group that did not own the entity failed. Generator `<NEXT>` fixes this (`clabonte/generator#2400`): `none` is a plain uuid column whatever the property is called.
+
+**The object form, `{ entity, resolve }` (generator `<NEXT>`, `clabonte/generator#2397`).** `resolve` is `local` or `remote` and defaults to `local`.
+
+- **`resolve: local`** is the string form written out. `x-references: { entity: Customer, resolve: local }` and `x-references: Customer` generate the same thing.
+- **`resolve: remote`** declares a reference to an entity **another pillar owns, which this pillar neither holds nor replicates**. It reads the target through the owner's API. The value is a real foreign key in the business sense, but it cannot be a database FK across pillar databases. The generator emits a plain uuid column: no FK, no navigation, no EF configuration, no `Read{Entity}` rebinding. Unlike `none`, it records the target, so the entity diagram still shows the edge. It is the declaration §14.11 describes, and it carries tenancy when it targets the tenant root (§14.11).
+
+The object form is only for a property. A `belongsTo` entry written as an object (`belongsTo: { allOf: [{ entity: Tenant, resolve: remote }] }`) is `INVALID_EXTENSION_VALUE`, because `belongsTo` stays a composition edge inside one database. `none` has no object form: `{ entity: none }` is refused, so write the opt-out as the plain string. A `description` is not required on a remote reference, unlike `none`, but naming the owner pillar and how the value is read is good practice.
 
 **Every FK-shaped property must be classified.** Since the retirement of implicit `{Entity}Id` → `belongsTo` inference (kit `0.5.4`), a `format: uuid` property named after an entity carries no relationship meaning on its own. Exactly one classification applies:
 
@@ -1667,6 +1677,7 @@ x-references: Customer      # target entity name (PascalCase), or the literal `n
 |---|---|
 | This entity is part of the target's aggregate | `belongsTo: <Target>` on `x-entity` (composition, Cascade, aggregate membership) |
 | This entity merely points at the target | `x-references: <Target>` on the property (association, NoAction, no membership) |
+| The target is owned by another pillar and read through its API, with no local copy | `x-references: { entity: <Target>, resolve: remote }` on the property (plain uuid column; generator `<NEXT>`, §14.11) |
 | The uuid is not a foreign key | `x-references: none` on the property + a justifying `description` |
 
 Leaving an FK-shaped property unclassified is a spec defect.
@@ -1679,7 +1690,7 @@ Leaving an FK-shaped property unclassified is a spec defect.
    The generator draws the same line, and it is worth knowing which side a shape falls on before authoring it. `DDD_DUAL_RELATIONSHIP_DECLARATION` fires on the property that *implements* the `belongsTo` and also declares `x-references` to that target — one edge cannot be both owned composition and non-owning association. It does **not** fire on sibling properties naming the same target, because those are different edges. Measured against the pinned `0.5.8` jar: `LegalEntity.organisationId` with both declarations errors, while `Associate.managerId` and `Associate.approverId` both pass on an `Associate` that declares `belongsTo: Person`. So **"points at another instance of my own owner's type" is expressed as an ordinary sibling `x-references`** — a self-referencing `Person.managerId -> Person` on an owned entity is legal, and wants a `description` saying which instance it points at.
 3. `x-references` and `x-fk-for` (§1.8) MUST NOT appear on the same property. They declare opposite ownership.
 4. `x-references: none` requires a non-empty `description`.
-5. The value MUST be `none` or a PascalCase entity name.
+5. The value MUST be `none`, a PascalCase entity name, or an object `{ entity: <PascalCase entity>, resolve: local | remote }` with no other key. The generator refuses a malformed object as `INVALID_EXTENSION_VALUE`. Measured at generator `<NEXT>`: `resolve: cached` was refused as "Invalid resolve 'cached' in x-references". The kit's `specfuse-x-references-shape` lints both forms.
 
 **Examples**:
 
@@ -1716,6 +1727,7 @@ Note:
 
 - **`belongsTo` (§1.1)**: the owning counterpart. Mutually exclusive per target.
 - **`x-fk-for` (§1.8)**: for an *owning* FK whose column name does not follow the `{Entity}Id` convention.
+- **`info.x-pillars` / `holds` (§14.2, §14.3)**: `resolve: remote` is the alternative to a hold. Declaring both for one target is `PILLAR_REMOTE_REFERENCE_ALSO_HELD` (WARNING); see §14.11.
 
 ---
 
@@ -4100,7 +4112,7 @@ x-ui:
 
 ## 14. Pillar Topology Extensions
 
-> **Availability.** The registry shipped in generator `0.6.0` as `info.x-services`, with `holds` and `Read{Entity}`. Generator `0.14.0` renamed it `info.x-pillars`, outright and with no alias (authoring#136); the entry shape, `domains` and `holds`, is unchanged. `extensions --format json` has published the `info`-level surface (`x-domains`, `x-pillars`, `x-roles`) since `0.11.0` (as `x-services` before `0.14.0`). Nothing here is retroactive: a spec that declares none of it is unaffected in every generator version. See `compatibility.md` §24 and §41.
+> **Availability.** The registry shipped in generator `0.6.0` as `info.x-services`, with `holds` and `Read{Entity}`. Generator `0.14.0` renamed it `info.x-pillars`, outright and with no alias (authoring#136); the entry shape, `domains` and `holds`, is unchanged. `extensions --format json` has published the `info`-level surface (`x-domains`, `x-pillars`, `x-roles`) since `0.11.0` (as `x-services` before `0.14.0`). Generator `<NEXT>` adds `x-references: { entity, resolve: remote }`, a cross-pillar reference with no replica (§14.11). Nothing here is retroactive: a spec that declares none of it is unaffected in every generator version. See `compatibility.md` §24 and §41.
 
 > **Renamed from `info.x-services`.** A leftover `info.x-services` is never read. It is refused by name — `PILLAR_REGISTRY_LEGACY_KEY` (ERROR) in the generator, `specfuse-pillars-legacy-key` in the kit — whether or not `info.x-pillars` is also present, so a half-finished rename cannot pass for a finished one. Every `SERVICE_*` finding id is now `PILLAR_*` at the same severity, the kit's `specfuse-services-*` rules are now `specfuse-pillars-*`, and `groups[].service` is now `groups[].pillar` (`Project_File.md` §8.13.2). Migrating is a key rename: `x-services:` becomes `x-pillars:`, and any CI filter, suppression list or Spectral baseline keyed on an old id is re-keyed.
 
@@ -4188,7 +4200,7 @@ info:
 
 **A hold means a persisted, event-fed replica, and it changes the holder's generated code.** It is not only a validation declaration. In a group bound with `groups[].pillar`, every reference to a held entity is rebound to its `Read{Entity}` replica. That applies to an `x-references` FK and to the FK column of a `belongsTo`. The holder's EF model then carries a non-owning relationship to a replica **table in the holder's own database**, kept current by the owner's snapshot events (§14.5). The group has to register the artifacts that emit that table and its feed: `heldEntity` and `heldEntityConfiguration`, and `heldEntityHydration` and `heldEntityHydrationTrigger` wherever the events are consumed (`Project_File.md` §11.1). Otherwise the rebound navigation is typed against a class nothing emits. A group with no `pillar` holds nothing and rebinds nothing.
 
-So `holds` is the right declaration only when the holder really keeps a copy. A pillar that reads a neighbour's entity through the owner's API and keeps no copy should not declare a hold; see §14.11.
+So `holds` is the right declaration only when the holder really keeps a copy. A pillar that reads a neighbour's entity through the owner's API and keeps no copy should not declare a hold. It declares the reference `resolve: remote` instead (§14.11). A `resolve: remote` reference is never rebound, even to a held target.
 
 ### 14.4 `Read{Entity}`
 
@@ -4256,7 +4268,7 @@ A replica is fed by the owner's events, so declaring one puts requirements on th
 
 `project.json` gains `groups[].pillar`, which binds a group to a pillar name in `info.x-pillars`; the pillar's owned domains expand into the ordinary include-filter that `groups[].domains` writes by hand. `pillar` and `domains` are **mutually exclusive**. See `Project_File.md` §8.13.2.
 
-Only a pillar-bound group applies holds (§14.3). At `0.14.0`, several cross-pillar shapes fail to generate in a pillar-bound group, and no C# group with `domainProject` compiles while the spec declares `Read{Entity}` schemas. See §14.10.
+Only a pillar-bound group applies holds (§14.3). At generator `<NEXT>`, a cross-pillar `belongsTo` or `x-references` with a hold, or a `resolve: remote` reference with none, generates in both pillars' groups. A cross-pillar reverse `hasMany`/`hasOne` and a child route nested under another pillar's parent still fail. See §14.10.
 
 ### 14.7 One bundle or many — the choice this vocabulary does *not* make for you
 
@@ -4282,7 +4294,7 @@ Adoption is opt-in and the checks are gated on a declaration, so there is no for
 5. **Re-run validation and use its output as the work list.** Do not plan from a count someone measured against an older bundle — the ranking moves.
 6. **Validate the project file, then generate every pillar.** `validate` on a bundled spec runs the pillar rules in §14.9. Some failures only appear when a group's context is built for one pillar: `validate <project>.json` builds it, while spec-level `validate` and the Spectral layers do not. A spec can be green at the spec level and still fail to generate for every pillar. Give the project file one group per pillar, each with `groups[].pillar`, and validate that file.
 
-   Even that is not the whole bar. At `0.14.0`, a child-create operation nested under a held parent's path passed project-level `validate` and still failed `generate` (§14.10). Run `generate` for each pillar-bound group before calling the topology done. §14.10 lists the shapes that fail at generator `0.14.0`.
+   Even that is not the whole bar. At generator `<NEXT>`, a child-create operation nested under a held parent's path still passes project-level `validate` and fails `generate`, in both pillars' groups (§14.10). Run `generate` for each pillar-bound group before calling the topology done. §14.10 lists the shapes that fail at generator `<NEXT>`.
 
 ### 14.9 Kit Spectral rules and their generator counterparts
 
@@ -4303,40 +4315,46 @@ The kit lints this vocabulary in the editor; the generator validates it at gener
 
 **Generator-only, with no kit rule** — each needs the AsyncAPI surface, the OpenAPI surface, or both at once, which no single Spectral run has:
 
-`PILLAR_REGISTRY_MISSING` (warn) · `PILLAR_DOMAIN_UNOWNED` (warn) · `PILLAR_HOLDS_OWNED_ENTITY` (warn) · `PILLAR_CROSS_BOUNDARY_REFERENCE` · `PILLAR_BOUNDARY_OWNER_UNKNOWN` (warn) · `READ_MODEL_MISSING_TENANT_KEY` · `READ_MODEL_NOT_HYDRATABLE` · `READ_MODEL_SNAPSHOT_MISSING_KEY` · `READ_MODEL_NO_SNAPSHOT` (warn) · `READ_MODEL_NO_CREATE_EVENT` · `READ_MODEL_NO_UPDATE_EVENT` · `READ_MODEL_NO_REMOVAL_EVENT` · `READ_MODEL_EVENT_PAYLOAD_NOT_SNAPSHOT` · `READ_MODEL_SNAPSHOT_VERSION_DRIFT` (ERROR when the read model's field survives only in a deprecated snapshot version; warn when the canonical snapshot still carries it) · `READ_MODEL_NO_ORDERING_KEY` (warn) · `READ_MODEL_DUPLICATE_CONSUMER`
+`PILLAR_REGISTRY_MISSING` (warn) · `PILLAR_DOMAIN_UNOWNED` (warn) · `PILLAR_HOLDS_OWNED_ENTITY` (warn) · `PILLAR_CROSS_BOUNDARY_REFERENCE` · `PILLAR_BOUNDARY_OWNER_UNKNOWN` (warn) · `PILLAR_REMOTE_REFERENCE_ALSO_HELD` (warn, `<NEXT>`) · `PILLAR_REMOTE_REFERENCE_SAME_PILLAR` (warn, `<NEXT>`) · `READ_MODEL_MISSING_TENANT_KEY` · `READ_MODEL_NOT_HYDRATABLE` · `READ_MODEL_SNAPSHOT_MISSING_KEY` · `READ_MODEL_NO_SNAPSHOT` (warn) · `READ_MODEL_NO_CREATE_EVENT` · `READ_MODEL_NO_UPDATE_EVENT` · `READ_MODEL_NO_REMOVAL_EVENT` · `READ_MODEL_EVENT_PAYLOAD_NOT_SNAPSHOT` · `READ_MODEL_SNAPSHOT_VERSION_DRIFT` (ERROR when the read model's field survives only in a deprecated snapshot version; warn when the canonical snapshot still carries it) · `READ_MODEL_NO_ORDERING_KEY` (warn) · `READ_MODEL_DUPLICATE_CONSUMER`
 
-**`PILLAR_CROSS_BOUNDARY_REFERENCE` is the one finding that can turn a green `validate` red.** It reports every reference whose target is owned by a different pillar and is not covered by a `Read{Entity}` + `holds` pair. It fires **only** on a spec that declares `info.x-pillars`, so it cannot affect a project that has not adopted the vocabulary — but once you do adopt, it is an ERROR, not a warning. It is satisfiable by authoring the pairs, or by declaring the reference opaque with `x-references: none` (§1.7), which the census skips (§14.11).
+**`PILLAR_CROSS_BOUNDARY_REFERENCE` is the one finding that can turn a green `validate` red.** It reports every reference whose target is owned by a different pillar and is not covered by a `Read{Entity}` + `holds` pair. It fires **only** on a spec that declares `info.x-pillars`, so it cannot affect a project that has not adopted the vocabulary — but once you do adopt, it is an ERROR, not a warning. It is satisfiable by authoring the pairs, by declaring the reference `x-references: { entity: <Target>, resolve: remote }` (generator `<NEXT>`, §14.11), or by declaring it opaque with `x-references: none` (§1.7). The census accepts the first two and skips the third. Since generator `<NEXT>` it also reports a cross-pillar `hasMany`/`hasOne` **even when the target is held**: the child's `belongsTo` is the crossing, and the reverse edge must go (§14.10).
 
-**Passing this census does not mean every pillar generates.** The census accepts every edge kind a hold covers, including some that pillar-bound generation then rejects. See §14.10.
+**Passing this census does not mean every pillar generates.** At generator `<NEXT>` the census and pillar-bound generation agree on every edge kind measured in §14.10. A child route nested under another pillar's parent still passes the census and fails `generate`. See §14.10.
 
-### 14.10 Cross-pillar edges at generator `0.14.0`: what generates
+### 14.10 Cross-pillar edges at generator `<NEXT>`: what generates
 
-Everything below was measured against the released `0.14.0` jar, on a copy of `examples/hello-orders` split into two pillars:
+Everything below was measured at generator `<NEXT>`, on a copy of `examples/hello-orders` split into two pillars:
 
 - `core` owns `tenant` and `customer`;
-- `sales` owns `order` and holds `Tenant` and `Customer`;
+- `sales` owns `order`;
 - `Order` refers to `Tenant` and `Customer`;
-- the nested `/customers/{customerId}/orders` routes were flattened to `/orders` (see the third bullet below).
+- a row that says "held" means `sales` holds `Tenant` and `Customer`, with flat `ReadTenant` and `ReadCustomer` schemas and the owner's create, update and removal events;
+- the nested `/customers/{customerId}/orders` routes were flattened to `/orders` (see the routes bullet below).
 
-"Holder" is `sales`, the child's pillar. "Owner" is `core`, the parent's pillar. Each verdict is `generate` for one C# group bound to that pillar, with `entity`, `valueObject`, `enum`, `domainModel`, `domainProject`, `heldEntity` and `heldEntityConfiguration` registered. The project-level `validate` reported the same failure on every row. It did **not** report the nested-route failure in the third bullet below (§14.8 step 6).
+"Holder" is `sales`, the child's pillar. "Owner" is `core`, the parent's pillar. Each verdict is `generate` for one C# group bound to that pillar, with `entity`, `valueObject`, `enum`, `domainModel`, `domainProject`, `heldEntity` and `heldEntityConfiguration` registered. The project-level `validate` gave the same verdict as `generate` on every row. The same spec run through the `0.14.0` jar reproduced the `0.14.0` column, the verdicts this section recorded at that pin.
 
-| how `Order` refers to its parent | holder's group | owner's group |
-|---|---|---|
-| `belongsTo`, parent held, **and** the owner declares the reverse `hasMany: [Order]` | **fails**, `PROPERTY_DUPLICATE` on `Order.CustomerId` (`clabonte/generator#2393`) | **fails**, `CROSS_DOMAIN_ENTITY_REFERENCE` (`#2394`) |
-| `belongsTo`, parent held, **no** reverse edge | generates; the FK binds to `Read{Parent}` | **fails**, `CROSS_DOMAIN_ENTITY_REFERENCE`: the owner's group builds the inverse navigation from the child's `belongsTo` itself (`#2394`) |
-| `x-references: <Parent>`, parent held | generates; the FK binds to `Read{Parent}` | generates |
-| `x-references: none` on a property named `{parent}Id` (`tenantId`), no hold | **fails**, `CROSS_DOMAIN_ENTITY_REFERENCE`: the name still binds the property to the entity (`clabonte/generator#2400`) | generates |
-| `x-references: none` on a property named otherwise (`tenantRef`), no hold | generates; opaque uuid column | generates |
+| how `Order` refers to its parent | holder's group | owner's group | at `0.14.0` |
+|---|---|---|---|
+| `belongsTo`, parent held, **and** the owner declares the reverse `hasMany: [Order]` | **fails**, `PILLAR_CROSS_BOUNDARY_REFERENCE` on the `hasMany` | **fails**, the same finding | with `core` holding `Order`: holder `PROPERTY_DUPLICATE` (`clabonte/generator#2393`), owner `CROSS_DOMAIN_ENTITY_REFERENCE` (`#2394`); without, as now |
+| `belongsTo`, parent held, **no** reverse edge | generates; the FK binds to `Read{Parent}` | generates; the parent has no navigation to `Order` | owner failed, `CROSS_DOMAIN_ENTITY_REFERENCE` (`#2394`) |
+| `x-references: <Parent>`, parent held | generates; the FK binds to `Read{Parent}` | generates | same |
+| `x-references: { entity: <Parent>, resolve: remote }`, no hold | generates; plain uuid column | generates | not available (`#2397`) |
+| `x-references: none` on a property named `{parent}Id` (`tenantId`), no hold | generates; plain uuid column | generates | holder failed, `CROSS_DOMAIN_ENTITY_REFERENCE` (`#2400`) |
+| `x-references: none` on a property named otherwise (`tenantRef`), no hold | generates; plain uuid column | generates | same |
+
+The `resolve: remote` row was measured twice: once with `Customer` remote and `Tenant` still held through `x-references: Tenant`, and once with both remote and no `holds` at all. Both generated in both groups.
 
 What follows from the table:
 
-- **Never declare a reverse `hasMany`/`hasOne` across a pillar boundary.** A parent cannot navigate to children stored in another pillar's database, and declaring the reverse edge breaks both groups. When the child's pillar holds the parent, `RELATIONSHIP_SYMMETRY` does not require the reverse edge, so dropping it is legal.
-- **The one form that generates on both sides at `0.14.0` is `x-references: <Parent>` plus a hold.** It keeps the relationship declared. It gives up composition semantics (§1.7), which cannot hold across pillar databases anyway. **A child declared `type: entity` must become `type: aggregate` when its `belongsTo` is replaced:** an `entity` with no `belongsTo` is `ENTITY_ORPHAN`. Measured on `0.14.0` with a parent in one pillar and a child in another, each pillar holding the other's entity: `belongsTo` failed the parent's group with `CROSS_DOMAIN_ENTITY_REFERENCE`, while `x-references: <Parent>` on the child's `{parent}Id` with the child as an `aggregate` generated both groups, and the child's FK bound to `Read{Parent}`. A cross-pillar `belongsTo` generates only in the holder's group until `#2394` is fixed. The generator's own `#2250` regression fixture fails the same way when generated from the owner's side.
-- **Do not nest a child's routes under a parent owned by another pillar.** With `POST /customers/{customerId}/orders` in place, the holder's group failed to resolve `createOrder`: "rooted under aggregate 'Customer' which does not own 'Order'". The owner's group failed the same way once the `belongsTo` was gone, because operations are resolved for the whole spec, not only the pillar's domains. Put the child's create and list operations at the child's own path, with the parent id in the body or as a query filter.
-- **The tenancy root has no safe form at `0.14.0`.** The `I{Tenant}Scoped` marker follows `belongsTo` only (`Project_File.md` §4.1). A child in another pillar therefore needs a `belongsTo` to its tenant, and that `belongsTo` breaks the tenant owner's group. A split bundle (§14.7) keeps the child out of the owner's bundle, which should avoid the inverse, but this is unmeasured. A multi-pillar tenancy otherwise waits on `#2394`.
-- **No C# group with `domainProject` compiles while the spec declares `Read{Entity}` schemas** (`clabonte/generator#2392`). The Domain `AutoMapperProfile.g.cs` maps every `Read{Entity}` to its entity. An unbound group emits no `Read{Entity}` type. A holder's group emits the replica but not the owner's entity it is mapped to. Either way the result is `CS0246`. Dart and TypeScript groups emit an unused `Read{Entity}` client type.
+- **Never declare a reverse `hasMany`/`hasOne` across a pillar boundary.** A parent cannot navigate to children stored in another pillar's database. `PILLAR_CROSS_BOUNDARY_REFERENCE` now reports the reverse edge even when the child is held. Its fix says to drop the reverse edge, because the child's `belongsTo` is the crossing. It is a spec-level finding: the spec-level `validate` reported it too. Holding `Order` in `core` made no difference. `RELATIONSHIP_SYMMETRY` does not require the reverse edge when the child's pillar holds the parent, so dropping it is legal.
+- **A cross-pillar `belongsTo` with a hold now generates on both sides.** The owner's group builds no inverse navigation from another pillar's child. In the holder's group the child's FK binds to the `Read{Parent}` replica. A child declared `type: entity` can keep its `belongsTo`. Measured with a parent in one pillar and a child in another, each pillar holding the other's entity: the child stayed an `entity` with `belongsTo`, and both groups generated (authoring#146). At `0.14.0` the owner's group failed this way, and the workaround was `x-references: <Parent>` with the child retyped as an `aggregate`. That form still generates, but it is no longer needed.
+- **Replacing a `belongsTo` still needs the retype.** An `entity` with no `belongsTo` is `ENTITY_ORPHAN`, whatever its `x-references` say. Measured with `resolve: remote` in place of the `belongsTo` above: the child as an `entity` failed both groups with `ENTITY_ORPHAN`, and as an `aggregate` it generated both.
+- **Do not nest a child's routes under a parent owned by another pillar.** With `POST /customers/{customerId}/orders` and `belongsTo` in place, the project-level `validate` passed and `generate` failed in **both** groups: "Create operation 'CreateOrder' is rooted under aggregate 'Customer' which does not own 'Order'". Neither group builds the cross-pillar edge as ownership: the holder sees a replica, the owner sees no inverse. With `resolve: remote` instead of `belongsTo`, the spec-level `validate` already fails, with `OPERATION_PARENT_NOT_OWNER` and `OPERATION_NESTED_LIST_NO_RELATIONSHIP`. Put the child's create and list operations at the child's own path, with the parent id in the body or as a query filter.
+- **The tenancy root has two working forms.** `belongsTo` to the tenant with a hold generates on both sides (second row), and the child carries the `I{Tenant}Scoped` marker. A `resolve: remote` reference to the tenant carries the marker with no `belongsTo` and no hold (§14.11). Measured with a `tenancy` block: under `belongsTo` and under `resolve: remote`, `Order` implemented the tenant marker. Under `x-references: Tenant` and under `x-references: none`, it did not. The generated `Order` events carried the marker in all four cases.
+- **The C# Domain no longer maps `Read{Entity}`** (`clabonte/generator#2392`). At `<NEXT>` the generated C# maps through Mapperly, and no group emits an `AutoMapperProfile.g.cs`. In the measured groups, no generated file names a `Read{Entity}` except the replica's own entity and configuration and the holder's entity whose FK binds to it. Dart and TypeScript `dto` groups no longer emit a `Read{Entity}` client type. Checked with `dotnet build` on an unbound C# group of the held spec, with the domain artifacts it needs to compile (`domainValidation`, `domainExceptions`, `serviceInterface`, `service`, `repositoryInterface`, `event`, `eventRuntime`, `tenancyMarker`, `snapshot`, and a `tenancy` block). At `<NEXT>` it built with 0 errors. At `0.14.0` it failed with `CS0246` on `ReadTenant`, `ReadOrder` and `ReadCustomer` in `AutoMapperProfile.g.cs`.
+- **A pillar-bound C# group with `snapshot` does not compile, at `<NEXT>` or `0.14.0`.** `snapshot` emits every `{Entity}Snapshot` under the AsyncAPI source root, not only the pillar's, and each one maps from its entity. In the holder's group, `CustomerSnapshot.g.cs` and `TenantSnapshot.g.cs` failed with `CS0246` on `Customer`, `CustomerStatus` and `Tenant`. `OrderSnapshot.g.cs` failed the same way in the owner's group. This is unrelated to replicas, and nothing in the spec avoids it.
 
-These verdicts are tied to `0.14.0`; re-measure them at every pin bump (`compatibility.md` §44).
+These verdicts are tied to `<NEXT>`; re-measure them at every pin bump (`compatibility.md` §44).
 
 ### 14.11 A pillar that reads without keeping a copy
 
@@ -4344,7 +4362,7 @@ These verdicts are tied to `0.14.0`; re-measure them at every pin bump (`compati
 
 **Do not declare a hold for that.** A hold brings the replica table, the FK rebinding (§14.3), the hydration artifacts and the event-feed rules in §14.5. `READ_MODEL_NO_ORDERING_KEY` and its siblings would then describe hazards of a table that does not exist.
 
-The vocabulary has no declaration for this model yet; `clabonte/generator#2397` proposes `x-references: { entity: <Parent>, resolve: remote }`. Until it ships, the intended form is an **opaque** id:
+**Declare the reference `resolve: remote`** (generator `<NEXT>`, `clabonte/generator#2397`):
 
 ```yaml
 customerId:
@@ -4353,18 +4371,29 @@ customerId:
   description: >
     Customer id, owned by the core pillar. Read through the owner's
     getCustomer operation and cached; there is no local foreign key.
-  x-references: none
+  x-references: { entity: Customer, resolve: remote }
 ```
 
-- `PILLAR_CROSS_BOUNDARY_REFERENCE` skips `none`, so no hold or `Read{Entity}` is needed.
-- The `description` is required (§1.7 rule 4). Name the owner pillar, the entity and how the value is resolved. Until `#2397` ships, that sentence is the only record of the relationship, and no diagram or audit will show it.
-- Drop any cross-pillar `belongsTo`, `hasMany` or `hasOne` for the same link; under this model none of them can exist.
-- **At `0.14.0` this form only generates when the property is not named after the entity.** A `none` on `customerId` still binds to `Customer` by name, and the holder's group fails (§14.10, `clabonte/generator#2400`). Renaming the property changes the wire contract, so for an existing API the realistic choices are:
-  - wait for `#2400`;
-  - or use `x-references: <Parent>` plus a hold, the form that generates on both sides (§14.10), and accept the replica artifacts until `#2397`.
-- **Caveat: the tenancy root.** Dropping a `belongsTo` to the tenant drops the `I{Tenant}Scoped` marker and the tenant filter with it. See the tenancy bullet in §14.10.
+Measured at `<NEXT>` on the two-pillar `hello-orders` split in §14.10, with `Order.customerId` and `Order.tenantId` both `resolve: remote` and no `holds`:
 
-**See also**: §1.1 (`x-entity.delete`), §1.7 (`x-references`), §1.9 (`x-expand-of` / `x-projection`), §12.2 (`x-label`), `Project_File.md` §8.13 (`groups[].domains` / `groups[].pillar`), `compatibility.md` §24 and §44.
+- **Both groups generate.** `PILLAR_CROSS_BOUNDARY_REFERENCE` accepts `resolve: remote` with no `holds` and no `Read{Entity}`. The holder's `Order` has `public Guid CustomerId { get; set; } = Guid.Empty;` and no navigation, FK configuration or replica.
+- **The relationship stays visible.** The `entityDiagram` Markdown artifact lists the column as ``→ `Customer` (remote)`` and draws a dashed edge to `Customer`. `x-references: none` records no target, so it cannot do this.
+- **It carries tenancy.** With a `tenancy` block naming `Tenant` (`Project_File.md` §4.1), a `resolve: remote` reference to `Tenant` makes `Order` implement the `I{Tenant}Scoped` marker with no `belongsTo`. `TenancyDerivationValidationRule` accepts it as the tenant chain. `Order`'s events carried the marker too. Checked with `dotnet build` on an unbound group: 0 errors. This is the case `x-references: none` could not express (§14.10 tenancy bullet).
+  - **Name the column after `tenancy.tenant.foreignKey`.** The marker's property is the tenancy block's `foreignKey`, not the column that carries the remote reference. With the reference on `tenantRef`, generation passed, and `dotnet build` failed with `CS0535`: `Order` does not implement the marker's `TenantId`. Validation does not catch it.
+  - Only the tenant tier is read from a remote reference. In the generator source, a `subTenant` tier still needs `belongsTo`.
+- **Two warnings catch a contradictory topology.** Measured, both WARNING:
+  - `PILLAR_REMOTE_REFERENCE_ALSO_HELD`: the referencing pillar also `holds` the target, so one edge has two strategies. The column stays a plain uuid; the hold does not rebind it.
+  - `PILLAR_REMOTE_REFERENCE_SAME_PILLAR`: the referencing pillar owns the target itself, so there is nothing to resolve remotely.
+- **It is declaration only.** No cache-aside reader or API client is generated for the reference. A test builder seeds the column with `Guid.NewGuid()` rather than a `TestSeed` constant the group does not declare (generator CHANGELOG, `#2438`; not measured here).
+
+Rules for the form:
+
+- Drop any cross-pillar `belongsTo`, `hasMany` or `hasOne` for the same link; under this model none of them can exist. If the child is an `entity`, retype it as an `aggregate` (§14.10).
+- The `description` is optional, unlike for `none`. It is still the place to name the owner pillar and the operation that resolves the value.
+- `x-references: none` is no longer the form for this model. Keep `none` for a uuid that identifies no entity at all (§1.7). Since `#2400` it generates on a property named after an entity, so an existing `none` keeps working. Moving it to `resolve: remote` restores the diagram edge and, for the tenant, the marker.
+- A `resolve: remote` reference cannot appear in `belongsTo`. An object entry there is `INVALID_EXTENSION_VALUE`.
+
+**See also**: §1.1 (`x-entity.delete`), §1.7 (`x-references`), §1.9 (`x-expand-of` / `x-projection`), §12.2 (`x-label`), `Project_File.md` §4.1 (`tenancy`) and §8.13 (`groups[].domains` / `groups[].pillar`), `compatibility.md` §24 and §44.
 
 ---
 
