@@ -102,6 +102,7 @@ components:
         delete: soft
         cascadeDelete: soft
         children: [Line, Payment]
+        requiresPagination: false
       required: [id]
       properties:
         id: { type: string, format: uuid }

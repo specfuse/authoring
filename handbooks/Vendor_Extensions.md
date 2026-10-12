@@ -50,7 +50,7 @@ x-entity:
   hasMany: string[]              # Optional: One-to-many child relationships
   filterableProperties: string[] # Optional: Fields usable in OData filter expressions
   searchableProperties: string[] # Optional: Fields available for free-text search
-  requiresPagination: boolean    # Optional: Whether lists require pagination (default: true for aggregates)
+  requiresPagination: boolean    # RETIRED, read by nothing: pagination follows the list operation's 2xx response (see below)
   mutability: string             # Optional: "mutable" | "immutable" | "appendOnly" (default: "mutable")
   concurrency: string | object   # Required, NO default: "optimistic" | "none", or { mode, reason } / { mode: delegated, to }
   delete: string | object        # Optional: "hard" | "soft", or { mode, retention, reason, archiveVisibility } (default: "hard")
@@ -762,7 +762,6 @@ Customer:
     belongsTo:
       allOf: [Tenant]
     searchableProperties: [firstName, lastName, email, phone]
-    requiresPagination: true
     valueObjects:
       homeAddress:
         storage: 'single_json'
