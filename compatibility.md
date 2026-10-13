@@ -1371,6 +1371,19 @@ The C# server prefixes every route with the path part of the server URL; the cli
 
 **Spec-author action:** if a spec's server URL ends in `/v{n}` and its paths also start with `/v{n}/`, drop the segment from the server URL. If the paths do *not* carry the version, move it into the paths rather than suppressing the rule: the generated client paths never include the server URL's path.
 
+### 51. RestoManager handoffs 2026-10-12: business retention; `Error.code` is the rule name
+
+**Status:** kit side **done**. Generator ask **not filed** (item 1).
+
+1. **Business retention.** `x-entity.delete.retention` only covers how long an archived row waits. The kit had no place for "N months after a business date", so one consumer declared it as free text in `x-compliance.retention` (15 entities) and enforced it with direct `run-*` sweeps. Measured on the `0.15.0` jar: no class reads `x-compliance`. `DELETE_SOFT_CLASSIFIED_NO_RETENTION` (WARNING, in the jar since `0.11.0` at the latest; §32's §C filed it) reads `delete.retention` only, so it still fires on entities that declare business retention. It was missing from `Vendor_Extensions.md` §1.1's table. Changes:
+   - `API_Handbook.md` §2 gains "Business Retention": a separate declaration, per property when one row has two clocks, enforced by a sweep that either deletes rows (one `{Entity}Deleted` each) or clears fields (one `{Entity}Updated` each).
+   - `AsyncAPI_Handbook.md` §1.3 names retention sweeps as an exception to the fan-out rule.
+   - `Vendor_Extensions.md` §8.2 says `x-compliance` is read by nothing and contrasts the two retentions.
+   - The §1.1 table gains `DELETE_SOFT_CLASSIFIED_NO_RETENTION`.
+
+   **Generator follow-up, not filed:** a structured `x-compliance.retention` (`period`, `from` as a date property, `action: delete | clear`, allowed per property) that the generator could turn into a sweep. Then `DELETE_SOFT_CLASSIFIED_NO_RETENTION` could accept either retention. The consumer has not asked for it yet. File when a second project needs it.
+2. **`Error.code` vs the HTTP status.** A consumer's `Error.code` was `type: integer` (the status), while its copy of `API_Handbook.md` §2.1 called `code` a snake_case rule name. As a result, 17 operation descriptions named codes the wire cannot carry. The consumer added a string `reason` field. **The kit does not have this contradiction:** the `hello-orders` `Error` types `code` as a snake_case string and carries the status in a separate integer `status`, and §2.1 matches. §2.1 now says so explicitly. The proposed generator rule (warn on `error.code = <name>` prose when `code` is an integer) depends on the consumer's own schema and is not forwarded.
+
 ## Outstanding kit-side work
 
 These are gaps in the kit itself, separate from the generator-side follow-ups above. Each represents an enforcement promise the handbooks make that has no implementation today.
