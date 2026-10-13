@@ -236,21 +236,45 @@ function checkPiiRequired(schema, basePath) {
 // could not decrypt — without it, a decryption failure has nowhere to go but
 // an exception or, worse, a silently empty value.
 //
-// Scope deliberately matches the jar and no more: it fires on a property whose
-// OWN `x-protection` says encrypted. An entity whose only encrypted target is a
-// flattened value object does NOT trip it — measured against 0.13.0, which
-// generates per-member ciphertext for that case and still asks for nothing.
-// That asymmetry is the generator's, not the kit's; widening it here would fail
-// specs that generate cleanly, which is the adoption-blocking direction.
+// Scope: a property whose OWN `x-protection` says encrypted, and (from
+// generator 0.14.0, clabonte/generator#2097) an `x-entity.valueObjects` usage
+// site that declares `storage: flatten` with an encrypted `protection`, in
+// either shape (scalar `{atRest}` or per-member map). Measured on 0.14.0-0.16.0.
+// `single_json` does not trip it. A usage site that declares no `storage` and
+// inherits `flatten` from the value object's `defaultStorage` trips the jar from
+// 0.16.0 (#2566), but the kit cannot see the value object's default from the
+// entity, so it stays silent there: guessing `flatten` would fail specs whose
+// default is `single_json`, which generate cleanly.
+function isEncrypted(decl) {
+  return !!decl && typeof decl === "object" && typeof decl.atRest === "string" &&
+    decl.atRest.toLowerCase() === "encrypted";
+}
+
+function encryptedFlattenedValueObjects(schema) {
+  const xEntity = schema["x-entity"];
+  const sites = xEntity && typeof xEntity === "object" ? xEntity.valueObjects : null;
+  if (!sites || typeof sites !== "object" || Array.isArray(sites)) return [];
+  const out = [];
+  for (const [name, site] of Object.entries(sites)) {
+    if (!site || typeof site !== "object") continue;
+    if (typeof site.storage !== "string" || site.storage.toLowerCase() !== "flatten") continue;
+    const protection = site.protection;
+    if (!protection || typeof protection !== "object") continue;
+    const encrypted = isEncrypted(protection) ||
+      Object.values(protection).some((member) => isEncrypted(member));
+    if (encrypted) out.push(name);
+  }
+  return out;
+}
+
 function checkUnavailablePropertiesRequired(schema, basePath) {
   const encrypted = [];
   for (const [name, prop] of entityProperties(schema)) {
     const protection = prop && typeof prop === "object" ? prop["x-protection"] : null;
-    if (!protection || typeof protection !== "object") continue;
-    const atRest = protection.atRest;
-    if (typeof atRest === "string" && atRest.toLowerCase() === "encrypted") {
-      encrypted.push(name);
-    }
+    if (isEncrypted(protection)) encrypted.push(name);
+  }
+  for (const name of encryptedFlattenedValueObjects(schema)) {
+    encrypted.push(`${name} (flattened value object)`);
   }
   if (encrypted.length === 0) return [];
 

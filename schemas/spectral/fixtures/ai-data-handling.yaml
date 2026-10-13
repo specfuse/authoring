@@ -1,0 +1,143 @@
+# =============================================================================
+# Fixture: x-ai shape and x-ai.dataHandling (generator 0.16.0)
+# =============================================================================
+# Each operation name says what CI expects of it (example-regen.yml):
+#   good*  — none of the three x-ai rules may fire;
+#   bad*   — the rule named in its summary must fire on it.
+# Values outside the x-ai blocks are only there to make the document parse.
+# =============================================================================
+asyncapi: 3.0.0
+
+info:
+  title: x-ai data handling fixture
+  version: 1.0.0
+
+channels:
+  aiChannel:
+    address: ai.fixture
+    messages:
+      aiMessage:
+        name: AiMessage
+        payload:
+          type: object
+
+operations:
+  goodPersonalWithRegion:
+    summary: personal data, region declared
+    action: receive
+    channel: { $ref: '#/channels/aiChannel' }
+    x-ai:
+      enabled: true
+      task: generation
+      entities: { reads: [Order] }
+      dataHandling:
+        personalData: true
+        providerRegion: CA
+
+  goodNoPersonalData:
+    summary: no personal data, so no region is needed
+    action: receive
+    channel: { $ref: '#/channels/aiChannel' }
+    x-ai:
+      enabled: true
+      task: classification
+      entities: { reads: [Order] }
+      dataHandling:
+        personalData: false
+
+  goodLowerCaseRegion:
+    summary: the jar upper-cases the region, so lower case is accepted
+    action: receive
+    channel: { $ref: '#/channels/aiChannel' }
+    x-ai:
+      enabled: true
+      task: classification
+      entities: { reads: [Order] }
+      dataHandling:
+        personalData: true
+        providerRegion: ca
+
+  goodInformationalKeys:
+    summary: every documented key, parser-read and informational
+    action: receive
+    channel: { $ref: '#/channels/aiChannel' }
+    x-ai:
+      enabled: true
+      task: recommendation
+      model: claude-sonnet
+      promptTemplate: order/enrich-order
+      capabilities: [structuredOutput]
+      estimatedTokens: { input: 8000, output: 3000 }
+      maxLatency: 30s
+      fallback: queue
+      entities: { reads: [Order] }
+
+  badRegionMissing:
+    summary: specfuse-async-ai-personal-data-region
+    action: receive
+    channel: { $ref: '#/channels/aiChannel' }
+    x-ai:
+      enabled: true
+      task: generation
+      entities: { reads: [Order] }
+      dataHandling:
+        personalData: true
+
+  badRegionThreeLetters:
+    summary: specfuse-async-ai-data-handling-shape
+    action: receive
+    channel: { $ref: '#/channels/aiChannel' }
+    x-ai:
+      enabled: true
+      task: generation
+      entities: { reads: [Order] }
+      dataHandling:
+        personalData: true
+        providerRegion: CAN
+
+  badPersonalDataString:
+    summary: specfuse-async-ai-data-handling-shape
+    action: receive
+    channel: { $ref: '#/channels/aiChannel' }
+    x-ai:
+      enabled: true
+      task: generation
+      entities: { reads: [Order] }
+      dataHandling:
+        personalData: "yes"
+        providerRegion: CA
+
+  badPersonalDataMissing:
+    summary: specfuse-async-ai-data-handling-shape
+    action: receive
+    channel: { $ref: '#/channels/aiChannel' }
+    x-ai:
+      enabled: true
+      task: generation
+      entities: { reads: [Order] }
+      dataHandling:
+        providerRegion: CA
+
+  badDataHandlingUnknownKey:
+    summary: specfuse-async-ai-data-handling-shape
+    action: receive
+    channel: { $ref: '#/channels/aiChannel' }
+    x-ai:
+      enabled: true
+      task: generation
+      entities: { reads: [Order] }
+      dataHandling:
+        personalData: false
+        retention: P30D
+
+  badMisspeltDataHandling:
+    summary: specfuse-async-ai-shape
+    action: receive
+    channel: { $ref: '#/channels/aiChannel' }
+    x-ai:
+      enabled: true
+      task: generation
+      entities: { reads: [Order] }
+      datahandling:
+        personalData: true
+        providerRegion: CA
