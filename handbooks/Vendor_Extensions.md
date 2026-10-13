@@ -257,6 +257,7 @@ FEAT-2026-0080 adds six ERROR and two WARNING coherence rules:
 | `DELETE_RETENTION_REQUIRES_SOFT` | ERROR | `retention` alongside `mode: hard` |
 | `DELETE_RETENTION_INVALID` | ERROR | `retention` is neither `none` nor a valid ISO-8601 duration |
 | `DELETE_SEMANTICS_UNDECLARED` | WARNING | the entity is the target of a DELETE operation and declares no `delete` |
+| `DELETE_SOFT_CLASSIFIED_NO_RETENTION` | WARNING | a soft-delete entity with no `retention` has a property whose `x-classification` is anything but `exposed`, so the archived row keeps that data forever (in the jar since `0.11.0` at the latest). It reads `delete.retention` only: `x-compliance.retention` (§8.2) does not silence it |
 | `DELETE_SOFT_STATUS_ENUM_OVERLAP` | WARNING | a soft-delete entity whose status enum also carries a `deleted`/`archived` member |
 | `DELETE_SOFT_BOOLEAN_FLAG_OVERLAP` | WARNING | a soft-delete entity also carrying a boolean `isArchived` / `isDeleted` property (generator 0.7.0) |
 | `DELETE_SOFT_TIMESTAMP_OVERLAP` | WARNING | a soft-delete entity also carrying a date-time property named `revokedAt` or `removedAt` (generator 0.8.0; `leftAt` too, through `0.14.0`). **Read the caveat below before acting on this one** |
@@ -3206,6 +3207,29 @@ x-compliance:
   dataClass: string     # Data classification level
   retention: string     # Data retention requirements
 ```
+
+**Read by nothing.** No key of `x-compliance` appears in the generator (checked on the `0.15.0` jar) and no Spectral rule checks it. It is documentation for reviewers.
+
+**`retention` here is business retention, not `x-entity.delete.retention`.** The two answer different questions:
+
+| | `x-entity.delete.retention` (§1.1) | `x-compliance.retention` |
+|---|---|---|
+| Question | How long does an *archived* row wait before it is destroyed? | How long may the data live at all? |
+| Clock starts | When the row is soft-deleted | At a business date: a message is sent, a shift is worked, employment ends |
+| Shape | ISO-8601 duration, or `none`; validated | Free string; not validated |
+| Acts on it | The cleanup worker (`FEAT-2026-0081`, not shipped) | A sweep you write (API_Handbook §2, "Business retention") |
+
+`delete.retention` cannot express "24 months after the message was sent", and a project with a privacy policy needs exactly that. Until the kit has a structured shape, write the string so a reviewer can check it against code: name the period, the business date it counts from, and the sweep that enforces it.
+
+```yaml
+Message:
+  x-compliance:
+    retention: "24 months after sentAt; deleted by run-purge-expired-messages"
+```
+
+Retention can differ **per property**. A legal duty to keep some fields does not license keeping all of them for the same span. When one row carries two clocks, declare `x-compliance.retention` on each property whose clock differs from the entity's, and have the sweep clear those fields in place.
+
+Nothing checks any of this. Nothing verifies that the named sweep exists, and nothing requires an entity holding classified data to declare a period. `DELETE_SOFT_CLASSIFIED_NO_RETENTION` reads `delete.retention` only. A structured form the generator could turn into a sweep is tracked in `compatibility.md` §51.
 
 ---
 

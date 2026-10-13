@@ -880,6 +880,19 @@ Response: 200 OK
 
 > There is no domain-level or project-level retention default that entities inherit. `retention` is per entity, so a policy such as *"30 days everywhere except `crm`"* is authored as a declaration on each entity, not as one default plus an override. Write the policy sentence once in the domain's documentation and keep the per-entity declarations consistent with it.
 
+#### Business Retention
+
+`delete.retention` only says how long an **archived** row waits. It says nothing about live data. A privacy policy usually promises more than that: messages are kept 24 months after they are sent, timesheets 3 years after the business date, payroll records 6 years after employment ends. That is **business retention**, and it is a separate declaration:
+
+- **Declare it** per entity as `x-compliance.retention` (`Vendor_Extensions.md` §8.2). Name the period, the business date it counts from, and the sweep that enforces it. The key is free text and read by nothing.
+- **Declare it per property** when one row carries two clocks. A duty to keep some fields does not license keeping all of them as long. Example: banking details cleared 90 days after employment ends, while the rest of the payroll profile is kept 6 years.
+- **Enforce it with a scheduled sweep** that acts on due rows directly. This is a sanctioned exception to the thin fan-out dispatcher rule (`AsyncAPI_Handbook.md` §1.3). Fanning out would mean inventing a state transition over a field that has not changed, just to have an event to fan out on. The sweep has two actions:
+  - **Delete the row**, and publish one `{Entity}Deleted` per row.
+  - **Clear the field(s) in place** for a per-property clock, and publish one `{Entity}Updated` per row. Anonymisation takes the same shape.
+- **Account deletion is not automatically the trigger.** Choose the business date the duty is attached to. Deleting a user account does not end their employment, and clearing payroll data on account deletion would break the pay of someone still employed.
+
+Nothing checks business retention. The generator does not read `x-compliance`, and `DELETE_SOFT_CLASSIFIED_NO_RETENTION` reads `delete.retention` only. Keep the sweep and the declaration in the same change.
+
 #### Cascade Deletion
 
 > **⚠ `cascadeDelete` and `children` are read by nothing. Do not declare them.**
@@ -1113,7 +1126,7 @@ Content-Type: application/json
 ```
 
 **Required fields**:
-- `code`: Machine-readable error code (snake_case)
+- `code`: Machine-readable error code (snake_case). A **string** naming the rule that failed, not the HTTP status. The status has its own integer field, `status`.
 - `message`: Human-readable explanation
 - `retryable`: Usually `false` for business rule violations
 - `requiredAction`: Guidance on how to resolve (recommended)

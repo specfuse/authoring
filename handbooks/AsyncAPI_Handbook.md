@@ -262,6 +262,8 @@ The job itself does NO heavy processing. Separate subscribers handle each event 
 
 **Narrow exception:** jobs that produce a single output (e.g., "nightly metrics snapshot published as one event") or jobs where there are no per-item semantics (e.g., "regenerate a materialized view") can do the work directly. The exception must be obvious from context; when in doubt, default to fan-out and ask.
 
+**Retention sweeps are a named exception.** A sweep that enforces business retention (`API_Handbook.md` §2, "Business Retention") deletes due rows directly and publishes one `{Entity}Deleted` per row. If it clears expired fields in place, it publishes one `{Entity}Updated` per row instead. Fanning out would mean inventing a state transition over a field that has not changed. Per-row events still give subscribers per-item visibility.
+
 ### 1.4 When to Deviate
 
 If, while designing async specs, you want to do any of the following, **stop and escalate**:
