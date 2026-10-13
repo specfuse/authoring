@@ -1126,7 +1126,9 @@ Content-Type: application/json
 ```
 
 **Required fields**:
-- `code`: Machine-readable error code (snake_case). A **string** naming the rule that failed, not the HTTP status. The status has its own integer field, `status`.
+- `code`: Machine-readable error code (snake_case): a **string** naming the rule that failed. The kit's `Error` carries the HTTP status in its own integer field, `status`.
+
+> **⚠ The generated C# exceptions disagree (generator `0.16.0`).** The `domainExceptions` templates set `Error.Code` to an **integer**, either the HTTP status (`Code = StatusCode`) or an `int errorCode` constructor argument, and set `Error.Id` to a string. Generated against the kit's `Error` (`code` a string, `id` a `format: uuid`), the exceptions fail to compile with `CS0029`. `hello-orders` does not register `domainExceptions`, which is why its build is clean. Until the kit and the generator agree on the shape (`compatibility.md` §52), a C# project that uses `domainExceptions` types `code` as an integer and `id` as a plain string, and carries the rule name in a separate string field. `reason` (`^[a-z][a-z0-9_]*$`) is the name one consumer chose. Never document a snake_case value as `error.code` on such a project, because the wire cannot carry it there.
 - `message`: Human-readable explanation
 - `retryable`: Usually `false` for business rule violations
 - `requiredAction`: Guidance on how to resolve (recommended)
@@ -2768,7 +2770,7 @@ async function retryWithBackoff(operation, maxRetries = 3) {
 - **PATCH collections are complete sets**: a collection property present in an `Update{Resource}` body replaces the stored set — value-object arrays wholesale, child-entity arrays by identity reconcile (known `id` updates in place, no `id` creates, unknown `id` is `404`, omitted children are permanently deleted). Give `Update{Child}` an optional `id`, and say in the property description that omitted children are not recoverable. See §1.5.1.
 
 **Don't**
-- Don't inline enums.
+- Don't inline enums, including one wrapped in a one-item `allOf` beside a `description`. Generator `0.16.0` reports that form as `INLINE_ENUM_SCHEMA`; through `0.15.0` it passed `validate` and failed `generate`. The kit's `specfuse-no-inline-enums` catches both.
 - Don't embed subresources unless explicitly asked.
 - Don't place `x-entity` on derivatives or simple types.
 - Don't use anonymous objects within a resource.

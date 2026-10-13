@@ -929,6 +929,8 @@ Date tokens are resolved in a restricted set of fields only. Tokens appearing an
 - Step `requestBody.payload.*` values
 - Step `parameters.*` values (inside the payload, not in path expressions)
 
+**`in: query` values are expanded at run time from generator `0.16.0` (C#).** This works whether the token is the whole value (`@now-1h`) or embedded in a larger one, such as a filter (`date ge '@today+1w' and date le '@today+2w'`). Each token becomes an ISO-8601 value: `yyyy-MM-dd` for a calendar day, the round-trip form for an instant. Through `0.15.0` the C# emitters percent-encoded the macro text at generation time, so the server received `'@today+1w'` literally and rejected it (`clabonte/generator#2557`).
+
 **Rationale:** restricting the resolution surface keeps the runtime resolver simple and predictable.
 
 ---
@@ -955,11 +957,15 @@ This means:
 | Actor role's grants cover the step operation's `x-scopes` (`ARAZZO_ACTOR_LACKS_SCOPE`) | `x-actors.*.role` + step `operationId` | Mapping-form `info.x-roles` grants, operation `x-scopes` | Error, under `authorization.mode: scopes` only; from generator `0.15.0`, never at `0.14.0` (§4.6, `clabonte/generator#2418`) |
 | `x-domain` value valid | `x-domain` | Project's active domain list + `cross-domain` | Error |
 | `cross-domain` only in `scenarios/cross-domain/` | File path + `x-domain` | Directory structure | Error |
+| Step payload carries every required property (`ARAZZO_STEP_PAYLOAD_MISSING_REQUIRED`) | Step `requestBody.payload` | Called operation's request schema (through `allOf`; a runtime expression satisfies a property; a server-assigned `x-primary-key` is never required) | Error, from generator `0.16.0`. Skipped when the step asserts a 4xx (`$statusCode == 4NN`) |
+| Step payload declares no unknown property (`ARAZZO_STEP_PAYLOAD_UNDECLARED_PROPERTY`) | Step `requestBody.payload` | Called operation's request schema | Warning, from generator `0.16.0`; the typed request DTO drops the property |
 | `$setup.outputs.X` resolves | Expression | Recipe `outputs` map | Error |
 | Step graph acyclic; all inputs satisfied | Workflow steps | Internal | Error |
 | Recipe `extends` chain valid, depth <= 6, no cycles | Recipe | Other recipes | Error |
 | No output namespace collisions in recipe chains | Recipe outputs | Parent recipe outputs | Error |
 | `x-mcp.toolName` globally unique | All scenarios | All scenarios | Error |
+
+A step that deliberately sends an invalid body, to prove the server rejects it, must assert the 4xx in `successCriteria`. That assertion is what exempts it from the payload checks. A step that asserts a 2xx, or no status, is checked. A missing required property there fails `validate`, and `generate` then refuses the whole project.
 
 ### 9.3 Violation Example
 

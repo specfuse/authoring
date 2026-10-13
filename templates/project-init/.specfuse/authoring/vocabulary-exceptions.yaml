@@ -31,3 +31,23 @@ kit_only:
         and misleading about the key's purpose: removing it from the ruleset
         would cost a working lint rule and change nothing about generated
         output. Revisit if the generator gains a write-policy concept.
+  # The six informational x-ai keys. AsyncAPI_Handbook §4.3 documents them as
+  # informational and read by nothing, and `extensions --format json` (from
+  # generator 0.16.0) deliberately leaves them out, so the drift report would
+  # flag each one. `specfuse-async-ai-shape` accepts them so a misspelt
+  # parser key is caught without failing the keys the handbook teaches.
+  x-ai:
+    - key: model
+      reason: Informational; documented in AsyncAPI_Handbook §4.3, ignored by the parser.
+    - key: promptTemplate
+      reason: Informational; documented in AsyncAPI_Handbook §4.3, ignored by the parser.
+    - key: capabilities
+      reason: Informational; documented in AsyncAPI_Handbook §4.3, ignored by the parser.
+    - key: estimatedTokens
+      reason: Informational; documented in AsyncAPI_Handbook §4.3, ignored by the parser.
+    - key: maxLatency
+      reason: Informational; documented in AsyncAPI_Handbook §4.3, ignored by the parser.
+    - key: fallback
+      reason: >-
+        Ignored by the parser, but its value set is checked by the kit's
+        `specfuse-async-ai-fallback-values`; documented in AsyncAPI_Handbook §4.3.

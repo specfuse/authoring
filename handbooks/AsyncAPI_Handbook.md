@@ -956,7 +956,8 @@ x-emits:
 - Required on every `on-*` receive operation that publishes events via `emit-*` send operations
 - The generator uses `x-emits` to wire publish calls into the handler class
 - The cross-spec validator resolves `x-emits` entries to their matching `emit-*` operations via `x-label` matching
-- `run-*` scheduled jobs do NOT use `x-emits` — they publish directly via their channel reference
+- `run-*` scheduled jobs declare `x-emits` only for events they publish besides their trigger message (§6.3)
+- An `on-*` worker whose `x-emits` names an event it also subscribes to is `ASYNC_WORKER_SELF_TRIGGER` (WARNING, generator `0.16.0`). On a shared topic it is handed its own output and runs again. A deliberate converging loop is legitimate; say in the operation's `description` what makes it terminate.
 
 #### `x-subscription` (required on `receive` operations from `event-topic` channels)
 
@@ -1066,6 +1067,9 @@ x-ai:
     reads: [Order, Customer]
     creates: [OrderRecommendation]
     updates: [Order]
+  dataHandling:
+    personalData: true
+    providerRegion: CA
 ```
 
 | Field | Required | Type | Description |
@@ -1073,6 +1077,7 @@ x-ai:
 | `enabled` | Yes | boolean | `true` to mark as AI-powered |
 | `task` | Yes | string | One of: `generation`, `classification`, `extraction`, `summarization`, `analysis`, `translation`, `validation`, `recommendation` |
 | `entities` | When `enabled: true` | object | Declares every entity the worker reads/writes (see below) |
+| `dataHandling` | Recommended when the worker reads or creates personal data | object | Whether the worker processes personal data, and where its LLM provider must run (see below). Generator `0.16.0` |
 | `model` | No | string | Preferred model (informational) |
 | `promptTemplate` | No | string | Path relative to `prompts/` |
 | `capabilities` | No | array | One or more of: `structuredOutput`, `toolUse`, `rag`, `vision`, `streaming`, `multiTurn`, `batchProcessing`. **Informational, read by nothing** — `streaming` and `multiTurn` generate no streaming transport or conversation state |
@@ -1092,6 +1097,27 @@ Declares the complete data surface of the AI worker for cross-spec validation an
 | `deletes` | string[] | Entities the worker deletes. Each must have `aiAccess.operations` containing `delete`. |
 
 At least one of the four arrays must be non-empty. The trigger entity (from the incoming message's `x-label.entity`) must appear in at least `reads`. The code generator validates each entity against its `aiAccess` in the OpenAPI spec and fails the build on mismatches.
+
+**`dataHandling` field** (generator `0.16.0`):
+
+Declares whether the worker sends personal data to an LLM provider, and the country that provider must run in. Set it on every worker that reads or creates an entity holding personal data, for example any entity with a classified property (`Vendor_Extensions.md` §1.5).
+
+| Sub-field | Type | Description |
+|-----------|------|-------------|
+| `personalData` | boolean | `true` when the worker processes personal information. |
+| `providerRegion` | string | ISO 3166-1 alpha-2 country code (`CA`, `US`, `FR`) the LLM provider must run in. Write it in upper case. The generator accepts lower case and upper-cases it; anything other than two letters is `INVALID_EXTENSION_VALUE` (ERROR). |
+
+What the generator does with it:
+
+- **`validate`** warns `AI_PERSONAL_DATA_REGION_MISSING` when `personalData: true` is declared without `providerRegion`.
+- **The generated Python worker** carries the declaration as `ClassVar`s on its `*Settings` class (`personal_data`, `required_provider_region`), which no environment variable can override. `BaseWorkerSettings` gains `primary_provider_region` and `fallback_provider_region`, set at deploy time through `<PREFIX>_PRIMARY_PROVIDER_REGION` and `<PREFIX>_FALLBACK_PROVIDER_REGION`.
+- **When a region is declared, the worker refuses to start** if the configured primary region is unset or differs. The same applies to the fallback region when a `fallback_model` is configured. **Set the deploy-time variables before you regenerate with a region.** Otherwise the worker that declares it stops starting.
+
+> **What this does not check.** The generator compares the configured region with the declared one. It cannot see where an endpoint actually runs, so a provider configured as `CA` that runs elsewhere passes. The declaration is evidence for a residency promise, not proof of it.
+
+Whether `dataHandling` is *required* is a project decision. The kit's `specfuse-async-ai-personal-data-region` (warn) catches the missing region, and `specfuse-async-ai-data-handling-shape` (error) checks the shape. Neither requires the block itself. A project that has made a residency promise, for example in a published privacy policy, should require it on every `enabled: true` worker in its overlay, at error.
+
+**Only the four keys above are read by the generator.** `enabled`, `task`, `entities` and `dataHandling` are the keys `extensions --format json` lists. `model`, `promptTemplate`, `capabilities`, `estimatedTokens`, `maxLatency` and `fallback` are informational: the parser ignores them. The kit's `specfuse-async-ai-shape` (warn) accepts these ten keys and flags any other key. A misspelt `datahandling` would otherwise lint clean, and the worker would start with no region check.
 
 The code generator uses `x-ai` to decide whether the worker needs AI infrastructure (prompt management, structured-output validation, token budgeting). The target language is chosen by the generator, not the spec.
 
@@ -1365,11 +1391,11 @@ The `event` value (`{Entity}.{Action}`) must match an AsyncAPI event message's `
 2. For every `x-emits.event` on an `on-*` async operation, finds the matching `emit-*` send operation via `x-label` — fails if missing
 3. For every AsyncAPI event message, identifies the OpenAPI operations that emit it (reverse lookup) — informational only. Events can also be published by scheduled jobs or other workers, so having no OpenAPI emitter is valid.
 
-> **Known gap — `emit-*` coverage is enforced for one producer kind out of three.** Check 2 runs only over `on-*` producers. An OpenAPI write operation may declare `x-emits: X.Y` with no `emit-*` declaring `X.Y`, and nothing fails: the message file and the channel `messages` entry are enough to make the event work. The consequence is that the set of `emit-*` operations — which ought to be the index of what is on the bus — silently under-reports, and whether an event has one becomes a question of which domain authored it. Until the validator covers every producer kind, treat "every declared event has an `emit-*`" as an authoring rule you enforce, not one you inherit. Tracked in `compatibility.md`, follow-up 19.
+> **`emit-*` coverage covers every producer kind from generator `0.16.0`.** Check 2 used to run only over `on-*` producers (`ASYNC_ON_EMITS_UNMATCHED`, ERROR). An OpenAPI write operation or a `run-*` job declaring `x-emits: X.Y` with no `emit-*` for `X.Y` is now `ASYNC_EMITS_NO_EMIT_OPERATION` (WARNING), so the `emit-*` set can be trusted as the index of what is on the bus. It starts at WARNING because existing bundles carry a backlog. Treat it as an authoring rule anyway. `compatibility.md` follow-up 19.
 
 **There is no `triggerOperation` field on the AsyncAPI side.** The link is computed from `x-emits`, not duplicated.
 
-**`run-*` scheduled jobs do NOT use `x-emits`** — they publish directly via their channel reference. The generator knows they are publishers from the `action: send` + `x-worker` + `x-scheduled-job` combination.
+**A `run-*` job declares `x-emits` for the events it publishes besides its own trigger message**, for example a retention sweep that publishes `{Entity}Deleted` per row (`API_Handbook.md` §2, "Business Retention"). The trigger message is not listed: the generator already knows the job publishes it from the `action: send` + `x-worker` + `x-scheduled-job` combination. From generator `0.16.0`, `validate --producers` lists such a job among the event's `emit-*/run-*` producers, and `ASYNC_EMIT_OPERATION_NO_PRODUCER` no longer fires for an event whose only producer is a `run-*` job's `x-emits`.
 
 ### 6.4 Aggregate References
 
@@ -1408,7 +1434,7 @@ currency:
   - `on-*` (`action: receive`, has `x-worker`) → event subscriber worker
   - `run-*` (`action: send`, has `x-worker`, message has `x-scheduled-job`) → scheduled job worker
   - `emit-*` (`action: send`, no `x-worker`) → not a worker; a publish method wired into each declared producer
-- **Linking `emit-*` to its producers** — the generator resolves `x-emits` (on `on-*` async operations and on OpenAPI write operations) to find which producers publish which declared event. The relationship is many-to-one and computed by reverse lookup on `{Entity}.{Action}`; an `emit-*` belongs to no single operation. For `run-*` operations, the publish target is the channel referenced directly on the operation.
+- **Linking `emit-*` to its producers** — the generator resolves `x-emits` (on `on-*` async operations, on `run-*` jobs from generator `0.16.0`, and on OpenAPI write operations) to find which producers publish which declared event. The relationship is many-to-one and computed by reverse lookup on `{Entity}.{Action}`; an `emit-*` belongs to no single operation. For `run-*` operations, the publish target is the channel referenced directly on the operation.
 - **Project layout** — decided by the generator config per language
 
 ### 7.3 Cross-Spec Wiring

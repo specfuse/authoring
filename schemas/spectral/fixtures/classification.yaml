@@ -475,12 +475,9 @@ components:
 
     ValueObjectOnlyEncryption:
       type: object
-      # MUST NOT fire — MEASURED against generator 0.13.0, which generates
-      # per-member ciphertext for this case and still asks for nothing. The
-      # asymmetry is a generator gap — clabonte/generator#2097 — but a kit rule stricter than the
-      # jar fails specs that generate cleanly, which is the adoption-blocking
-      # direction. If the jar closes the gap, this control flips and the scope
-      # note on the rule comes off.
+      # MUST fire — the jar requires the member for an encrypted flattened
+      # value object from generator 0.14.0 (clabonte/generator#2097; silent on
+      # 0.13.0). Measured on 0.14.0-0.16.0: UNAVAILABLE_PROPERTIES_NOT_DECLARED.
       x-entity:
         domain: crm
         type: aggregate
@@ -488,6 +485,46 @@ components:
           residenceAddress:
             storage: flatten
             queryable: []
+            classification: [pii]
+            protection:
+              atRest: encrypted
+              rationale: Residential address of a natural person.
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
+        residenceAddress:
+          type: object
+
+    ValueObjectEncryptionSingleJson:
+      type: object
+      # MUST NOT fire — a `single_json` usage site does not require the member
+      # on any jar (measured 0.15.0, 0.16.0).
+      x-entity:
+        domain: crm
+        type: aggregate
+        valueObjects:
+          residenceAddress:
+            storage: single_json
+            classification: [pii]
+            protection:
+              atRest: encrypted
+              rationale: Residential address of a natural person.
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
+        residenceAddress:
+          type: object
+
+    ValueObjectEncryptionInheritedStorage:
+      type: object
+      # MUST NOT fire in the kit — no `storage` at the usage site. The jar
+      # requires the member from 0.16.0 when the value object's defaultStorage
+      # is flatten (#2566), but the kit cannot see that default from here.
+      x-entity:
+        domain: crm
+        type: aggregate
+        valueObjects:
+          residenceAddress:
             classification: [pii]
             protection:
               atRest: encrypted

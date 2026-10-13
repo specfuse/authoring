@@ -893,6 +893,73 @@ rules:
             - required: [updates]
             - required: [deletes]
 
+  # x-ai was open: a misspelt key (`datahandling`) linted clean and the
+  # generator ignored it, so the worker started with no region check. The set
+  # is the four keys the parser reads (`extensions --format json`, generator
+  # 0.16.0) plus the six informational keys AsyncAPI_Handbook §4.3 documents,
+  # which the parser ignores but the handbook teaches; those six are recorded
+  # under `kit_only` in vocabulary-exceptions.yaml. WARN, not error: a project
+  # may carry its own informational keys, and the generator does not refuse
+  # unknown ones. A project can raise it to error in its overlay.
+  specfuse-async-ai-shape:
+    description: "x-ai declares only keys the generator reads or the handbook documents"
+    message: "x-ai at '{{path}}': {{error}}. Known keys: enabled, task, entities, dataHandling (read by the generator); model, promptTemplate, capabilities, estimatedTokens, maxLatency, fallback (informational)."
+    severity: warn
+    given: $.operations[*].x-ai
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          type: object
+          additionalProperties: false
+          properties:
+            enabled: {}
+            task: {}
+            entities: {}
+            dataHandling: {}
+            model: {}
+            promptTemplate: {}
+            capabilities: {}
+            estimatedTokens: {}
+            maxLatency: {}
+            fallback: {}
+
+  # Mirrors the generator's parser (0.16.0, AiDefinition): `personalData` is a
+  # boolean and `providerRegion` two ASCII letters, else INVALID_EXTENSION_VALUE.
+  # The jar upper-cases the region, so `ca` is accepted; the handbook asks for
+  # upper case. `personalData` is required here and not by the jar: a
+  # dataHandling block that does not say whether personal data is processed
+  # declares nothing.
+  specfuse-async-ai-data-handling-shape:
+    description: "x-ai.dataHandling: personalData (boolean, required) and providerRegion (ISO 3166-1 alpha-2)"
+    message: "x-ai.dataHandling at '{{path}}': {{error}}"
+    severity: error
+    given: $.operations[*].x-ai.dataHandling
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          type: object
+          additionalProperties: false
+          required: [personalData]
+          properties:
+            personalData:
+              type: boolean
+            providerRegion:
+              type: string
+              pattern: "^[A-Za-z]{2}$"
+
+  # Lint-time twin of the generator's AI_PERSONAL_DATA_REGION_MISSING (WARNING).
+  # The filter sits where dataHandling is the child being filtered (authoring #73).
+  specfuse-async-ai-personal-data-region:
+    description: "x-ai.dataHandling with personalData: true should declare providerRegion"
+    message: "x-ai.dataHandling at '{{path}}' declares personalData: true and no providerRegion, so nothing constrains where the LLM provider runs."
+    severity: warn
+    given: $.operations[*].x-ai[?(@property === 'dataHandling' && @.personalData === true)]
+    then:
+      field: providerRegion
+      function: truthy
+
   # ===========================================================================
   # PAYLOAD QUALITY RULES
   # ===========================================================================

@@ -1,0 +1,35 @@
+# =============================================================================
+# Fixture: inline enums, bare and wrapped (specfuse-no-inline-enums)
+# =============================================================================
+# The generator reports an inline enum wrapped in a one-item `allOf` beside a
+# `description` as INLINE_ENUM_SCHEMA from 0.16.0 (#2579). CI asserts:
+#   Order.properties.priority   (bare inline enum)    — MUST fire
+#   Order.properties.channel    (allOf-wrapped enum)  — MUST fire
+#   Order.properties.status     (allOf-wrapped $ref)  — MUST NOT fire
+# Not a Specfuse-conformant example — do not copy.
+# =============================================================================
+openapi: 3.0.3
+info:
+  title: Inline enum fixture
+  version: "1.0.0"
+paths: {}
+components:
+  schemas:
+    OrderStatus:
+      type: string
+      enum: [draft, placed]
+    Order:
+      type: object
+      properties:
+        priority:
+          type: string
+          enum: [low, high]
+        channel:
+          description: Where the order came from.
+          allOf:
+            - type: string
+              enum: [web, phone]
+        status:
+          description: Lifecycle state.
+          allOf:
+            - $ref: '#/components/schemas/OrderStatus'

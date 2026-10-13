@@ -231,6 +231,75 @@ jobs:
           fi
           echo "==> specfuse-async-ai-must-have-entities fired."
 
+      # An inline enum wrapped in allOf beside a description passed lint and
+      # generator validate, then failed generate (PROPERTY_INNER_ENUM). The
+      # generator reports it from 0.16.0 (INLINE_ENUM_SCHEMA, #2579); so does
+      # the kit. A wrapped $ref must stay silent.
+      - name: Inline enums, bare and allOf-wrapped (both directions)
+        run: |
+          set +e
+          set -uo pipefail
+          REPORT="${RUNNER_TEMP}/inline-enum.txt"
+          spectral lint \
+            --ruleset schemas/spectral/specfuse-openapi.yaml \
+            schemas/spectral/fixtures/inline-enum-wrapped.yaml \
+            >"$REPORT" 2>&1
+          STATUS=$?
+          cat "$REPORT"
+          [ $STATUS -ge 2 ] && { echo "::error::Spectral crashed on inline-enum-wrapped.yaml" >&2; exit 1; }
+          fail=0
+          for prop in "properties.priority" "properties.channel.allOf"; do
+            if ! grep "specfuse-no-inline-enums" "$REPORT" | grep -q "Order.$prop"; then
+              echo "::error::specfuse-no-inline-enums did not fire on Order.$prop." >&2
+              fail=1
+            fi
+          done
+          if grep "specfuse-no-inline-enums" "$REPORT" | grep -q "Order.properties.status"; then
+            echo "::error::specfuse-no-inline-enums fired on an allOf-wrapped \$ref." >&2
+            fail=1
+          fi
+          [ $fail -eq 0 ] || exit 1
+          echo "==> inline enums caught bare and wrapped; a wrapped \$ref is not."
+
+      # x-ai.dataHandling (generator 0.16.0) and the closed x-ai shape. Every
+      # message names its operation through {{path}}, so each case is asserted
+      # by operation and rule, in both directions.
+      - name: x-ai shape and dataHandling rules (both directions)
+        run: |
+          set +e
+          set -uo pipefail
+          REPORT="${RUNNER_TEMP}/ai-data-handling.txt"
+          spectral lint \
+            --ruleset schemas/spectral/specfuse-asyncapi.yaml \
+            schemas/spectral/fixtures/ai-data-handling.yaml \
+            >"$REPORT" 2>&1
+          STATUS=$?
+          cat "$REPORT"
+          [ $STATUS -ge 2 ] && { echo "::error::Spectral crashed on ai-data-handling.yaml" >&2; exit 1; }
+
+          fail=0
+          for pair in \
+              badRegionMissing:specfuse-async-ai-personal-data-region \
+              badRegionThreeLetters:specfuse-async-ai-data-handling-shape \
+              badPersonalDataString:specfuse-async-ai-data-handling-shape \
+              badPersonalDataMissing:specfuse-async-ai-data-handling-shape \
+              badDataHandlingUnknownKey:specfuse-async-ai-data-handling-shape \
+              badMisspeltDataHandling:specfuse-async-ai-shape; do
+            op="${pair%%:*}"; rule="${pair#*:}"
+            if ! grep "$rule" "$REPORT" | grep -q "/operations/$op/"; then
+              echo "::error::$rule did not fire on $op." >&2
+              fail=1
+            fi
+          done
+          for op in goodPersonalWithRegion goodNoPersonalData goodLowerCaseRegion goodInformationalKeys; do
+            if grep -E "specfuse-async-ai-(shape|data-handling-shape|personal-data-region)" "$REPORT" | grep -q "/operations/$op/"; then
+              echo "::error::an x-ai rule fired on $op, which is valid." >&2
+              fail=1
+            fi
+          done
+          [ $fail -eq 0 ] || exit 1
+          echo "==> x-ai rules fire on all six violations and stay silent on four valid blocks."
+
       # Regression net for authoring issue #14. Asserts two things that a
       # passing hello-orders run cannot assert on its own, because the example
       # contains no nulls and no duplicate enums:
@@ -608,6 +677,7 @@ jobs:
             # The one rule in this file that BREAKS EXISTING SPECS on its pin,
             # which is precisely why lint has to catch it before generate does.
             "specfuse-xprotection-unavailable-properties-required|PoisonedReadMissing|an encrypted property with no unavailableProperties member was accepted"
+            "specfuse-xprotection-unavailable-properties-required|ValueObjectOnlyEncryption|an encrypted flattened value object with no unavailableProperties member was accepted (the jar refuses it from 0.14.0)"
             # generator 0.15.0, PROTECTION_DIGEST_UNDECLARED (ERROR). The four
             # cases are exactly the four the jar reports on this fixture.
             "specfuse-xprotection-digest-undeclared|bareDigestHash|a *Hash with x-internal-only and no x-protection was accepted"
@@ -665,16 +735,16 @@ jobs:
             fail=1
           fi
 
-          # Value-object-only encryption: MEASURED against generator 0.13.0,
-          # which emits per-member ciphertext here and still requires nothing.
-          # The kit must not be stricter than the jar — that fails specs which
-          # generate cleanly, the adoption-blocking direction. If the generator
-          # closes this gap, this control flips to an EXPECTED row above.
-          if grep "$UP_RULE" "$REPORT" | grep -q "ValueObjectOnlyEncryption"; then
-            echo "::error::${UP_RULE} fired on ValueObjectOnlyEncryption. The jar does not" >&2
-            echo "require the member for value-object-only encryption; the kit must not either." >&2
-            fail=1
-          fi
+          # Value-object encryption the kit must stay silent on: `single_json`
+          # (the jar never requires the member) and an inherited storage (the
+          # jar may, from 0.16.0, but the kit cannot see the value object's
+          # defaultStorage, and guessing would fail specs that generate).
+          for vo in ValueObjectEncryptionSingleJson ValueObjectEncryptionInheritedStorage; do
+            if grep "$UP_RULE" "$REPORT" | grep -q "$vo"; then
+              echo "::error::${UP_RULE} fired on $vo, which the kit must not flag." >&2
+              fail=1
+            fi
+          done
 
           # The retirement must not be silent on a scalar it does not apply to.
           # `not: {contains: ...}` is FALSE for a non-array in JSON Schema, so

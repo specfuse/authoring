@@ -75,7 +75,7 @@ Error:                  # shared shape, no owning domain
 - **Exempt:** `x-entity` schemas, pure `$ref` aliases, and the derived shapes of an entity (`New{E}`, `Basic{E}`, `Update{E}`, `{E}List`) — the generator resolves those to their main model's domain.
 - **`common` is reserved.** It means *shared, no owning domain*, and it MUST NOT itself be registered in `info.x-domains` — registering it is `SCHEMA_DOMAIN_UNREGISTERED` against the registry.
 - **What counts is `components.schemas` after bundling.** A shape you only `$ref` from an operation file is hoisted there by `redocly bundle`, so it needs the key in its source file even though no hand-written `components` block names it. The bundle is the contract: folder layout does not survive bundling, so a schema's `domains/{domain}/` location says nothing to the generator, and the key is the only record of its owner that does.
-- A schema that references a schema owned by **another** domain is reported as `SCHEMA_DOMAIN_CROSS_REFERENCED` (WARNING) — a boundary hint, not a failure; `common` is never a cross-reference. **Entity projections are exempt**: a `Basic{E}` (or other derived shape of a registered entity) embedded in another domain's schema — a work item holding a `BasicUser` summary — is normal DDD and is not reported. Referencing the full entity, or a domain-owned enum or value shape, across the boundary is. **`validate` does not report it on a bundled spec**, though: the rule reads each property's `$ref`, which the validator's parse has already resolved. Measured on a copy of `hello-orders` with an `order` entity property referencing the `customer` domain's status enum, directly and through a bundler alias (`CrmStatus: {$ref: …/CustomerStatus}`): no finding on `0.14.0` or on a build of generator main, through the project file or the spec alone. Generator `0.15.0` follows the alias to its target (`clabonte/generator#1929`), which matters only once the rule reads the resolved document. Find cross-domain references by review until then.
+- A schema that references a schema owned by **another** domain is reported as `SCHEMA_DOMAIN_CROSS_REFERENCED` (WARNING) — a boundary hint, not a failure; `common` is never a cross-reference. **Entity projections are exempt**: a `Basic{E}` (or other derived shape of a registered entity) embedded in another domain's schema — a work item holding a `BasicUser` summary — is normal DDD and is not reported. Referencing the full entity, or a domain-owned enum or value shape, across the boundary is. **`validate` reports it from generator `0.16.0`** (`clabonte/generator#2565`). Through `0.15.0` it reported nothing on a bundled spec, because the rule read each property's `$ref` after the validator's parse had already resolved it. Measured on a copy of `hello-orders` with an `order` entity property referencing the `customer` domain's status enum, directly, through `items`, and through a bundler alias (`CrmStatus: {$ref: …/CustomerStatus}`): `0.15.0` is silent, and `0.16.0` gives one WARNING. The WARNING is located on the **owning** schema (`components.schemas.CustomerStatus`) and names the referencing domains. An alias is reported under its target, never under its own name. Expect new warnings on a spec that validated clean at `0.15.0`.
 
 **Spec-author action on the `0.13.0` pin.** Run `validate` on a fresh bundle and add `x-domain` to every schema it names. This rule shipped in `0.13.0` and the kit missed it at that pin bump (`compatibility.md`, `v0.20.0` row); the kit's own example and new-project scaffold both failed it until the fix that added this paragraph. No kit Spectral mirror yet — the derived-shape exemption needs the entity set, which a schema-local rule does not have.
 
@@ -118,6 +118,15 @@ permanently equals `createdAt` — a field asserting something untrue — so a
 declared non-mutable write policy exempts the entity from the requirement. `id`
 and `createdAt` remain required regardless; only `updatedAt` is meaningless for
 rows that never change.
+
+The generator agrees on identity and disagrees on `updatedAt`. From generator
+`0.16.0`, an `x-entity` with no `id` or `{Entity}Id` (including through `allOf`)
+is `ENTITY_MISSING_ID` (ERROR), and a missing `createdAt` or `updatedAt` is
+`ENTITY_MISSING_AUDIT_FIELD` (WARNING). The generator does not read
+`mutability`, so the WARNING still fires on an `appendOnly` or `immutable`
+entity without `updatedAt` (measured), and the generated entity still carries
+the column. Accept that WARNING on non-mutable entities. It does not mean the
+declaration is wrong.
 
 This is not an escape hatch from the `updatedAt` requirement. The value is
 validated against the closed set above by `specfuse-xentity-shape`, so
@@ -828,9 +837,9 @@ list, and a non-string `name` are each an `ENTITY_INVALID_CONFIG` through
 `0.14.0`, and an `INVALID_EXTENSION_VALUE` from generator `0.15.0` (both
 ERROR; measured on all four). A CI filter or findings baseline keyed on
 `ENTITY_INVALID_CONFIG` should match both codes. The new finding's location is
-`x-entity.uniqueBy` (or `x-entity.uniqueBy.name`) **without the schema name**,
-and the message does not name it either, so in a multi-entity spec find the
-entity by the offending value. A retired `x-entity` key such as
+`x-entity.uniqueBy` (or `x-entity.uniqueBy.name`) **without the schema name**
+through `0.15.0`. From `0.16.0` it is `components.schemas.<Name>.x-entity.uniqueBy`
+(`clabonte/generator#2567`; measured). The message still does not name the schema. A retired `x-entity` key such as
 `encryptedProperties` keeps `ENTITY_INVALID_CONFIG`.
 `specfuse-xentity-shape` catches the same four at lint, and additionally rejects
 a repeated member within one tuple and an unknown member on a constraint — both
@@ -1205,7 +1214,8 @@ ShipmentCarrier:
 
 **What it does not do.**
 
-- **Persistence still throws.** The C# column converters (`EnumValueConverter`, `EnumListValueConverter`) and the route/query `CustomEnumConverter<T>` are not gated by the key: a row read as `UNKNOWN` and saved back would write `"unknown"` into the column. A renamed stored value is still a data migration.
+- **Persistence decodes, and writes the sentinel back.** From generator `0.16.0` the C# column converters (`EnumValueConverter`, `EnumListValueConverter`) store the `[EnumMember]` wire value. On read they try the wire value first, then the member name case-insensitively, so rows written by `0.15.0` and earlier, which stored the C# member name, still load. Anything else falls back to the JSON converter, which returns `UNKNOWN` on a marked enum and throws on an unmarked one. A row read as `UNKNOWN` and saved back writes `"unknown"` into the column. A renamed stored value is still a data migration.
+- **C# enum columns change stored form at `0.16.0` (breaking for stored data, `clabonte/generator#2584`).** Every enum column whose wire value differs from its member name, even by letter case alone, now gets new rows in the wire form beside legacy rows in the member form. With the kit's lower-case wire values, `CustomerStatus.Active` is now stored as `active` next to legacy `Active` rows. On SQL Server's default case-insensitive collation, filters still match a case-only difference, but not a difference beyond case (`_10to20` vs `10to20`). On a case-sensitive collation or PostgreSQL, filters, unique indexes and `GROUP BY` all treat the two forms as different values. Before relying on them, run a one-off `UPDATE` per enum column and member that rewrites the member name to the wire value.
 - **`unknown` is decode-only.** The original string is not kept, and sending `unknown` back to the server is undefined. A client must not echo it.
 - **A spec member literally named `unknown` folds into the sentinel** rather than producing a second one. Test support (fixtures, builders, fakes) never seeds the sentinel.
 - **A Dart `switch` over a marked enum gains an arm, and a TypeScript `Record<X, …>` over it widens.** Marking an existing enum is a source change for every consumer that does either.
@@ -1490,7 +1500,7 @@ Person:
 
 **Spec-author action on upgrading to the `0.13.0` pin.** Search for `atRest: encrypted` and add the member to every entity that declares it. Kit Spectral mirrors the rule as `specfuse-xprotection-unavailable-properties-required` (error), so lint names the schema before a generate run does.
 
-> **It is required for directly-declared encrypted properties only.** An entity whose *only* encrypted target is a flattened value object does **not** need the member — measured against `0.13.0`, which emits per-member ciphertext for that case and asks for nothing. Treat that as the generator's current scope rather than as a statement that those members cannot fail: they can, and the gap is filed as `clabonte/generator#2097`. The kit deliberately does not widen past the jar, because a lint rule stricter than the generator fails specs that generate cleanly.
+> **A flattened value object counts too, from generator `0.14.0`.** An entity whose only encrypted target is a value-object usage site stored `flatten` also needs the member (`clabonte/generator#2097`; on `0.13.0` it was asked for nothing). Both `protection` shapes trigger it. Through `0.15.0` the storage had to be declared at the usage site; from `0.16.0` a `flatten` inherited from the value object's `defaultStorage` counts too (`#2566`). A `single_json` usage site does not trigger it. Measured on `0.13.0` through `0.16.0`. The kit's mirror covers the usage site that declares `storage: flatten` itself. It cannot see an inherited default, so `validate` is the check for that case.
 
 #### What `atRest: encrypted` emits, measured against generator `0.13.0`
 
@@ -1544,7 +1554,9 @@ The value-object path was silent through `0.12.0` (`clabonte/generator#1993`); i
 
 | Encrypted | Refused — warns `PROTECTION_ENCRYPTED_NON_STRING_TARGET`, column stays plaintext |
 |---|---|
-| `string`, `boolean`, any integer width, `format: uuid`, `format: date` | `double`, `float` (binary round-trip through a canonical string is not guaranteed), `decimal` (no canonical string form), a bare `format: date-time` (ambiguous between a calendar date and an instant — declare `format: date` if you mean a date), arrays, multi-branch composites |
+| `string`, `boolean`, any integer width, `format: uuid`, `format: date`, an enum (from generator `0.16.0`) | `double`, `float` (binary round-trip through a canonical string is not guaranteed), `decimal` (no canonical string form), a bare `format: date-time` (ambiguous between a calendar date and an instant — declare `format: date` if you mean a date), arrays, multi-branch composites |
+
+**An encrypted enum was silently plaintext through `0.15.0`.** The declaration was dropped with no finding (`clabonte/generator#2560`). From `0.16.0` the value is encrypted under its `[EnumMember]` wire value into a `<Name>Ciphertext` column, and the property carries `[Sensitive]`. Adopting the pin needs an EF migration and a backfill for each encrypted enum. The regenerated entity no longer reads the plaintext column, so the backfill must read it directly, before the column is dropped.
 
 **A value object is all-or-nothing.** The rule refuses *"a value object carrying a member in one of those categories"*, so one `decimal` member leaves **every** member of that value object in plaintext, including the sound ones. Worth knowing before adding a price to an encrypted address.
 
@@ -1621,7 +1633,7 @@ The two sides split cleanly, and the split is the generator's own: `PiiClassific
 | 14 | `sad`, and `atRest: never_persist` / `never-persist`, MUST NOT appear on an `x-entity` property — those are persisted by construction. | generator — `PROTECTION_SAD_MAPPED` / `PROTECTION_NEVER_PERSIST_MAPPED`; mirrored by kit `specfuse-xprotection-sad-not-persisted` / `-never-persist-not-mapped` |
 | 6 | A property carrying `x-classification: [exposed]` MUST carry a non-empty `description` justifying why exposure is safe. | kit — `specfuse-classification-exposed-needs-description` (error) |
 | 7 | A property the validator reads as PII MUST declare `x-classification` (see "Where it is required" above). | generator — `PII_FIELD_MISSING_CLASSIFICATION` (error); mirrored in the editor by kit `specfuse-classification-pii-required` |
-| 15 | An entity declaring `x-protection.atRest: encrypted` on one of its own properties MUST expose a `readOnly` string array `unavailableProperties`. Generator `0.13.0`; **breaks specs that validated on `0.12.0`**. Not required when the only encrypted target is a flattened value object. | generator — `UNAVAILABLE_PROPERTIES_NOT_DECLARED` (error); mirrored by kit `specfuse-xprotection-unavailable-properties-required` |
+| 15 | An entity declaring `x-protection.atRest: encrypted` on one of its own properties MUST expose a `readOnly` string array `unavailableProperties`. Generator `0.13.0`; **breaks specs that validated on `0.12.0`**. From generator `0.14.0` this includes an encrypted value-object usage site stored `flatten`; from `0.16.0`, also when `flatten` is inherited from `defaultStorage`. `single_json` is exempt. | generator — `UNAVAILABLE_PROPERTIES_NOT_DECLARED` (error); mirrored by kit `specfuse-xprotection-unavailable-properties-required` |
 | 16 | A `type: string` property of an `x-entity` schema whose name ends in `hash` or `digest` (case-insensitive; `api_key_hash` counts) MUST declare `x-protection`, whether or not it is classified. `atRest: hashed` is the expected answer for a stored digest (with `x-internal-only`, rule 13), `atRest: none` with a rationale for a public content digest. Presence only — any `x-protection` silences it. Out of scope: a `$ref`-typed or `allOf`-wrapped property, a non-string, and a non-entity schema. **No temporal exclusion**, unlike `SENSITIVE_FIELD_IN_RESPONSE`: a `format: date-time` property named `*Hash` fires. Generator `0.15.0`; **opens at ERROR, so it can break a spec that validated on `0.14.0`** — `x-internal-only` or `writeOnly` alone used to be enough for such a property. | generator — `PROTECTION_DIGEST_UNDECLARED` (error); mirrored by kit `specfuse-xprotection-digest-undeclared` |
 
 Rules 5 and 6 were documented here for some time and enforced by **nothing** on either side — rule 5 even named a finding id (`CLASSIFICATION_EXPOSED_CONTRADICTION`) that exists in neither the kit nor the jar. They are kit Spectral rules now. Rule 2 warns rather than fails: a refused target generates, in plaintext, so read the warning as a protection decision that did not happen.
@@ -2067,7 +2079,7 @@ The disambiguation is the generator's own (`ProtectionDefinition.isSubKey` over 
 
 The trap is the word *effective*: the set is the usage site's `queryable` **if it declares one**, and the definition's `defaultQueryable` otherwise. So a usage site that declares no `queryable` at all inherits one and fails, and the fix is to declare `queryable: []` explicitly rather than to remove the key.
 
-> **Do not count on `validate` to catch the inherited case.** Measured on a copy of `hello-orders`: a usage site declaring a non-empty `queryable` itself is reported on `0.14.0` and after it. An inherited `defaultQueryable` is not reported on `0.14.0`. From generator `0.15.0` it is, when the embed is a direct `$ref`, but measured on a build of generator main it is still not reported through a one-item `allOf` embed, the form this section uses. Declare `queryable: []` at every encrypted usage site.
+> **`validate` catches the inherited case from generator `0.16.0`.** Measured on a copy of `hello-orders`: a usage site declaring a non-empty `queryable` itself is reported on `0.14.0` and after it. An inherited `defaultQueryable` is not reported on `0.14.0`. Generator `0.15.0` reports it through a direct `$ref` embed only. `0.16.0` also reports it through a one-item `allOf` embed, the form this section uses (`clabonte/generator#2566`; measured on both). Still declare `queryable: []` at every encrypted usage site: it states what you meant instead of relying on the rule.
 
 **The embed property is a second declaration site, and the usage site wins outright.** From generator `0.13.0` an `x-protection` on the entity's own embed property — `components.schemas.<Entity>.properties.<prop>`, where `x-classification` already sits — emits the same columns the usage-site form does. (A `protection` key under `x-value-object` on the value object's own schema is not one of the sites: the generator does not read it.) Where both declare, **the embed's block is discarded in full — not layered underneath**:
 
@@ -4471,7 +4483,7 @@ A replica is fed by the owner's events, so declaring one puts requirements on th
 
 `project.json` gains `groups[].pillar`, which binds a group to a pillar name in `info.x-pillars`; the pillar's owned domains expand into the ordinary include-filter that `groups[].domains` writes by hand. `pillar` and `domains` are **mutually exclusive**. See `Project_File.md` §8.13.2.
 
-Only a pillar-bound group applies holds (§14.3). At generator `0.15.0`, a cross-pillar `belongsTo` or `x-references` with a hold, or a `resolve: remote` reference with none, generates in both pillars' groups. A cross-pillar reverse `hasMany`/`hasOne` and a child route nested under another pillar's parent still fail. See §14.10.
+Only a pillar-bound group applies holds (§14.3). At generator `0.16.0`, as at `0.15.0`, a cross-pillar `belongsTo` or `x-references` with a hold, or a `resolve: remote` reference with none, generates in both pillars' groups. A cross-pillar reverse `hasMany`/`hasOne` and a child route nested under another pillar's parent still fail. See §14.10.
 
 ### 14.7 One bundle or many — the choice this vocabulary does *not* make for you
 
@@ -4497,7 +4509,7 @@ Adoption is opt-in and the checks are gated on a declaration, so there is no for
 5. **Re-run validation and use its output as the work list.** Do not plan from a count someone measured against an older bundle — the ranking moves.
 6. **Validate the project file, then generate every pillar.** `validate` on a bundled spec runs the pillar rules in §14.9. Some failures only appear when a group's context is built for one pillar: `validate <project>.json` builds it, while spec-level `validate` and the Spectral layers do not. A spec can be green at the spec level and still fail to generate for every pillar. Give the project file one group per pillar, each with `groups[].pillar`, and validate that file.
 
-   Even that is not the whole bar. At generator `0.15.0`, a child-create operation nested under a held parent's path still passes project-level `validate` and fails `generate`, in both pillars' groups (§14.10). Run `generate` for each pillar-bound group before calling the topology done. §14.10 lists the shapes that fail at generator `0.15.0`.
+   Even that is not the whole bar. At generator `0.16.0`, as at `0.15.0`, a child-create operation nested under a held parent's path still passes project-level `validate` and fails `generate`, in both pillars' groups (§14.10). Run `generate` for each pillar-bound group before calling the topology done. §14.10 lists the shapes that fail at generator `0.16.0`.
 
 ### 14.9 Kit Spectral rules and their generator counterparts
 
@@ -4522,11 +4534,11 @@ The kit lints this vocabulary in the editor; the generator validates it at gener
 
 **`PILLAR_CROSS_BOUNDARY_REFERENCE` is the one finding that can turn a green `validate` red.** It reports every reference whose target is owned by a different pillar and is not covered by a `Read{Entity}` + `holds` pair. It fires **only** on a spec that declares `info.x-pillars`, so it cannot affect a project that has not adopted the vocabulary — but once you do adopt, it is an ERROR, not a warning. It is satisfiable by authoring the pairs, by declaring the reference `x-references: { entity: <Target>, resolve: remote }` (generator `0.15.0`, §14.11), or by declaring it opaque with `x-references: none` (§1.7). The census accepts the first two and skips the third. Since generator `0.15.0` it also reports a cross-pillar `hasMany`/`hasOne` **even when the target is held**: the child's `belongsTo` is the crossing, and the reverse edge must go (§14.10).
 
-**Passing this census does not mean every pillar generates.** At generator `0.15.0` the census and pillar-bound generation agree on every edge kind measured in §14.10. A child route nested under another pillar's parent still passes the census and fails `generate`. See §14.10.
+**Passing this census does not mean every pillar generates.** At generator `0.16.0`, as at `0.15.0`, the census and pillar-bound generation agree on every edge kind measured in §14.10. A child route nested under another pillar's parent still passes the census and fails `generate`. See §14.10.
 
-### 14.10 Cross-pillar edges at generator `0.15.0`: what generates
+### 14.10 Cross-pillar edges at generator `0.16.0`: what generates
 
-Everything below was measured at generator `0.15.0`, on a copy of `examples/hello-orders` split into two pillars:
+Everything below was measured at generator `0.15.0` and re-measured at `0.16.0`, on a copy of `examples/hello-orders` split into two pillars. Every row gave the same verdict on both jars, and the `belongsTo`-with-hold groups generated byte-identical C#. The `0.16.0` re-measure held `Customer` only and reached `Tenant` through `resolve: remote`:
 
 - `core` owns `tenant` and `customer`;
 - `sales` owns `order`;
@@ -4555,9 +4567,10 @@ What follows from the table:
 - **Do not nest a child's routes under a parent owned by another pillar.** With `POST /customers/{customerId}/orders` and `belongsTo` in place, the project-level `validate` passed and `generate` failed in **both** groups: "Create operation 'CreateOrder' is rooted under aggregate 'Customer' which does not own 'Order'". Neither group builds the cross-pillar edge as ownership: the holder sees a replica, the owner sees no inverse. With `resolve: remote` instead of `belongsTo`, the spec-level `validate` already fails, with `OPERATION_PARENT_NOT_OWNER` and `OPERATION_NESTED_LIST_NO_RELATIONSHIP`. Put the child's create and list operations at the child's own path, with the parent id in the body or as a query filter.
 - **The tenancy root has two working forms.** `belongsTo` to the tenant with a hold generates on both sides (second row), and the child carries the `I{Tenant}Scoped` marker. A `resolve: remote` reference to the tenant carries the marker with no `belongsTo` and no hold (§14.11). Measured with a `tenancy` block: under `belongsTo` and under `resolve: remote`, `Order` implemented the tenant marker. Under `x-references: Tenant` and under `x-references: none`, it did not. The generated `Order` events carried the marker in all four cases.
 - **The C# Domain no longer maps `Read{Entity}`** (`clabonte/generator#2392`). At `0.15.0` the generated C# maps through Mapperly, and no group emits an `AutoMapperProfile.g.cs`. In the measured groups, no generated file names a `Read{Entity}` except the replica's own entity and configuration and the holder's entity whose FK binds to it. Dart and TypeScript `dto` groups no longer emit a `Read{Entity}` client type. Checked with `dotnet build` on an unbound C# group of the held spec, with the domain artifacts it needs to compile (`domainValidation`, `domainExceptions`, `serviceInterface`, `service`, `repositoryInterface`, `event`, `eventRuntime`, `tenancyMarker`, `snapshot`, and a `tenancy` block). At `0.15.0` it built with 0 errors. At `0.14.0` it failed with `CS0246` on `ReadTenant`, `ReadOrder` and `ReadCustomer` in `AutoMapperProfile.g.cs`.
-- **A pillar-bound C# group with `snapshot` does not compile, at `0.15.0` or `0.14.0`.** `snapshot` emits every `{Entity}Snapshot` under the AsyncAPI source root, not only the pillar's, and each one maps from its entity. In the holder's group, `CustomerSnapshot.g.cs` and `TenantSnapshot.g.cs` failed with `CS0246` on `Customer`, `CustomerStatus` and `Tenant`. `OrderSnapshot.g.cs` failed the same way in the owner's group. This is unrelated to replicas, and nothing in the spec avoids it.
+- **`snapshot` follows the pillar from generator `0.16.0`** (`clabonte/generator#2568`). A pillar-bound group emits only the `{Entity}Snapshot` and `{Entity}SnapshotChanges` of the entities it owns: `core` gets `CustomerSnapshot`, `sales` gets `OrderSnapshot` and `OrderLineSnapshot`. At `0.15.0` and `0.14.0` every group emitted every snapshot, and each foreign one failed `CS0246` on the entity it maps from. An unbound group emits exactly what it did before.
+- **A pillar-bound C# group with `event` and `service` still does not compile, at `0.16.0` or `0.15.0`.** `event` emits the event infrastructure but no `{Message}Event` class, while `Default{Entity}Service` constructs them, so the build fails with `CS0246` on `OrderCreatedEvent`, `CustomerUpdatedEvent` and the rest. The same happens under `groups[].domains`. The same artifacts in an unfiltered group emit every event class and build with 0 errors. Nothing in the spec avoids it (`compatibility.md` §44 item 9).
 
-These verdicts are tied to `0.15.0`; re-measure them at every pin bump (`compatibility.md` §44).
+These verdicts are tied to `0.16.0`; re-measure them at every pin bump (`compatibility.md` §44).
 
 ### 14.11 A pillar that reads without keeping a copy
 
@@ -4582,7 +4595,7 @@ Measured at `0.15.0` on the two-pillar `hello-orders` split in §14.10, with `Or
 - **Both groups generate.** `PILLAR_CROSS_BOUNDARY_REFERENCE` accepts `resolve: remote` with no `holds` and no `Read{Entity}`. The holder's `Order` has `public Guid CustomerId { get; set; } = Guid.Empty;` and no navigation, FK configuration or replica.
 - **The relationship stays visible.** The `entityDiagram` Markdown artifact lists the column as ``→ `Customer` (remote)`` and draws a dashed edge to `Customer`. `x-references: none` records no target, so it cannot do this.
 - **It carries tenancy.** With a `tenancy` block naming `Tenant` (`Project_File.md` §4.1), a `resolve: remote` reference to `Tenant` makes `Order` implement the `I{Tenant}Scoped` marker with no `belongsTo`. `TenancyDerivationValidationRule` accepts it as the tenant chain. `Order`'s events carried the marker too. Checked with `dotnet build` on an unbound group: 0 errors. This is the case `x-references: none` could not express (§14.10 tenancy bullet).
-  - **Name the column after `tenancy.tenant.foreignKey`.** The marker's property is the tenancy block's `foreignKey`, not the column that carries the remote reference. With the reference on `tenantRef`, generation passed, and `dotnet build` failed with `CS0535`: `Order` does not implement the marker's `TenantId`. Validation does not catch it.
+  - **Name the column after `tenancy.tenant.foreignKey`.** The marker's property is the tenancy block's `foreignKey`, not the column that carries the remote reference. From generator `0.16.0` (`clabonte/generator#2569`), a reference on any other column is `TENANT_REMOTE_REFERENCE_FOREIGN_KEY_MISMATCH` (ERROR) at project-level `validate` and at `generate`. The finding names the entity, the column and the expected name; case, `_` and `-` are ignored. Spec-level `validate` does not report it, because it cannot see the `tenancy` block. Rename the column; no alias is generated. At `0.15.0`, `tenantRef` generated, gained the marker, and failed `dotnet build` with `CS0535`.
   - Only the tenant tier is read from a remote reference. In the generator source, a `subTenant` tier still needs `belongsTo`.
 - **Two warnings catch a contradictory topology.** Measured, both WARNING:
   - `PILLAR_REMOTE_REFERENCE_ALSO_HELD`: the referencing pillar also `holds` the target, so one edge has two strategies. The column stays a plain uuid; the hold does not rebind it.
