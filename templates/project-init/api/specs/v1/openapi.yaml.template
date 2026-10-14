@@ -77,6 +77,7 @@ components:
 
   schemas:
     Error: { $ref: './common/responses/errors.yaml#/Error' }
+    ErrorType: { $ref: './common/responses/errors.yaml#/ErrorType' }
 
 security:
   - bearerAuth: []

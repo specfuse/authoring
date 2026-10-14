@@ -364,7 +364,8 @@ components:
       required: [id, code, message]
       properties:
         id: { type: string }
-        code: { type: string }
+        code: { type: integer }   # the HTTP status
+        reason: { type: string, pattern: '^[a-z][a-z0-9_]*$' }   # the rule that failed
         message: { type: string }
         field: { type: string }
         details: { type: string }

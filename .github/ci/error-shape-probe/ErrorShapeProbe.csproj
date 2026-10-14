@@ -1,0 +1,29 @@
+<!--
+  Compiles the generated C# that the kit's `Error` shape decides, and nothing
+  else (compatibility.md §54). The `domainExceptions` templates assign
+  `Error.Code`, `Error.Id` and `Error.Type`; a kit `Error` whose field types
+  disagree with them fails here with CS0029, which `validate` and `generate`
+  never report.
+
+  Only these folders, because the rest of a Domain group needs artifacts
+  `hello-orders` cannot register on its own (`CallerContext` needs `Users`).
+
+  Usage: dotnet build -p:GenSrc=<group destination>/<Project>.Domain/gen-src
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(GenSrc)/Exceptions/*.g.cs" />
+    <Compile Include="$(GenSrc)/Models/Error.g.cs" />
+    <Compile Include="$(GenSrc)/Enums/*.g.cs" />
+    <Compile Include="$(GenSrc)/ValueObjects/*.g.cs" />
+    <Compile Include="$(GenSrc)/Converters/*.g.cs" />
+    <!-- InternalException maps SqlException to transient failures. -->
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.1" />
+  </ItemGroup>
+</Project>

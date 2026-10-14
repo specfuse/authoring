@@ -1380,6 +1380,37 @@ jobs:
           [[ "$n" -gt 0 ]] || { echo "::error::generate exited 0 but wrote no files under out/"; exit 1; }
           echo "==> hello-orders validates and generates on the pinned jar ($n files)."
 
+      - name: Set up .NET
+        if: steps.token.outputs.have == 'true'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build domainExceptions against the kit's Error
+        if: steps.token.outputs.have == 'true'
+        # compatibility.md §54. The C# exceptions assign Error.Code, Id and
+        # Type; a kit Error whose field types disagree fails CS0029 here, and
+        # nowhere else: validate and generate both pass. The old string-`code`
+        # Error shipped for months that way. A copy, so the example's own
+        # Domain group (and its 14-file output) stays as it is.
+        run: |
+          set -euo pipefail
+          P="$RUNNER_TEMP/error-shape"
+          cp -R examples/hello-orders "$P"
+          python3 - "$P/hello-orders-project.json" <<'EOF'
+          import json, sys
+          p = sys.argv[1]
+          d = json.load(open(p))
+          g = d["groups"][0]
+          g["destination"] = "./out-error-shape/"
+          g["artifacts"] = ["enum", "valueObject", "domainModel", "domainExceptions"]
+          json.dump(d, open(p, "w"), indent=2)
+          EOF
+          (cd "$P" && specfuse-authoring generate generate hello-orders-project.json)
+          dotnet build .github/ci/error-shape-probe/ErrorShapeProbe.csproj \
+            -p:GenSrc="$P/out-error-shape/HelloOrders.Domain/gen-src"
+          echo "==> domainExceptions compiles against the kit's Error."
+
       - name: Validate a fresh scaffold
         if: steps.token.outputs.have == 'true'
         run: |

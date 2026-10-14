@@ -1388,7 +1388,7 @@ The C# server prefixes every route with the path part of the server URL; the cli
    - The §1.1 table gains `DELETE_SOFT_CLASSIFIED_NO_RETENTION`.
 
    **Generator follow-up, not filed:** a structured `x-compliance.retention` (`period`, `from` as a date property, `action: delete | clear`, allowed per property) that the generator could turn into a sweep. Then `DELETE_SOFT_CLASSIFIED_NO_RETENTION` could accept either retention. The consumer has not asked for it yet. File when a second project needs it.
-2. **`Error.code` vs the HTTP status.** A consumer's `Error.code` was `type: integer` (the status), while its copy of `API_Handbook.md` §2.1 called `code` a snake_case rule name. As a result, 17 operation descriptions named codes the wire cannot carry. The consumer added a string `reason` field. The kit's own `Error` types `code` as a snake_case string and carries the status in a separate integer `status`, and §2.1 matches. **Corrected at the `0.16.0` pin bump (§52):** the conclusion drawn here, that the contradiction was the consumer's alone, is wrong. The generator's C# `domainExceptions` set `Error.Code` to an integer, so the consumer's integer `code` was the generator's shape, and the kit's `Error` does not compile with that artifact. The proposed generator rule (warn on `error.code = <name>` prose when `code` is an integer) is still not forwarded.
+2. **`Error.code` vs the HTTP status.** A consumer's `Error.code` was `type: integer` (the status), while its copy of `API_Handbook.md` §2.1 called `code` a snake_case rule name. As a result, 17 operation descriptions named codes the wire cannot carry. The consumer added a string `reason` field. The kit's own `Error` types `code` as a snake_case string and carries the status in a separate integer `status`, and §2.1 matches. **Corrected at the `0.16.0` pin bump (§52):** the conclusion drawn here, that the contradiction was the consumer's alone, is wrong. The generator's C# `domainExceptions` set `Error.Code` to an integer, so the consumer's integer `code` was the generator's shape, and the kit's `Error` does not compile with that artifact. The proposed generator rule (warn on `error.code = <name>` prose when `code` is an integer) is still not forwarded. **Resolved in §54:** the kit adopts the consumer's shape.
 
 ### 52. Generator `0.16.0` pin bump (kit `0.25.0`)
 
@@ -1432,7 +1432,7 @@ The C# server prefixes every route with the path part of the server URL; the cli
 
 **Found while measuring:**
 
-1. **`Error.code` (corrects §51 item 2).** The C# `domainExceptions` templates set `Error.Code` to an integer, the HTTP status or an `int errorCode`, and set `Error.Id` to a string. The kit's `Error` types `code` as a snake_case string and `id` as `format: uuid`, so a project that registers `domainExceptions` fails `CS0029` on 22 assignments, measured on a `hello-orders` copy. `hello-orders` does not register the artifact. The consumer's integer `code` plus a string `reason` is the shape that compiles. `API_Handbook.md` §2.1 now says so. **Open decision:** does the kit's `Error` move to an integer `code`, a string `id` and a `reason` field, or does the generator move to a string `code`? Same shape as the `#2371` decision. Not filed: it waits on that decision.
+1. **`Error.code` (corrects §51 item 2).** The C# `domainExceptions` templates set `Error.Code` to an integer, the HTTP status or an `int errorCode`, and set `Error.Id` to a string. The kit's `Error` types `code` as a snake_case string and `id` as `format: uuid`, so a project that registers `domainExceptions` fails `CS0029` on 22 assignments, measured on a `hello-orders` copy. `hello-orders` does not register the artifact. The consumer's integer `code` plus a string `reason` is the shape that compiles. **Decided in §54:** the kit adopts the integer `code`, a `reason` and a plain-string `id` (authoring#159). The generator side is `clabonte/generator#2671`.
 2. **§44 item 9.** A domain-filtered C# group (`pillar` or `domains.include`) with `event` and `service` emits no `{Message}Event` classes, while the service constructs them: `CS0246`, at `0.16.0` and `0.15.0`. The unfiltered control builds clean. Filed as `clabonte/generator#2639` (2026-10-13).
 
 ### 53. Generator `0.17.0` pin bump (kit `0.26.0`)
@@ -1459,7 +1459,51 @@ The C# server prefixes every route with the path part of the server URL; the cli
 
 1. **A tenancy marker named like the generated one inherits itself.** With `tenancy.tenant.marker: "ITenantScoped"` and an entity named `Tenant`, the C# output declares `interface ITenantScoped : ITenantScoped` and fails `CS0529` / `CS0540`, on `0.16.0` and `0.17.0`. No `validate` finding reports it. Choose a marker name that differs from `I{Tenant}Scoped`.
 2. **`heldEntityConfiguration` does not compile in a Domain-only group.** It imports `{basePackage}.Converters` and uses `EnumValueConverter<>`, which only `infrastructureProject` emits, on both jars. The §14.10 artifact set therefore generates but does not build on its own; the earlier builds in this file were on unbound groups.
-3. **`Error.code` and `domainExceptions`** are as §52 item 1 records, unchanged at `0.17.0`.
+3. **`Error.code` and `domainExceptions`** are as §52 item 1 records, unchanged at `0.17.0`. Resolved kit-side in §54.
+
+### 54. The kit's `Error` takes the HTTP status in `code` and the rule name in `reason` (authoring#159)
+
+**Status:** kit side **done**. Generator side: `clabonte/generator#2671`, open.
+
+**The decision.** Through `0.26.0` the kit's `Error` had a snake_case string `code` naming the rule that failed, an integer `status` and a `format: uuid` `id`. That shape never compiled with the C# `domainExceptions` artifact (§52 item 1). It now matches the shape RestoManager has run from spec to C# Backend and Flutter since its first commit (2025-10-15), with `reason` added 2026-10-12:
+
+| Field | Before | After |
+|---|---|---|
+| `code` | string, the rule name | **integer, the HTTP status** |
+| `reason` | — | **string, the rule name**: `^[a-z][a-z0-9_]*$`, `maxLength: 64`, optional |
+| `status` | integer, the HTTP status | **removed** (duplicated `code`) |
+| `id` | `format: uuid` | **plain string** |
+| `type` | — | **`$ref` to a new `ErrorType` enum** (`x-extensible`, the eight values `domainExceptions` requires) |
+
+The alternative, keeping string `code` and asking the generator for a string `Code` and a `Status`, was proposed in the first version of `#2671` and withdrawn. It would have made the generator carry two `Error` shapes for no project that uses the string one, and it misdescribed RestoManager's integer `code` as a workaround. It was the generator's shape from the start.
+
+**`type` is new, and required for `domainExceptions`.** Measured on `0.17.0`: a `hello-orders` copy registering `domainExceptions` fails `generate` with two `ARTIFACT_SCHEMA_DEPENDENCY` ERRORs until `Error.type` is typed by an `ErrorType` enum with `validationError`, `invalidToken`, `insufficientPrivileges`, `resourceNotFound`, `resourceConflict`, `preconditionFailed`, `businessRuleViolation` and `internalError`. No handbook said so; `API_Handbook.md` §11 now does.
+
+**Measured** (generator `0.17.0`, `hello-orders` copy, freshly bundled, Domain group `enum`, `valueObject`, `domainModel`, `domainExceptions`; the generated `Exceptions/`, `Models/Error.g.cs`, `Enums/`, `ValueObjects/` and `Converters/` compiled with `dotnet build`, .NET 10):
+
+- Old `Error` plus `type`/`ErrorType`: **22** distinct `CS0029`, one `Id` (`string` to `Guid?`) and one `Code` (`int` to `string`) per `Error` the exceptions build.
+- New `Error`: **0** errors.
+- `validate` on the changed `hello-orders`: `0` errors, `19` warnings, `11` suggestions, as before. Its own Domain group now generates 15 files, not 14: the new `Enums/ErrorType.g.cs`. Kit Spectral on its bundle: the same 20 findings, `0` errors.
+- A fresh `init` scaffold validates with the same five finding codes as in §53.
+
+The full Domain set does not build from `hello-orders` alone for unrelated reasons (`CallerContext` needs `Users`; `serviceInterface` needs `event`, which needs `eventRuntime` and a tenancy block), so the probe compiles the files the shape decides and nothing else.
+
+**What changed.**
+
+- `API_Handbook.md` §11: the schema, a table of what `code`, `type` and `reason` are each for, the `ErrorType` requirement, how to set `reason` from generated C# until `#2671` ships, and the error-code table recast as `type` plus common `reason` values. §2.1, the 412 and soft-delete examples, and the 409 recovery snippet move rule names from `code` to `reason`.
+- The `init` scaffold's and `hello-orders`' `common/responses/errors.yaml`, plus an `ErrorType` entry in each `openapi.yaml` `components.schemas`. `samples/endpoint-samples.yaml`.
+- The `spec-drafting` skill's worked example asserts `errors[0].reason`.
+- CI: `example-regen.yml`'s `generate` job generates `domainExceptions` from a copy of `hello-orders` and builds it with `.github/ci/error-shape-probe/ErrorShapeProbe.csproj`, so a pin bump that breaks the shape, or a kit edit to `Error`, fails CI instead of a consumer's build.
+
+**Migration for a project on the old shape** (any project scaffolded by kit `≤ 0.26.0`). Schema and docs only: the generated C# exceptions never compiled against the old shape, so no generated code depends on it.
+
+1. Move each rule name from `code` to `reason`: in `Error` examples, in response `description`s that list conflict codes, and in prose (`error.code = x` → `error.reason = x`).
+2. Retype `code` as `type: integer`, the HTTP status, and delete `status`.
+3. Drop `format: uuid` from `id`.
+4. Add `type` and `ErrorType` if the project registers, or will register, `domainExceptions`.
+5. Clients: branch on `reason` where they branched on `code`, and read the status from `code` where they read `status`. This is a breaking wire change for any client already deployed against the old shape.
+
+**Generator follow-up (`#2671`):** `(string reason, string message)` constructors on the six exceptions a rule can refuse with, and `Id` following the schema's `format`. Until then, `reason` is set by building the `Error` and passing it to the `(Error error)` constructor.
 
 ## Outstanding kit-side work
 
