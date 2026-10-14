@@ -71,7 +71,7 @@ in the dossier.>
   validation oracle, the whole-tree-validates and structural-assertion rules
   (`.specfuse/docs/methodology.md` §10, spec front-end `authored`). A backlog
   state offers none of that. `graduated_to` records *that* a feature is doing
-  it; the feature is *how*.
+  it, `started` *since when*; the feature is *how*.
 - **Graduation is `initiative-intake`, not a backlog skill.** When an item is
   `specified`, the human/specs agent runs intake; intake reads the dossier(s) —
   and the handoff manifest when there is one — mints the INIT, and this row (and

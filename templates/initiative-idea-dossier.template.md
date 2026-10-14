@@ -7,6 +7,8 @@ autonomy_guess: review   # auto | review | supervised — becomes intake's auton
 bundles: []          # IDEA-NNN ids folded INTO this one (this is the lead); else empty
 bundled_into: null   # set on a follower: the lead IDEA-NNN this folds into
 graduated_to: null   # set when a loop feature starts authoring the specs: FEAT-YYYY-NNNN
+started: null        # set in the same edit as graduated_to: YYYY-MM-DD, the day that feature started.
+                     # A restart keeps the first date, so start-to-specified includes abandoned attempts
 handoff: null        # set at `specified`: path to the handoff manifest that feature published
 minted_init: null    # set on graduation: the INIT-YYYY-NNNN this became
 issue: null          # set on publish: the GitHub issue mirroring this idea (see #118)
