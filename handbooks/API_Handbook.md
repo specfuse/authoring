@@ -1961,6 +1961,24 @@ GET /tasks?search=inventory&filter=status eq 'pending' and priority eq 'high'
 - `expiresAfter`, `expiresBefore` → Requires `expiresAt` in `filterableProperties`
 - `capacityMin`, `capacityMax` → Requires `capacity` in `filterableProperties`
 
+**What the generated C# list does with them (generator `0.17.0`).** Through `0.16.0` an accepted individual parameter reached the generated service and was dropped: `?status=pending` returned every row, and only `filter` narrowed a list. From `0.17.0` each accepted parameter binds into the list's query (`clabonte/generator#2648`):
+
+| Parameter | Example | Binds as |
+|---|---|---|
+| primary key, foreign key, `filterableProperties` entry, enum | `?customerId=`, `?status=` | equals |
+| `searchableProperties` string | `?reference=` | contains |
+| `{field}After` / `{field}Before` | `?expiresAfter=` | `>` / `<` (boundary excluded) |
+| `{field}From` / `{field}To`, `{field}Min` / `{field}Max` | `?capacityMin=` | `>=` / `<=` (boundary included) |
+| repeated value on a scalar property | `?status=a&status=b` | any of the values |
+| repeated value on a plain array property (`array<string>`) | `?tags=a&tags=b` | the row's array holds any of them |
+
+- An omitted parameter adds nothing. Parameters combine with `filter` and `search` (all apply).
+- **Not bound:** a repeated value on an **enum array** or a **value-object array**. EF Core cannot translate that predicate, so the parameter stays in the service signature and filters nothing. `validate` reports it as `OPERATION_LIST_PARAMETER_NOT_BOUND` (WARNING). Use `filter`, or filter in the consumer's service.
+- **C# only.** The generated TypeScript repository fake ignores them, as it ignores `filter`, `sort` and `search`.
+- **A parent-id parameter is a filter, not tenant isolation.** `?organisationId=X` narrows the list to X's rows; nothing checks that the caller may see X. Tenant scoping stays the consumer's (see `Vendor_Extensions.md` §14.10).
+
+The deprecation above stands: `filter` is the contract this handbook recommends. The binding means a parameter an older spec already declares now does what its name says. A client that sent one and relied on it being ignored receives fewer rows.
+
 ### 10.4 Parameter Naming Standards
 
 - **General search**: Use `search` (NOT `q`)
