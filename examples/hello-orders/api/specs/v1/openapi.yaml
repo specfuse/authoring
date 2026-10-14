@@ -101,6 +101,7 @@ components:
 
   schemas:
     Error:           { $ref: './common/responses/errors.yaml#/Error' }
+    ErrorType:       { $ref: './common/responses/errors.yaml#/ErrorType' }
     PaginationLinks: { $ref: './common/schemas/PaginationLinks.yaml' }
 
     Tenant:                 { $ref: './domains/tenant/models/Tenant.yaml' }

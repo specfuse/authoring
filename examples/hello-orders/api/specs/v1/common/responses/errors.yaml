@@ -8,23 +8,39 @@ Error:
   x-domain: common
   required: [code, message]
   properties:
+    # Not `format: uuid`: the generated C# exceptions fill `id` with a string of
+    # their own, and a uuid-typed `Id` does not compile (CS0029).
     id:
       type: string
-      format: uuid
-      description: Unique identifier for this error instance (for tracking)
+      description: >-
+        Unique identifier for this error instance, for support correlation.
+        Opaque: clients must not parse it.
+    type:
+      allOf:
+        - $ref: '#/ErrorType'
+      description: Broad category of the failure. See ErrorType.
     code:
+      type: integer
+      description: >-
+        HTTP status of the response carrying this error (400, 409, …). The
+        rule that failed is named by `reason`, not here.
+      example: 409
+    reason:
       type: string
-      description: Machine-readable error code (snake_case)
-      example: invalid_page_size
+      maxLength: 64
+      pattern: '^[a-z][a-z0-9_]*$'
+      description: >-
+        Stable snake_case name of the rule that failed (`template_in_use`,
+        `invalid_page_size`). Clients branch on this, never on `message`.
+        Absent when the error has no rule-level identity, such as a plain
+        schema violation.
+      example: template_in_use
     message:
       type: string
       description: Human-readable error message (localized via Accept-Language)
     field:
       type: string
       description: Field name that caused the error (for validation errors)
-    status:
-      type: integer
-      description: HTTP status code
     retryable:
       type: boolean
       description: Whether this error can be retried
@@ -46,6 +62,25 @@ Error:
     timestamp:
       type: string
       format: date-time
+
+# `type` is required by the C# `domainExceptions` artifact: the generator refuses
+# to generate it (ARTIFACT_SCHEMA_DEPENDENCY) unless `Error.type` is typed by an
+# `ErrorType` enum carrying at least these eight values. Open set
+# (`x-extensible`): a client built before a new type ships must still decode
+# the error body, and falls back to the HTTP status. API Handbook §11.
+ErrorType:
+  type: string
+  x-domain: common
+  x-extensible: true
+  enum:
+    - validationError
+    - invalidToken
+    - insufficientPrivileges
+    - resourceNotFound
+    - resourceConflict
+    - preconditionFailed
+    - businessRuleViolation
+    - internalError
 
 UnauthorizedError:
   description: The authentication token is missing or expired

@@ -649,7 +649,9 @@ Content-Type: application/json
 
 {
   "errors": [{
-    "code": "precondition_failed",
+    "type": "preconditionFailed",
+    "code": 412,
+    "reason": "precondition_failed",
     "message": "Resource was modified by another request. Current state included for merge.",
     "field": null,
     "retryable": true,
@@ -936,7 +938,9 @@ Response: 409 Conflict
 
 {
   "errors": [{
-    "code": "delete_not_allowed",
+    "type": "resourceConflict",
+    "code": 409,
+    "reason": "delete_not_allowed",
     "message": "Cannot delete order in 'submitted' status. Cancel order first.",
     "retryable": false,
     "requiredAction": "transition_to_cancelled"
@@ -1116,7 +1120,9 @@ Content-Type: application/json
 
 {
   "errors": [{
-    "code": "template_in_use",
+    "type": "resourceConflict",
+    "code": 409,
+    "reason": "template_in_use",
     "message": "Cannot delete template - currently used by 5 tenants",
     "field": null,
     "retryable": false,
@@ -1126,9 +1132,9 @@ Content-Type: application/json
 ```
 
 **Required fields**:
-- `code`: Machine-readable error code (snake_case): a **string** naming the rule that failed. The kit's `Error` carries the HTTP status in its own integer field, `status`.
-
-> **⚠ The generated C# exceptions disagree (generator `0.16.0`).** The `domainExceptions` templates set `Error.Code` to an **integer**, either the HTTP status (`Code = StatusCode`) or an `int errorCode` constructor argument, and set `Error.Id` to a string. Generated against the kit's `Error` (`code` a string, `id` a `format: uuid`), the exceptions fail to compile with `CS0029`. `hello-orders` does not register `domainExceptions`, which is why its build is clean. Until the kit and the generator agree on the shape (`compatibility.md` §52), a C# project that uses `domainExceptions` types `code` as an integer and `id` as a plain string, and carries the rule name in a separate string field. `reason` (`^[a-z][a-z0-9_]*$`) is the name one consumer chose. Never document a snake_case value as `error.code` on such a project, because the wire cannot carry it there.
+- `code`: the HTTP status, an integer (`409`).
+- `reason`: the snake_case name of the rule that failed (`template_in_use`). Clients branch on it. A rule name never goes in `code`: prose, examples and `409` descriptions say `error.reason = template_in_use`, never `error.code = template_in_use`.
+- `type`: the broad category, from the `ErrorType` enum. The generated C# `ConflictException` sets `resourceConflict`.
 - `message`: Human-readable explanation
 - `retryable`: Usually `false` for business rule violations
 - `requiredAction`: Guidance on how to resolve (recommended)
@@ -1223,7 +1229,7 @@ The validation script enforces these rules:
 #### AI Agent Considerations
 
 **When encountering 409**:
-1. **Parse the error** - Extract `code`, `message`, and `requiredAction`
+1. **Parse the error** - Extract `reason`, `message`, and `requiredAction`
 2. **Understand the conflict** - The request is valid but state prevents it
 3. **Resolve the conflict** - Follow `requiredAction` guidance to change system state
 4. **Retry after resolution** - Once state is corrected, retry the original operation
@@ -1238,7 +1244,7 @@ async function deleteTemplate(templateId) {
     if (error.status === 409) {
       const conflict = error.body.errors[0];
 
-      if (conflict.code === 'template_in_use') {
+      if (conflict.reason === 'template_in_use') {
         // Resolve conflict: remove template from tenants
         await removeTemplateFromTenants(templateId);
 
@@ -1258,7 +1264,7 @@ When including 409 in an operation spec, document the specific business rules th
 ```yaml
 '409':
   description: |
-    Business rule conflict prevents operation:
+    Business rule conflict prevents operation (`reason`):
     - `template_in_use`: Template is currently used by one or more tenants
     - `has_active_assignments`: Customer has active assignments
     - `pending_orders_exist`: Tenant has pending orders that must be completed first
@@ -1270,7 +1276,9 @@ When including 409 in an operation spec, document the specific business rules th
         templateInUse:
           value:
             errors:
-              - code: template_in_use
+              - type: resourceConflict
+                code: 409
+                reason: template_in_use
                 message: Cannot delete template - currently used by 5 tenants
                 retryable: false
                 requiredAction: remove_template_from_tenants
@@ -2554,7 +2562,7 @@ The two extensions are independent and may coexist on a single operation if it h
 
 ## 11) Error model
 
-All error responses use a consistent structure with machine-readable codes and human-readable messages.
+All error responses use a consistent structure: the HTTP status in `code`, the failed rule's machine-readable name in `reason`, and a human-readable `message`.
 
 ### Error Response Structure
 
@@ -2574,11 +2582,20 @@ Error:
   properties:
     id:
       type: string
-      format: uuid
-      description: Unique identifier for this error instance (for tracking)
+      description: Unique identifier for this error instance (for support correlation). Opaque.
+    type:
+      allOf:
+        - $ref: '#/components/schemas/ErrorType'
+      description: Broad category of the failure
     code:
+      type: integer
+      description: HTTP status of the response carrying this error
+      example: 400
+    reason:
       type: string
-      description: Machine-readable error code (snake_case)
+      maxLength: 64
+      pattern: '^[a-z][a-z0-9_]*$'
+      description: Stable snake_case name of the rule that failed. Absent when the error has no rule-level identity.
       example: invalid_page_size
     message:
       type: string
@@ -2588,10 +2605,6 @@ Error:
       type: string
       description: Field name that caused the error (for validation errors)
       example: pageSize
-    status:
-      type: integer
-      description: HTTP status code
-      example: 400
     retryable:
       type: boolean
       description: Whether this error can be retried
@@ -2610,55 +2623,46 @@ Error:
       type: string
       format: date-time
       description: When the error occurred
+
+ErrorType:
+  type: string
+  x-extensible: true
+  enum: [validationError, invalidToken, insufficientPrivileges, resourceNotFound,
+         resourceConflict, preconditionFailed, businessRuleViolation, internalError]
 ```
 
-### Error Code Categories
+The three identifying fields answer different questions:
 
-| Category | HTTP Status | Retryable | Description |
-|----------|-------------|-----------|-------------|
-| `validation_error` | 400 | No | Invalid input data |
-| `authentication_required` | 401 | No | Missing or invalid authentication |
-| `authentication_expired` | 401 | Yes | Token expired, refresh needed |
-| `forbidden` | 403 | No | Insufficient permissions |
-| `not_found` | 404 | No | Resource doesn't exist |
-| `conflict` | 409 | No | Business rule violation |
-| `precondition_failed` | 412 | Yes | Resource modified, retry with new ETag |
-| `rate_limit_exceeded` | 429 | Yes | Too many requests |
-| `server_error` | 500 | Yes | Unexpected server error |
-| `service_unavailable` | 503 | Yes | Temporary unavailability |
-| `resource_expired` | 410 | No | Resource expired (e.g., offer) |
+| Field | Answers | Example | Clients use it to |
+|---|---|---|---|
+| `code` | Which HTTP status? | `409` | nothing the status line doesn't already say; it is in the body so each entry of `errors[]` is self-describing |
+| `type` | What kind of failure? | `resourceConflict` | route the error to a generic handler (retry, re-authenticate, show a form error) |
+| `reason` | Which rule failed? | `template_in_use` | handle one specific rule. **Branch on `reason`, never on `message`**, which is human text and may change |
 
-### Standard Error Codes
+`reason` is optional: a plain schema violation has no rule-level identity, and inventing one adds nothing. Where a handler refuses a request because of a named business rule, it sets `reason`, and the operation's response `description` lists the values it can take (section 2.1).
 
-**Validation Errors (400):**
-- `invalid_request`: Malformed request
-- `invalid_field`: Invalid field value
-- `missing_required_field`: Required field missing
-- `invalid_page_size`: Page size out of bounds
-- `invalid_filter`: Invalid filter expression
-- `invalid_sort`: Invalid sort parameter
+**Why `code` is the HTTP status.** The generated C# `domainExceptions` set `Error.Code` from the exception's status, and Google's JSON error mapping (AIP-193) uses the same split: an integer `code` for the status, a separate `reason` for the machine-readable cause. An earlier kit `Error` put the rule name in a string `code` and the status in `status`. It never compiled with `domainExceptions` (`compatibility.md` §54, which has the migration).
 
-**Authorization Errors (401/403):**
-- `authentication_required`: No authentication provided
-- `authentication_expired`: Token expired
-- `invalid_token`: Token invalid or malformed
-- `forbidden`: Insufficient permissions
-- `tenant_mismatch`: Resource belongs to different tenant
+**`type` and `ErrorType` are required by `domainExceptions`.** The generator refuses to generate that artifact (`ARTIFACT_SCHEMA_DEPENDENCY`, ERROR) unless `Error.type` is typed by an `ErrorType` enum with at least the eight values above. Add values as you need them (`rateLimitExceeded`; `unmaskForbidden` for a denied `?unmask=`, see `Vendor_Extensions.md` §1.5, `x-unmask`); `x-extensible: true` lets a client built before a new value ships still decode the body and fall back to the status.
 
-**Resource Errors (404/409/410):**
-- `not_found`: Resource not found
-- `resource_expired`: Resource expired
-- `conflict`: State conflict
-- `delete_not_allowed`: Deletion not permitted
-- `precondition_failed`: ETag mismatch
+**Setting `reason` from generated C#.** Through generator `0.17.0` the generated exceptions take an `int errorCode` or a message, and neither sets `Reason`. Build the `Error` yourself and pass it to the exception's `(Error error)` constructor; `clabonte/generator#2671` asks for `(string reason, string message)` constructors.
 
-**Rate Limiting (429):**
-- `rate_limit_exceeded`: Rate limit exceeded
+### Error Types and Common Reasons
 
-**Server Errors (500/503):**
-- `internal_error`: Unexpected server error
-- `service_unavailable`: Service temporarily unavailable
-- `timeout`: Operation timed out
+| HTTP status | `type` | Retryable | Common `reason` values |
+|---|---|---|---|
+| 400 | `validationError` | No | `invalid_request`, `invalid_field`, `missing_required_field`, `invalid_page_size`, `invalid_filter`, `invalid_sort` |
+| 401 | `invalidToken` | Only `authentication_expired`, after a token refresh | `authentication_required`, `authentication_expired`, `invalid_token` |
+| 403 | `insufficientPrivileges` | No | `forbidden`, `tenant_mismatch` |
+| 404 | `resourceNotFound` | No | `not_found` |
+| 409 | `resourceConflict`, `businessRuleViolation` | No | `delete_not_allowed`, and each operation's own rules (`template_in_use`) |
+| 410 | `resourceNotFound` | No | `resource_expired` |
+| 412 | `preconditionFailed` | Yes | `precondition_failed` |
+| 429 | `rateLimitExceeded` (add it to `ErrorType`) | Yes | `rate_limit_exceeded` |
+| 500 | `internalError` | Yes | `internal_error`, `timeout` |
+| 503 | `internalError` | Yes | `service_unavailable` |
+
+A `reason` that only restates the status (`not_found` on a 404) is optional; set one when a client could act on it differently from the status alone.
 
 ### Example Error Responses
 
@@ -2666,11 +2670,12 @@ Error:
 ```json
 {
   "errors": [{
-    "id": "550e8400-e29b-41d4-a716-446655440000",
-    "code": "invalid_page_size",
+    "id": "Orders.Api-638962560000000000",
+    "type": "validationError",
+    "code": 400,
+    "reason": "invalid_page_size",
     "message": "pageSize exceeds maximum of 250",
     "field": "pageSize",
-    "status": 400,
     "retryable": false,
     "details": {
       "maxAllowed": 250,
@@ -2686,9 +2691,10 @@ Error:
 ```json
 {
   "errors": [{
-    "code": "precondition_failed",
+    "type": "preconditionFailed",
+    "code": 412,
+    "reason": "precondition_failed",
     "message": "Resource was modified by another request",
-    "status": 412,
     "retryable": true,
     "retryAfter": 0,
     "details": {
@@ -2703,9 +2709,10 @@ Error:
 ```json
 {
   "errors": [{
-    "code": "rate_limit_exceeded",
+    "type": "rateLimitExceeded",
+    "code": 429,
+    "reason": "rate_limit_exceeded",
     "message": "Rate limit exceeded. Try again in 60 seconds.",
-    "status": 429,
     "retryable": true,
     "retryAfter": 60,
     "details": {
@@ -2755,7 +2762,7 @@ async function retryWithBackoff(operation, maxRetries = 3) {
 ### Localization
 
 - Error `message` is localized based on `Accept-Language` header
-- Error `code` is always in English (machine-readable)
+- Error `reason` and `type` are always in English (machine-readable)
 - Default language: English (en)
 - Supported languages: project-defined (declare in the project's overlay)
 
