@@ -1,0 +1,86 @@
+# =============================================================================
+# Regression fixture (gate): the same prose under a STRING `code`
+# =============================================================================
+# Companion to `error-reason-prose.yaml`. Same paths, but `Error.code` is the
+# pre-§54 string rule name, so `error.code = template_in_use` is correct here
+# and `specfuse-error-rule-name-in-code` must not fire anywhere in this file.
+# A project that has not migrated yet gets §54's migration note, not a wall of
+# warnings. Asserted by .github/workflows/example-regen.yml.
+#
+# Not a Specfuse-conformant example — do not copy.
+# =============================================================================
+openapi: 3.0.3
+info:
+  title: error-reason-prose (string code) fixture
+  version: "1.0.0"
+components:
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        reason: { type: string }
+        message: { type: string }
+paths:
+
+  # SILENT here (fires in error-reason-prose.yaml): assignment in an operation description.
+  /assign:
+    patch:
+      summary: Update the template
+      description: Returns 409 with error.code = template_in_use while a menu uses it.
+      responses:
+        '200': { description: OK }
+
+  # SILENT here (fires in error-reason-prose.yaml): comparison in an operation summary.
+  /compare:
+    get:
+      summary: "List items; clients check errors[0].code == 'page_size_over_limit'"
+      responses:
+        '200': { description: OK }
+
+  # SILENT here (fires in error-reason-prose.yaml): backticked, in a nested response description.
+  /inResponse:
+    delete:
+      summary: Delete the booking
+      responses:
+        '204': { description: No Content }
+        '409':
+          description: 'The slot is taken (`code`: `slot_already_booked`).'
+
+  # SILENT here (fires in error-reason-prose.yaml): JSON-ish, in an `x-*` block's description.
+  /jsonish:
+    post:
+      summary: Archive the thing
+      x-notes:
+        description: 'Fails with {"code": "delete_not_allowed"} once archived.'
+      responses:
+        '200': { description: OK }
+
+  # SILENT: the rule name is in `reason`.
+  /clean:
+    patch:
+      summary: Update the template
+      description: Returns 409 with error.reason = template_in_use while a menu uses it.
+      responses:
+        '200': { description: OK }
+
+  # SILENT: `code` named with the status, and described as a field.
+  /status:
+    patch:
+      summary: Update with a precondition
+      description: >-
+        A conflict returns code = 409 and a stale ETag code: 412. The field is
+        declared as `code: integer`.
+      responses:
+        '200': { description: OK }
+
+  # SILENT: other words ending in "code".
+  /otherCodes:
+    get:
+      summary: Look up an address
+      description: >-
+        Filters on status_code = not_found and reason_code: out_of_area; the
+        postal code is free text.
+      responses:
+        '200': { description: OK }
