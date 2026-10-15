@@ -2645,7 +2645,17 @@ The three identifying fields answer different questions:
 
 **`type` and `ErrorType` are required by `domainExceptions`.** The generator refuses to generate that artifact (`ARTIFACT_SCHEMA_DEPENDENCY`, ERROR) unless `Error.type` is typed by an `ErrorType` enum with at least the eight values above. Add values as you need them (`rateLimitExceeded`; `unmaskForbidden` for a denied `?unmask=`, see `Vendor_Extensions.md` §1.5, `x-unmask`); `x-extensible: true` lets a client built before a new value ships still decode the body and fall back to the status.
 
-**Setting `reason` from generated C#.** Through generator `0.17.0` the generated exceptions take an `int errorCode` or a message, and neither sets `Reason`. Build the `Error` yourself and pass it to the exception's `(Error error)` constructor; `clabonte/generator#2671` asks for `(string reason, string message)` constructors.
+**Setting `reason` from generated C#.** From generator `0.18.0`, when `Error` declares `reason` (the kit's does), `BadRequestException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `PreconditionFailedException` and `UnprocessableEntityException` each take `(string reason, string message)`. The constructor sets `Code` to the exception's HTTP status, `Type` to its `ErrorType` and `Reason` to the rule name:
+
+```csharp
+throw new ConflictException("template_in_use", "The template is used by an open order.");
+```
+
+The `type` each one sets is fixed: `validationError`, `insufficientPrivileges`, `resourceNotFound`, `resourceConflict`, `preconditionFailed` and `businessRuleViolation`, in that order. A 409 whose `type` should be `businessRuleViolation` therefore still builds its `Error` and uses the `(Error error)` constructor.
+
+If `Error` also declares an `automatedDecision` property naming a schema, the constructor takes an optional `automatedDecision` of that type as a third argument. `InternalException` and `UnauthorizedException` get no reason constructor. Through `0.17.0` the exceptions took only an `int errorCode` or a message, so a project built the `Error` itself and passed it to the `(Error error)` constructor. That still works.
+
+**`id` follows the schema from `0.18.0`.** The exceptions set `Error.Id` to `Guid.NewGuid().ToString()` for the kit's plain-string `id`, and to `Guid.NewGuid()` for a `format: uuid` one. Through `0.17.0` it was `<entry assembly>-<UTC ticks>`, which two errors raised in the same tick shared. Treat `id` as opaque: it identifies one error occurrence in logs and support requests, and its format is not a contract.
 
 ### Error Types and Common Reasons
 

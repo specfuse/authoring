@@ -23,6 +23,8 @@
     <Compile Include="$(GenSrc)/Enums/*.g.cs" />
     <Compile Include="$(GenSrc)/ValueObjects/*.g.cs" />
     <Compile Include="$(GenSrc)/Converters/*.g.cs" />
+    <!-- Calls the 0.18.0 reason constructors (#2671). -->
+    <Compile Include="ReasonConstructors.cs" />
     <!-- InternalException maps SqlException to transient failures. -->
     <PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.1" />
   </ItemGroup>
