@@ -1388,7 +1388,7 @@ The C# server prefixes every route with the path part of the server URL; the cli
    - The §1.1 table gains `DELETE_SOFT_CLASSIFIED_NO_RETENTION`.
 
    **Generator follow-up, not filed:** a structured `x-compliance.retention` (`period`, `from` as a date property, `action: delete | clear`, allowed per property) that the generator could turn into a sweep. Then `DELETE_SOFT_CLASSIFIED_NO_RETENTION` could accept either retention. The consumer has not asked for it yet. File when a second project needs it.
-2. **`Error.code` vs the HTTP status.** A consumer's `Error.code` was `type: integer` (the status), while its copy of `API_Handbook.md` §2.1 called `code` a snake_case rule name. As a result, 17 operation descriptions named codes the wire cannot carry. The consumer added a string `reason` field. The kit's own `Error` types `code` as a snake_case string and carries the status in a separate integer `status`, and §2.1 matches. **Corrected at the `0.16.0` pin bump (§52):** the conclusion drawn here, that the contradiction was the consumer's alone, is wrong. The generator's C# `domainExceptions` set `Error.Code` to an integer, so the consumer's integer `code` was the generator's shape, and the kit's `Error` does not compile with that artifact. The proposed generator rule (warn on `error.code = <name>` prose when `code` is an integer) is still not forwarded. **Resolved in §54:** the kit adopts the consumer's shape.
+2. **`Error.code` vs the HTTP status.** A consumer's `Error.code` was `type: integer` (the status), while its copy of `API_Handbook.md` §2.1 called `code` a snake_case rule name. As a result, 17 operation descriptions named codes the wire cannot carry. The consumer added a string `reason` field. The kit's own `Error` types `code` as a snake_case string and carries the status in a separate integer `status`, and §2.1 matches. **Corrected at the `0.16.0` pin bump (§52):** the conclusion drawn here, that the contradiction was the consumer's alone, is wrong. The generator's C# `domainExceptions` set `Error.Code` to an integer, so the consumer's integer `code` was the generator's shape, and the kit's `Error` does not compile with that artifact. The proposed rule (warn on `error.code = <name>` prose when `code` is an integer) was never forwarded to the generator; it shipped as the kit Spectral rule `specfuse-error-rule-name-in-code` (§54, authoring#163). **Resolved in §54:** the kit adopts the consumer's shape.
 
 ### 52. Generator `0.16.0` pin bump (kit `0.25.0`)
 
@@ -1497,13 +1497,20 @@ The full Domain set does not build from `hello-orders` alone for unrelated reaso
 
 **Migration for a project on the old shape** (any project scaffolded by kit `≤ 0.26.0`). Schema and docs only: the generated C# exceptions never compiled against the old shape, so no generated code depends on it.
 
-1. Move each rule name from `code` to `reason`: in `Error` examples, in response `description`s that list conflict codes, and in prose (`error.code = x` → `error.reason = x`).
+1. Move each rule name from `code` to `reason`: in `Error` examples, in response `description`s that list conflict codes, and in prose (`error.code = x` → `error.reason = x`). Once step 2 types `code` as an integer, `specfuse-error-rule-name-in-code` lists the prose still left behind.
 2. Retype `code` as `type: integer`, the HTTP status, and delete `status`.
 3. Drop `format: uuid` from `id`.
 4. Add `type` and `ErrorType` if the project registers, or will register, `domainExceptions`.
 5. Clients: branch on `reason` where they branched on `code`, and read the status from `code` where they read `status`. This is a breaking wire change for any client already deployed against the old shape.
 
 **Generator follow-up (`#2671`):** `(string reason, string message)` constructors on the six exceptions a rule can refuse with, and `Id` following the schema's `format`. Until then, `reason` is set by building the `Error` and passing it to the `(Error error)` constructor.
+
+**Prose lint (authoring#163):** `specfuse-error-rule-name-in-code` (`warn`, `functions/openapiErrorReasonProse.js`) flags a `description` or `summary` anywhere in the document that assigns or compares a snake_case rule name to `code` (`error.code = template_in_use`, `errors[0].code == 'x_y'`, `"code": "x_y"`). Two choices keep it quiet on correct prose:
+
+- **It runs only when `components.schemas.Error.properties.code` is `type: integer`.** A project still on the old shape is described correctly by that prose, so it gets the migration above, not a list of warnings.
+- **The value must contain an underscore.** That separates a rule name from `code: integer` or `code = 409`. A single-word rule name is missed. `\b` keeps `status_code` out.
+
+Response examples need no new rule: `spectral:oas` example validation already rejects a string `code`. Fixtures `error-reason-prose.yaml` (4 firings, 3 silences) and `error-reason-prose-string-code.yaml` (the gate) are asserted in `example-regen.yml`. `hello-orders` and the scaffold lint with no new findings.
 
 ## Outstanding kit-side work
 

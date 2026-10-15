@@ -1,0 +1,102 @@
+# =============================================================================
+# Regression fixture: a rule name written as `error.code` (authoring#163)
+# =============================================================================
+# `Error.code` is the integer HTTP status and the rule name is `reason`
+# (API Handbook §11, compatibility.md §54). Pins
+# `specfuse-error-rule-name-in-code` in BOTH directions. Its companion,
+# `error-reason-prose-string-code.yaml`, carries the same prose under a
+# string `code` and must stay silent: the gate.
+#
+# Expected findings (asserted by .github/workflows/example-regen.yml):
+#
+#   /assign            patch   operation description   error.code = template_in_use
+#   /compare           get     operation summary        errors[0].code == 'page_size_over_limit'
+#   /inResponse        delete  response description     `code`: `slot_already_booked`
+#   /jsonish           post    x-* block description    "code": "delete_not_allowed"
+#
+#   /clean             patch   SILENT  <- error.reason = template_in_use
+#   /status            patch   SILENT  <- code = 409, `code` is an integer
+#   /otherCodes        get     SILENT  <- status_code / reason_code / postal code
+#
+# The silent cases are the load-bearing ones. A value without an underscore
+# (`code: integer`, `code = 409`) is how prose describes the field itself, and
+# `\b` keeps `status_code = foo_bar` out. A rule that fires on those is a rule
+# a consumer switches off.
+#
+# Not a Specfuse-conformant example — do not copy.
+# =============================================================================
+openapi: 3.0.3
+info:
+  title: error-reason-prose fixture
+  version: "1.0.0"
+components:
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: integer }
+        reason: { type: string }
+        message: { type: string }
+paths:
+
+  # VIOLATION: assignment in an operation description.
+  /assign:
+    patch:
+      summary: Update the template
+      description: Returns 409 with error.code = template_in_use while a menu uses it.
+      responses:
+        '200': { description: OK }
+
+  # VIOLATION: comparison in an operation summary.
+  /compare:
+    get:
+      summary: "List items; clients check errors[0].code == 'page_size_over_limit'"
+      responses:
+        '200': { description: OK }
+
+  # VIOLATION: backticked, in a nested response description.
+  /inResponse:
+    delete:
+      summary: Delete the booking
+      responses:
+        '204': { description: No Content }
+        '409':
+          description: 'The slot is taken (`code`: `slot_already_booked`).'
+
+  # VIOLATION: JSON-ish, in an `x-*` block's description.
+  /jsonish:
+    post:
+      summary: Archive the thing
+      x-notes:
+        description: 'Fails with {"code": "delete_not_allowed"} once archived.'
+      responses:
+        '200': { description: OK }
+
+  # SILENT: the rule name is in `reason`.
+  /clean:
+    patch:
+      summary: Update the template
+      description: Returns 409 with error.reason = template_in_use while a menu uses it.
+      responses:
+        '200': { description: OK }
+
+  # SILENT: `code` named with the status, and described as a field.
+  /status:
+    patch:
+      summary: Update with a precondition
+      description: >-
+        A conflict returns code = 409 and a stale ETag code: 412. The field is
+        declared as `code: integer`.
+      responses:
+        '200': { description: OK }
+
+  # SILENT: other words ending in "code".
+  /otherCodes:
+    get:
+      summary: Look up an address
+      description: >-
+        Filters on status_code = not_found and reason_code: out_of_area; the
+        postal code is free text.
+      responses:
+        '200': { description: OK }

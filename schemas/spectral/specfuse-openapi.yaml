@@ -34,6 +34,7 @@ extends: "spectral:oas"
 formats: [oas3]
 
 functions:
+  - openapiErrorReasonProse
   - openapiProjectionCoherence
   - openapiChildCollectionReconcile
   - openapiPillarRegistry
@@ -325,6 +326,22 @@ rules:
       function: pattern
       functionOptions:
         notMatch: "\\b428\\b"
+
+  # `Error.code` is the HTTP status and the rule name is `reason` (API
+  # Handbook §11, compatibility.md §54). A schema migration does not touch
+  # description text, so prose saying `error.code = template_in_use` survives
+  # it and points clients at a field that never holds that value. The function
+  # header documents the gate (integer `Error.code` only) and why a match
+  # needs an underscore in the value.
+  specfuse-error-rule-name-in-code:
+    description: >-
+      Prose must not name a rule in `code` when Error.code is the HTTP status.
+      Write error.reason = <rule_name>. See API Handbook section 11.
+    message: "{{error}}"
+    severity: warn
+    given: $
+    then:
+      function: openapiErrorReasonProse
 
   # Conditional GET: `If-None-Match` + `304 Not Modified`. Generator 0.12.0's
   # ConditionalReadDeclarationValidationRule reports all five of the jar's

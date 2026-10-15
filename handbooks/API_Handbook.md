@@ -1133,7 +1133,7 @@ Content-Type: application/json
 
 **Required fields**:
 - `code`: the HTTP status, an integer (`409`).
-- `reason`: the snake_case name of the rule that failed (`template_in_use`). Clients branch on it. A rule name never goes in `code`: prose, examples and `409` descriptions say `error.reason = template_in_use`, never `error.code = template_in_use`.
+- `reason`: the snake_case name of the rule that failed (`template_in_use`). Clients branch on it. A rule name never goes in `code`: prose, examples and `409` descriptions say `error.reason = template_in_use`, never `error.code = template_in_use`. Spectral's `specfuse-error-rule-name-in-code` warns on the second form.
 - `type`: the broad category, from the `ErrorType` enum. The generated C# `ConflictException` sets `resourceConflict`.
 - `message`: Human-readable explanation
 - `retryable`: Usually `false` for business rule violations
