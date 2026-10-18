@@ -241,10 +241,15 @@ the silent one, the generator nudges every soft-delete entity that has not
 decided: `ARCHIVE_VISIBILITY_UNDECLARED` (WARNING) asks you to declare
 `operational` or to confirm today's `restricted` explicitly.
 
-Like everything else in delete gate 1, the key is **validated and not yet
-enforced**: no read filtering is generated today, whichever value you declare.
-Declaring it now is what makes the decision auditable and what makes gate 2 a
-behaviour change you chose rather than one you discover.
+**Enforced on the generated read surface** (measured on generator `0.18.0`).
+Every read filters archived rows out by default, whichever value you declare,
+and so does every read of a row under an archived owning ancestor
+(`API_Handbook.md` §Deletion Policy). The key decides whether a GET-by-id or
+LIST may declare the `deletionState` query parameter (`live` | `all` |
+`archived`) and return archived rows on request. That is legal only on an
+`operational` entity: `ARCHIVE_DELETION_STATE_TARGET_NOT_OPERATIONAL` (ERROR)
+on a `restricted` one, `ARCHIVE_DELETION_STATE_HARD_TARGET` (ERROR) on a hard one. See
+`API_Handbook.md` §Querying Deleted Resources.
 
 The key is legal only where there is an archive to govern. On `mode: hard` —
 declared, shorthand, or defaulted — the row is destroyed and there is nothing to
@@ -1622,7 +1627,7 @@ The two sides split cleanly, and the split is the generator's own: `PiiClassific
 |---|---|---|
 | 1 | Values must come from the closed set `[pii, sensitive, confidential, exposed, financial, credential, cardholder, sad]`, as a non-empty array with no duplicates. Widened from four values on 2026-08-21 (authoring #76); `encrypted` left the set with generator 0.7.0 and is rule 8's to reject. | kit — `specfuse-classification-values` (error) |
 | 2 | `x-protection.atRest: encrypted` is honoured only on a target with a sound canonical round-trip — see *"Which targets can actually be encrypted"* above. A refused target warns and keeps a plaintext column. | generator — `PROTECTION_ENCRYPTED_NON_STRING_TARGET` (warning) |
-| 3 | A snapshot referencing a property whose source entity carries `pii` or `sensitive` MUST declare `x-snapshot-pii-acknowledged.{propertyName}` with a justification ≥ 20 chars (see §11.2). | kit — `specfuse-async-snapshot-guardrails` (AsyncAPI ruleset) |
+| 3 | A snapshot referencing a property whose source entity carries `pii`, `sensitive`, `confidential` or `financial`, or stores it `atRest: encrypted`, MUST declare `x-snapshot-pii-acknowledged.{propertyName}` with a justification ≥ 20 chars. A `credential` or `cardholder` property may not appear in a snapshot at all (`AsyncAPI_Handbook.md` §2.3). | generator — `ASYNC_SNAPSHOT_PII_UNACKNOWLEDGED` (warning), `ASYNC_SNAPSHOT_ENCRYPTED_FIELD_UNACKNOWLEDGED` (error), `CLASSIFIED_FIELD_IN_SNAPSHOT` (error). The kit's `specfuse-async-snapshot-guardrails` checks the acknowledgement's shape only: it cannot see the source entity |
 | 4 | When `aiAccess.readableProperties` is omitted, properties declaring **`x-protection: {atRest: encrypted}`** are excluded from the implicit allow-set (§1.1.1 rule 5). Generator 0.7.0 resolves this set from the protection axis; `x-entity.encryptedProperties`, which held this role through 0.6.0, is retired. `atRest` values `hashed`, `none` and `never-persist` do **not** exclude. | generator |
 | 5 | `x-classification: [exposed]` MUST NOT co-occur with `sensitive` or `confidential`, nor with an `x-protection.atRest` of `encrypted` or `hashed`. `pii`, `financial` and `cardholder` may pair with `exposed` — data legitimately shown to the person it concerns is both. **Corrected against generator 0.6.0**; the earlier set was reasoned rather than measured and had `cardholder` and `confidential` the wrong way round. | generator — `PROTECTION_EXPOSED_MUTEX` (error); mirrored by kit `specfuse-classification-exposed-contradiction` |
 | 8 | `x-classification: [encrypted]` is **retired** (generator 0.7.0). Declare `x-protection: {atRest: encrypted}` instead. | generator — `INVALID_EXTENSION_VALUE` (error); mirrored by kit `specfuse-classification-encrypted-superseded` (error) |
