@@ -119,14 +119,15 @@ declared non-mutable write policy exempts the entity from the requirement. `id`
 and `createdAt` remain required regardless; only `updatedAt` is meaningless for
 rows that never change.
 
-The generator agrees on identity and disagrees on `updatedAt`. From generator
-`0.16.0`, an `x-entity` with no `id` or `{Entity}Id` (including through `allOf`)
-is `ENTITY_MISSING_ID` (ERROR), and a missing `createdAt` or `updatedAt` is
-`ENTITY_MISSING_AUDIT_FIELD` (WARNING). The generator does not read
-`mutability`, so the WARNING still fires on an `appendOnly` or `immutable`
-entity without `updatedAt` (measured), and the generated entity still carries
-the column. Accept that WARNING on non-mutable entities. It does not mean the
-declaration is wrong.
+The generator agrees, from `0.19.0`. From generator `0.16.0`, an `x-entity`
+with no `id` or `{Entity}Id` (including through `allOf`) is `ENTITY_MISSING_ID`
+(ERROR), and a missing `createdAt` or `updatedAt` is
+`ENTITY_MISSING_AUDIT_FIELD` (WARNING). Through `0.18.0` that WARNING also
+fired on an `appendOnly` or `immutable` entity without `updatedAt`. From
+`0.19.0` the generator reads `mutability` for this check and stays silent
+there (measured on a `hello-orders` copy with an `immutable` `OrderLine`). The
+generated C# entity still carries a nullable `UpdatedAt`, inherited from
+`BaseEntity`.
 
 This is not an escape hatch from the `updatedAt` requirement. The value is
 validated against the closed set above by `specfuse-xentity-shape`, so
@@ -1379,7 +1380,7 @@ email:
 | `atRest` | `none` \| `encrypted` \| `hashed` \| `never_persist` (or `never-persist`) | **Required on every classified property.** Either separator works — the generator normalises them to one value, and `specfuse-generator extensions` prints the hyphen form. `neverPersist` (camelCase) is not accepted: the normalisation collapses separators, not case boundaries. |
 | `mode` | `randomized` \| `deterministic` | `deterministic` parses and is then refused: `PROTECTION_MODE_UNSUPPORTED` ("declared but unsupported in v1"). Only `randomized` is implemented. |
 | `blindIndex` | `{ equality, prefix, normalization[], scope }` | `scope` is `tenant` \| `global`. How an encrypted value stays searchable. |
-| `masking` | `{ first, last }` | How many leading/trailing characters survive masking. **Applied on the wire from generator `0.14.0`** by a C# API group registering `apiMapper`; an `atRest: encrypted` string declaring none gets a default. Plain strings only — `MASKING_NON_STRING` (ERROR) otherwise. See "Masking on the wire, and `x-unmask`" below. |
+| `masking` | `{ first, last }` on a plain string, or `{ reveal: [...] }` on a `format: date` string (generator `0.19.0`) | `first` / `last`: how many leading and trailing characters survive masking. `reveal`: which of `year`, `month`, `day` stay visible on a date. **Applied on the wire from generator `0.14.0`** by a C# API group registering `apiMapper`; an `atRest: encrypted` string or date declaring none gets a default. Any other target is `MASKING_NON_STRING` (ERROR). See "Masking on the wire, and `x-unmask`" and "Masking a date" below. |
 | `unbounded` | boolean | **The property has no `maxLength`, and that is deliberate.** It asserts that the value's length is genuinely unbounded, so no bounded ciphertext column can be sized for it and the storage falls back to the target's large-object form. Treat it as a review signal rather than a storage switch: at generator `0.12.0` its only consumer is the data-protection audit's protection matrix (`Project_File.md` §11.5, section 2), where `unbounded: true` on an encrypted property is the row an assessor is meant to question. Wherever the value does have a real bound, declare `maxLength` instead — and note that **a `pattern` is not a bound**: `pattern: '^[0-9]{5}$'` pins the length exactly and still leaves the property unbounded as far as any sizing is concerned. |
 | `rationale` | string | **Required when `atRest: none`.** |
 | `reviewedOn` / `reviewedBy` | date / string | Who signed the decision off, and when. From generator 0.9.0 a `reviewedOn` older than **18 months** is reported as a stale review in the data-protection audit — a finding, never a build failure. |
@@ -1409,6 +1410,8 @@ email:
 - declares `x-protection.masking: { first, last }`, whatever its `atRest`; or
 - declares `atRest: encrypted` and no `masking` — it gets the **default**, the last four characters.
 
+From generator `0.19.0` a `type: string, format: date` is masked too, through `reveal` or, when it is `atRest: encrypted` and declares no `masking`, as `reveal: []`. See "Masking a date" below. `date-time` and `time` stay unmaskable.
+
 A `writeOnly` property is never returned, so it is never masked.
 
 **Where.** Every response the generated C# controller builds through the mapper: single-resource GET, list, create / update / delete returning a body, a parent DTO embedding a masked child, and an action routed through an application service (its controller masks what the service returns). Measured on a generated fixture: each mapper gains a `{Entity}To{Entity}Response` that applies the mask, and every controller response goes through it.
@@ -1430,8 +1433,72 @@ A `writeOnly` property is never returned, so it is never masked.
 
 | code | severity | fires on |
 |---|---|---|
-| `MASKING_NON_STRING` | **ERROR** | `masking` declared on a non-string, a value object, or a `date` / `date-time` / `time` string — a masked date still reveals its structure |
-| `MASKING_DEFAULT_NOT_APPLICABLE` | INFO (printed as `SUGGESTION`) | an `atRest: encrypted` target that is not a plain string and declares no `masking` — the default cannot reach it, so it is **not masked** on the wire |
+| `MASKING_NON_STRING` | **ERROR** | `first` / `last` on a non-string, a value object, or a `date` / `date-time` / `time` string (a character window over a date is not a date); `reveal` on anything but a `type: string, format: date` |
+| `MASKING_REVEAL_SHAPE` | **ERROR** | `reveal` naming all three parts (it masks nothing), or `reveal` beside `first` / `last` (generator `0.19.0`) |
+| `PROTECTION_HASHED_MASKING_MUTEX` | **ERROR** | any `masking` beside `atRest: hashed` (generator `0.19.0`) |
+| `MASKING_DEFAULT_NOT_APPLICABLE` | INFO (printed as `SUGGESTION`) | an `atRest: encrypted` target that is neither a plain string nor a `format: date` and declares no `masking` — the default cannot reach it, so it is **not masked** on the wire. From `0.19.0` it no longer fires for an encrypted date. |
+
+All three ERRORs read one property, so the kit mirrors them at lint time: `specfuse-xprotection-masking-target` and the `reveal` shape in `specfuse-xprotection-shape`.
+
+##### Masking a date: `reveal` (generator `0.19.0`)
+
+A date masked by a character window (`1990****`) is not a valid date, and every typed client fails to parse it. `reveal` keeps the response a valid `format: date` instead: it names the parts that stay visible, and each hidden part is returned as a fixed fill: year `0004`, month `01`, day `01`.
+
+```yaml
+dateOfBirth:
+  type: string
+  format: date
+  nullable: true                 # see the write-back limit below
+  x-classification: [pii]
+  x-protection:
+    atRest: encrypted
+    masking:
+      reveal: [year]             # subset of [year, month, day]; [] hides all three
+```
+
+| declared | stored | on the wire |
+|---|---|---|
+| `reveal: [year]` | `1990-03-20` | `1990-01-01` |
+| `reveal: [year, month]` | `1990-03-20` | `1990-03-01` |
+| `reveal: [month, day]` | `1992-02-29` | `0004-02-29` |
+| `reveal: []`, or `atRest: encrypted` with no `masking` | `1990-03-20` | `0004-01-01` |
+| any | `null` | `null` |
+
+- **A stored `null` reads back as `null`**, never as `0004-01-01`. `0004-01-01` means "hidden", never "no date recorded".
+- **Why `0004`.** It is the first leap year of the proleptic Gregorian calendar, so `reveal: [month, day]` on 29 February is still a real date. Year `0001` would give `0001-02-29`, which C# `DateOnly` rejects, Dart rolls over to 1 March, and JavaScript reads as `Invalid Date`. `0004` is also distinct from C#'s `default(DateOnly)`, `0001-01-01`.
+- **JavaScript two-digit years.** `new Date(4, 1, 29)` and `Date.UTC(4, 1, 29)` map years 0–99 to 1900–1999, which gives 1904. Build a fill or a test vector from the ISO string, or with `setUTCFullYear(4)`.
+- **Day `01`, not end of month.** A client-side minimum-age check on a masked date can be wrong by up to 30 days, while a maximum-age check stays safe. Decide age server-side, or unmask.
+- **The default changed at `0.19.0`.** An `atRest: encrypted` `format: date` that declares no `masking` used to be returned in full (`MASKING_DEFAULT_NOT_APPLICABLE`). It now leaves the API as `0004-01-01` until it declares a `reveal`. A client that displayed it is affected on its next regeneration.
+- **Write-back.** A PUT or PATCH that sends back exactly the masked form keeps the stored date. This is the one exception to "the server does not detect an echoed mask". A genuine change to exactly the masked form is therefore ignored, so a `reveal` date should be `nullable: true` (`API_Handbook.md` §1.4.1).
+- `x-unmask` accepts a masked date like a masked string. The data-protection audit reports the revealed parts (`reveals year, month`, `reveals nothing (default)`), and its JSON gains `masking.kind: "date"`. A reader of `data-protection-audit.json` that takes `masking.first` / `masking.last` must branch on `kind`.
+
+##### `maskedProperties` — telling the client which fields are masked (generator `0.19.0`)
+
+A masked date looks like a real one, and Dart and TypeScript clients mask nothing (they see only what they are sent). `maskedProperties` tells them which fields of **this response object** are masked, so a client knows which fields it must leave out of a write.
+
+```yaml
+Customer:
+  type: object
+  x-entity: { domain: customer, type: aggregate }
+  properties:
+    maskedProperties:            # authored, like unavailableProperties
+      type: array
+      readOnly: true
+      items: { type: string }
+```
+
+- The generated C# mapper fills it on every response DTO that declares it, on every exit that masks. It lists the wire name of each field masked in that object: a non-null date or a non-null, non-empty string. It is an empty array when nothing is masked, and a field granted through `?unmask=` drops out.
+- It is a body member, not a header, because the generated Dart and TypeScript repositories drop headers when they map a response.
+- It is never persisted: the entity marks it `[NotMapped]`.
+
+| code | severity | fires on |
+|---|---|---|
+| `MASKED_PROPERTIES_NOT_DECLARED` | WARNING | an entity that masks a field (a declared `masking` of either shape, or an encrypted string's or date's default) and declares no `maskedProperties` |
+| `MASKED_PROPERTIES_WRONG_SHAPE` | **ERROR** | `maskedProperties` that is not a `readOnly` `string[]` |
+| `MASKED_PROPERTIES_NO_MASKED_FIELD` | **ERROR** | `maskedProperties` on an entity that masks nothing |
+| `MASKED_PROPERTIES_ON_INPUT_MODEL` | **ERROR** | `maskedProperties` on a `New*` or `Update*` schema |
+
+**Every entity that already encrypts a string draws the WARNING on `0.19.0`.** It is a WARNING so that this does not break those specs. Add the member when you next touch the entity.
 
 ##### `x-unmask` — asking for a masked field in the clear
 
@@ -2010,6 +2077,77 @@ NewOrder:
 
 **No kit Spectral rule.** All three cross-schema checks need `New{Entity}` and the referenced entity resolved together, which is the generator's job, and the generator refuses a malformed value itself. The kit has no closed guard on property-level keys, so nothing rejects the key either.
 
+
+### 1.11 x-populate-from — a required field the server fills at create time (generator `0.19.0`)
+
+**Purpose**: Declares that a required property the client does not send is **filled by the server when the row is created**: from the authenticated caller, or from the clock. The generated create assigns it after the body is mapped, so a value in the body never wins. An update or replace never fills it again.
+
+**Scope**: A property of an `x-entity`. The property must **not** appear in `New{Entity}`.
+
+| Source | Fills | Property type |
+|---|---|---|
+| `caller.userId` | the authenticated caller's own id | `uuid` or plain `string` |
+| `caller.<name>` | a value the host resolves through the generated `ICallerFieldResolver`, with one method per distinct `<name>` | `uuid` or plain `string` |
+| `server.now` | `DateTime.UtcNow` | `date-time` |
+
+```yaml
+WorkItemComment:
+  type: object
+  x-entity: { domain: work, type: entity }
+  required: [id, workItemId, authorUserId, body]
+  properties:
+    authorUserId:
+      type: string
+      format: uuid
+      x-populate-from: caller.userId
+      x-references: none
+      description: The caller who wrote the comment. Users are an identity-provider concept here, not a modeled entity.
+```
+
+**What it generates (C#).**
+- The create fills the property on the root, related-entity and related-aggregate paths.
+- A caller that cannot be resolved is a **`403`** (`ForbiddenException`). The create is refused and nothing is written: never a 500, never a `null` write.
+- `caller.<name>` adds `ICallerFieldResolver` (the host implements it), a throwing `CallerFieldResolverNotConfiguredException` default, and the `AddCallerFieldResolver()` registration the host calls. These are emitted only when a spec declares a `caller.<name>`, and no service constructor changes.
+- The TypeScript repository fake fills the same fields from an overridable `fakeCaller` and `fakeClock`.
+
+The object form `{ from: <source> }` is the same as the scalar. `{ from, on }` is reserved and fills nothing.
+
+**Validation**, all ERROR:
+
+| Code | Fires when |
+|---|---|
+| `POPULATE_FROM_UNKNOWN_SOURCE` | the source is not one of the three above, or the object form is malformed |
+| `POPULATE_FROM_TYPE_MISMATCH` | the property cannot hold the source's value (`server.now` on a `uuid`) |
+| `POPULATE_FROM_ON_NOT_SUPPORTED` | the object form carries `on:` |
+| `POPULATE_FROM_ALSO_IN_NEW_DTO` | the property is also in `New{Entity}`, so the client could send a value the server overwrites |
+| `POPULATE_FROM_CALLER_FIELD_TYPE_CONFLICT` | one `caller.<name>` declared on a `uuid` property and on a plain `string` property |
+
+No kit Spectral rule. The generator validates the value itself, and a copy would drift.
+
+#### Choosing how a required create-time field gets its value
+
+From `0.19.0` a create that cannot fill a required, non-nullable, non-`readOnly` property fails `validate`: `CREATE_REQUIRED_PROPERTY_UNPOPULATED` (ERROR, a WARNING through `0.18.0`), and `CREATE_REQUIRED_FK_UNPOPULATED` (ERROR) for a foreign key. The finding says *that* a field is unfilled. Which route is right depends on where the value comes from:
+
+| The value comes from | Declare |
+|---|---|
+| the client | the property in `New{Entity}` |
+| who is calling | `x-populate-from: caller.userId` or `caller.<name>` |
+| when the row is created | `x-populate-from: server.now` |
+| a related row, fixed at creation | `x-copied-from` (§1.10) |
+| a constant that is right for every create | `default:` / `x-default` |
+| the server, after creation (a workflow stamp, a computed value) | `readOnly: true` |
+| nowhere: the field is genuinely optional | drop it from `required`, or make it `nullable` |
+
+Generator-managed fields (`id`, the audit pair, `version`) and the parent key bound from the URL are filled already.
+
+**A constant `default:` is wrong when the field is derived from another field the client sends.** `isActive: { type: boolean, default: true }` on an entity whose `New*` body carries `status` passes the population rule and stores `true` for a create with `status: pending`. Derive it in the service, and mark it `readOnly`.
+
+**`caller.<name>` and a broad `x-roles`.** `caller.userId` resolves for every authenticated caller. A `caller.<name>` such as `caller.employeeId` does not: a caller without that row gets `403`. The generated happy-path test theory still runs every `x-roles` role and expects `201`. Narrow it with `x-self-scoped: <Role>` (§7.6). Here `x-self-scoped` describes a 403 failure, not its usual 404. Nothing checks this pairing.
+
+**Projections move with the source.** Turning a nullable property into a `required` one filled by `x-populate-from` must make the matching `Basic*` projection and event snapshot non-nullable in the same change. Otherwise `PROJECTION_NARROWS_NULLABILITY` / `PROJECTION_STRICTER_THAN_SOURCE` fire.
+
+**Migration.** A NOT NULL constraint on a column that was nullable fails on any existing row that holds `null`. Backfill those rows first.
+
 ---
 
 ## 2. Value Object Storage Extensions
@@ -2129,6 +2267,7 @@ Every member is `encrypted`; the embed's per-member map does not survive. So a u
 - **Database**: Individual columns in parent table
 - **Query Support**: Full SQL query capabilities
 - **Example**: `effectiveDate`, `expirationDate` columns
+- **Depth**: one nested value object at most. A value object at the third level (`Location.Geo.Point`) is `FLATTEN_NESTING_TOO_DEEP` (ERROR) from generator `0.19.0`. Through `0.18.0` it generated a mapping EF rejects at runtime. Store the outer value object as `single_json`, or move the third level's members onto the second.
 
 #### `serialized`
 - **Use**: Value object serialized as string/blob
@@ -2763,6 +2902,21 @@ patch:
 - Works with `x-entity` metadata for aggregate/entity detection
 - Leverages HTTP verb semantics for read-only operation detection
 
+### 5.2 x-stream — a streamed response (generator `0.19.0`)
+
+**Purpose**: Marks a response as a stream of items (Server-Sent Events or JSON Lines) rather than one body. `schema` then describes **one item**.
+
+**Scope**: A response **Media Type Object**, under `text/event-stream` or `application/jsonl`, on a 2xx response, alone in that response's `content`.
+
+```yaml
+content:
+  application/jsonl:
+    x-stream: {}                 # exactly {}: no options exist yet
+    schema: { $ref: "#/components/schemas/ReportRowItem" }   # one object item, not an x-entity
+```
+
+It is a media-type extension, so `extensions --format json` lists it under a top-level `media-type` key, not under `x-entity`. Validated at `0.19.0`, not generated yet: a correct declaration draws one `STREAM_NOT_YET_GENERATED` (WARNING). Rules, the seven ERRORs and caveats: `API_Handbook.md` §1.10. Kit lint: `specfuse-xstream-declaration`.
+
 ---
 
 ## 6. Event Emission Extensions
@@ -3076,7 +3230,7 @@ x-self-scoped: [Customer, GuestCustomer]
 | value | Yes | string \| string[] | Role(s) for which the seed fixture pre-populates the per-principal runtime row. Matching is case-insensitive. The intersection with `x-roles` wins; roles not in `x-roles` are silently dropped (typo guard). |
 
 **Rules**:
-- Apply ONLY when the handler resolves the caller to a per-principal row and 404s when missing. The canonical shape is `/me/*`, but the pattern applies anywhere "do something on behalf of the caller's `<entity>`" is in play.
+- Apply ONLY when the handler resolves the caller to a per-principal row and 404s when missing, or when a create fills a property from `x-populate-from: caller.<name>` and 403s for a caller without that value (§1.11). The canonical shape is `/me/*`, but the pattern applies anywhere "do something on behalf of the caller's `<entity>`" is in play.
 - Do NOT apply when any authenticated user works (e.g. `/me/logout`) — the existing path-based privileged-role strip is sufficient.
 - Do NOT apply when the endpoint is membership-gated rather than identity-resolved — use `x-membership-gated`.
 - Do NOT apply when all roles in `x-roles` have the runtime row seeded — no narrowing needed.
@@ -3681,7 +3835,7 @@ x-snapshot-pii-acknowledged:
 x-worker:
   name: order-enrichment         # Optional, kebab-case. Overrides the worker identity stem derived from the operation key.
   idempotent: true               # Default: true. Same input → same outcome.
-  inboxDedup: true               # Default: true. Generator emits inbox-claim before HandleCoreAsync; set false for side-effect-free handlers.
+  inboxDedup: true               # Default: true. Generator emits inbox-claim before the handler runs; set false for side-effect-free handlers.
   concurrency: 5                 # Default: 1. Max concurrent handler instances.
   timeout: 30s                   # Hard execution cap.
   settingsPrefix: OE             # Optional. Overrides the auto-derived env-var prefix for the settings class.
@@ -3693,7 +3847,7 @@ x-worker:
 
 **`name` (optional, kebab-case):** overrides the worker identity stem that the generator derives from the operation key. Affects the folder name, handler class name, worker class name, settings class name, and module/package name. Use when the operation key describes the triggering event but the worker's purpose is different — e.g., `on-customer-created` triggers the `customer-profile-setup` worker. When absent, the stem is derived by stripping the operation prefix (`on-`/`run-`/`emit-`) from the operation key.
 
-**`inboxDedup` (optional boolean, default `true`):** controls whether the generated handler base inserts an inbox-claim row keyed on `(eventId, handlerName)` before invoking `HandleCoreAsync`. Default `true` is the safe choice: at-least-once delivery + inbox dedup gives effectively-once *processing*. Set `false` only for handlers with no DB writes and no externally-visible side effects (cache invalidator, metrics emitter) where the cost of the inbox row outweighs the safety. Coherence with `idempotent` and the operation's delivery-trait `guarantee` is enforced by Spectral rule `specfuse-async-worker-inbox-dedup-coherence`.
+**`inboxDedup` (optional boolean, default `true`):** controls whether the generated handler base inserts an inbox-claim row keyed on `(eventId, handlerName)` before invoking the handler: the typed `Handle<Event>Async` method, or the deprecated `HandleCoreAsync` hook. Default `true` is the safe choice: at-least-once delivery + inbox dedup gives effectively-once *processing*. Set `false` only for handlers with no DB writes and no externally-visible side effects (cache invalidator, metrics emitter) where the cost of the inbox row outweighs the safety. Coherence with `idempotent` and the operation's delivery-trait `guarantee` is enforced by Spectral rule `specfuse-async-worker-inbox-dedup-coherence`.
 
 **`settingsPrefix` (optional, string):** overrides the auto-derived environment-variable prefix for the worker's generated settings class. By default, the generator takes the first letter of each kebab segment of `x-worker.name` (or the derived stem) and uppercases it (e.g., `order-enrichment` → `OE_`). Tunables are emitted as env vars under this prefix (e.g., `OE_ENRICHMENT_BATCH_SIZE=10`). Only set this when the auto-derived prefix would collide with another worker's prefix.
 

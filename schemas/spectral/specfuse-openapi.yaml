@@ -42,6 +42,8 @@ functions:
   - openapiClassification
   - openapiScopeGrammar
   - openapiConditionalRead
+  - openapiMaskingTarget
+  - openapiStreamDeclaration
 
 rules:
 
@@ -373,6 +375,20 @@ rules:
       function: openapiConditionalRead
       functionOptions:
         check: shape
+
+  specfuse-xstream-declaration:
+    description: >-
+      A streamed response (`x-stream: {}`) is a 2xx whose only content is
+      text/event-stream or application/jsonl, with an object item schema that
+      is not an x-entity.
+    # Mirrors the STREAM_* ERRORs of generator 0.19.0 (FEAT-2026-0228) except
+    # STREAM_ITEM_SHARED_WITH_JSON_BODY, which needs the whole document and
+    # stays with `validate`. API_Handbook.md "Streamed responses".
+    message: "{{error}}"
+    severity: error
+    given: $.paths
+    then:
+      function: openapiStreamDeclaration
 
   # ===== Predefined error responses (presence + correct $ref) =====
   specfuse-401-required:
@@ -1283,6 +1299,17 @@ rules:
                             properties:
                               first: { type: integer, minimum: 0 }
                               last: { type: integer, minimum: 0 }
+                              # generator 0.19.0 (FEAT-2026-0227): the date shape.
+                              # The parts that stay visible; the rest read back
+                              # as fixed fills (year 0004, month 01, day 01).
+                              # maxItems 2: naming all three masks nothing
+                              # (MASKING_REVEAL_SHAPE). Which target it may sit
+                              # on is specfuse-xprotection-masking-target's job.
+                              reveal:
+                                type: array
+                                uniqueItems: true
+                                maxItems: 2
+                                items: { type: string, enum: [year, month, day] }
                           unbounded: { type: boolean }
                           rationale: { type: string, minLength: 1 }
                           reviewedOn: { type: string, format: date }
@@ -2357,6 +2384,21 @@ rules:
       function: schema
       functionOptions:
         schema: *xProtectionShape
+
+  specfuse-xprotection-masking-target:
+    description: >-
+      x-protection.masking must fit its target: `reveal` only on a
+      `format: date` string, `first`/`last` only on a plain string, never
+      both, and never beside atRest: hashed.
+    # Mirrors MASKING_NON_STRING, MASKING_REVEAL_SHAPE and
+    # PROTECTION_HASHED_MASKING_MUTEX (all ERROR, generator 0.19.0). Each reads
+    # one property, so lint can say it first. See the function header for the
+    # cases measured against the jar.
+    message: "{{error}}"
+    severity: error
+    given: $.components.schemas[*].properties[?(@ && @["x-protection"] && @["x-protection"].masking)]
+    then:
+      function: openapiMaskingTarget
 
   specfuse-xprotection-atrest-required:
     description: >-

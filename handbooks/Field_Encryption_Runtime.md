@@ -154,7 +154,9 @@ diagnose from first principles.
 
 From generator `0.14.0`, a decrypted value does not leave a generated API in the clear. An
 encrypted plain string is masked on every response by default (`****` plus its last four
-characters) unless its `masking` declares otherwise. That part needs nothing from you.
+characters) unless its `masking` declares otherwise. From `0.19.0` an encrypted `format: date`
+is masked too, by default to `0004-01-01`, or to the parts its `masking.reveal` keeps. That
+part needs nothing from you.
 
 Revealing it does. A single-resource GET that declares an `x-unmask` query parameter asks an
 **unmask policy** which of the requested fields the caller may see, and records each grant
@@ -163,6 +165,13 @@ placeholder: when nothing is registered, the generated code falls back to a **de
 policy, so every unmask request is refused with a `403` and the host still boots and serves
 masked responses. The safe failure is the default; the cost of forgetting is a feature that
 never works, not a leak.
+
+**Nothing tells you it never works.** No diagnostic reports a spec that declares `x-unmask`
+for a host that registers no policy. The generated tests cover the masked default, the `400` and
+the `403`, and deny-all satisfies all three. The grant test is left to the host. A consumer found,
+late, that every unmask request on every field was a `403`. If a GET declares `x-unmask`, write
+the policy, and write a test that a granted role reads the field in the clear. A declarative
+policy in the spec is proposed as `clabonte/generator#2768` (open at `0.19.0`).
 
 | Contract | Who provides it | When absent |
 |---|---|---|

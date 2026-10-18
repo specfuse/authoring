@@ -1343,6 +1343,62 @@ jobs:
           [[ $fail -eq 0 ]] || exit 1
           echo "==> Conditional-read rules fire on all six violations and stay silent on four accepted shapes."
 
+      # Date masking and streamed responses, generator 0.19.0. Every case was
+      # run through the jar first: each violation is one jar ERROR, each
+      # silent case is clean there. A guard that rejects `reveal` blocks
+      # FEAT-2026-0227 at lint; one that over-matches is switched off.
+      - name: Masking target and x-stream declarations (both directions)
+        run: |
+          set +e
+          set -uo pipefail
+          REPORT="${RUNNER_TEMP}/masking-and-stream.txt"
+
+          spectral lint \
+            --ruleset schemas/spectral/specfuse-openapi.yaml \
+            schemas/spectral/fixtures/masking-and-stream.yaml \
+            >"$REPORT" 2>&1
+          STATUS=$?
+          cat "$REPORT"
+
+          if [[ $STATUS -ge 2 ]]; then
+            echo "::error::Spectral crashed on the masking-and-stream fixture (exit ${STATUS})." >&2
+            exit 1
+          fi
+
+          fail=0
+          fired() { grep "$1 " "$REPORT" | grep -q "$2"; }
+
+          fired specfuse-xprotection-shape "Profile.properties.revealAll" \
+            || { echo "::error::reveal naming all three parts was accepted." >&2; fail=1; }
+          for p in revealPlusWindow revealOnString revealOnDateTime windowOnDate windowOnInteger hashedMasked; do
+            if ! fired specfuse-xprotection-masking-target "Profile.properties.${p}"; then
+              echo "::error::specfuse-xprotection-masking-target did not fire on Profile.${p}." >&2
+              fail=1
+            fi
+          done
+          for op in /wrongMedia /nonSuccess /mixed /markerTrue /markerOption /notObject /entityItem; do
+            if ! fired specfuse-xstream-declaration "GET ${op} "; then
+              echo "::error::specfuse-xstream-declaration did not fire on ${op}." >&2
+              fail=1
+            fi
+          done
+
+          for p in revealNothing revealMonthDay windowOnString encryptedDate; do
+            if grep -E "specfuse-xprotection" "$REPORT" | grep -q "Profile.properties.${p}"; then
+              echo "::error::An x-protection rule fired on Profile.${p}, which the generator accepts." >&2
+              fail=1
+            fi
+          done
+          for op in /jsonLines /serverSent; do
+            if grep "specfuse-xstream-declaration" "$REPORT" | grep -q "GET ${op} "; then
+              echo "::error::specfuse-xstream-declaration fired on ${op}, a correct declaration." >&2
+              fail=1
+            fi
+          done
+
+          [[ $fail -eq 0 ]] || exit 1
+          echo "==> Masking and x-stream rules fire on all fourteen violations and stay silent on six accepted shapes."
+
   generate:
     # The job authoring #97 asked for. `validate` and `spectral` above prove the
     # example *lints*; neither runs the generator, and that gap let the kit's
