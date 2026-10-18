@@ -246,7 +246,7 @@ A snapshot is a frozen, versioned record of the entity's scalar columns and owne
 **Bandwidth and cost are managed via**:
 
 - **Snapshot size cap** (default 25 scalar fields, soft Spectral warning) — bloat indicates an entity doing too much; explicit waiver via `x-snapshot-size-acknowledged: true`.
-- **PII acknowledgement** (Spectral rule) — fields classified `pii`/`sensitive` (see `Vendor_Extensions.md §1.5`) require per-field justification in `x-snapshot-pii-acknowledged` before they may appear in a snapshot.
+- **PII acknowledgement** (generator rule) — fields classified `pii`, `sensitive`, `confidential` or `financial`, and fields stored `atRest: encrypted` (see `Vendor_Extensions.md §1.5`), require per-field justification in `x-snapshot-pii-acknowledged` before they may appear in a snapshot. `credential` and `cardholder` fields may never appear, acknowledged or not (§2.3).
 - **Optional `context` field** (state-transition only) for transient metadata that should not be persisted on the entity (e.g., a cancellation reason, an external trigger source).
 
 ### 1.3 Scheduled Jobs Are Thin Fan-Out Dispatchers
@@ -280,7 +280,7 @@ Explain to the user *why* the simpler model is insufficient for the specific sce
 
 Every event message is published to the single shared topic `{project}.events` (§0.7). There is no per-aggregate or per-domain event topic. Consumers subscribe with SQL-like filters over the `Label` property (§0.8) to receive only the events they care about.
 
-**Multi-entity subscribers are a first-class pattern.** A single `on-*` operation can list multiple message `$ref`s and compose an OR-chain SQL filter (e.g., `sys.Label LIKE 'Customer.%' OR sys.Label LIKE 'Order.%' OR sys.Label LIKE 'Refund.%'`). This is preferred over splitting the same logical worker into multiple sibling operations; it keeps cross-aggregate logic (projection rebuilds, sync workers, notification orchestrators) in one cohesive handler with one subscription, one DLQ, and one retry budget.
+**Multi-entity subscribers are a first-class pattern.** A single `on-*` operation can list multiple message `$ref`s and compose an OR-chain SQL filter (e.g., `sys.Label LIKE 'Customer.%' OR sys.Label LIKE 'Order.%' OR sys.Label LIKE 'Refund.%'`). This is preferred over splitting the same logical worker into multiple sibling operations; it keeps cross-aggregate logic (projection rebuilds, sync workers) in one cohesive handler with one subscription, one DLQ, and one retry budget. Notifications are the exception: a subscriber that every new feature joins grows without bound, so it is split by business area from the start (§4.5.2).
 
 **Rationale:**
 
@@ -443,8 +443,33 @@ For change detection, scalar-array properties compare order-insensitively: `[a, 
 | Rule | Severity | Override |
 |---|---|---|
 | Snapshot has > 25 scalar fields | warn | `x-snapshot-size-acknowledged: true` on the snapshot file |
-| Snapshot includes a property whose source entity field carries `x-classification: [pii \| sensitive]` | error | `x-snapshot-pii-acknowledged: { propertyName: "justification ≥ 20 chars" }` on the snapshot file |
-| Snapshot field name does not exist on the source entity | error | (no override — fix the snapshot or the entity) |
+| Snapshot includes a property whose source entity field carries `x-classification` `pii`, `sensitive`, `confidential` or `financial` | warn — generator `ASYNC_SNAPSHOT_PII_UNACKNOWLEDGED` | `x-snapshot-pii-acknowledged: { propertyName: "justification ≥ 20 chars" }` on the snapshot file |
+| Snapshot includes a property stored `x-protection.atRest: encrypted`, or an encrypted value object | error — generator `ASYNC_SNAPSHOT_ENCRYPTED_FIELD_UNACKNOWLEDGED` | `x-snapshot-pii-acknowledged` entry, as above. Or leave the field out and declare `redactedChanges` (below) |
+| Snapshot includes a property classified `credential` or `cardholder` | error — generator `CLASSIFIED_FIELD_IN_SNAPSHOT` | none: an acknowledgement does not exempt it. Remove the field |
+| Snapshot field name does not exist on the source entity | error — generator `ASYNC_SNAPSHOT_FIELD_NOT_ON_ENTITY` | (no override — fix the snapshot or the entity) |
+
+All four checks compare the snapshot with its source entity in the OpenAPI document, so they run in the generator's `validate`, not in the kit's AsyncAPI Spectral ruleset. The kit's `specfuse-async-snapshot-guardrails` checks the size cap and the **shape** of both acknowledgements: map form, justification length, and that each entry names a field the snapshot has. Measured on generator `0.18.0`. Unclassified, `exposed` and `sad` fields trigger nothing here. A `sad` field cannot reach a snapshot anyway, since `PROTECTION_SAD_MAPPED` refuses it on every `x-entity` property (`Vendor_Extensions.md` §1.5, rule 14).
+
+**`redactedChanges` — saying that an omitted encrypted field changed.** Leaving an encrypted field out of a snapshot is the usual way to keep it off the event stream. The cost is the accepted consequence above: a write that changes only that field publishes an `*Updated` whose `before` and `after` are identical. `redactedChanges` lists the omitted fields that changed, by name, never by value:
+
+```yaml
+# messages/EmployeePayrollProfileUpdated.yaml — payload
+payload:
+  type: object
+  required: [before, after]
+  properties:
+    before:          { $ref: '../events/EmployeePayrollProfileSnapshot.yaml' }
+    after:           { $ref: '../events/EmployeePayrollProfileSnapshot.yaml' }
+    redactedChanges: { type: array, items: { type: string } }   # e.g. ["socialInsuranceNumber"]
+```
+
+- Declare it on the **message payload**, beside `before`/`after`, never inside the shared snapshot. A snapshot change cascades to every message that `$ref`s it (§2.3, snapshot version cascade).
+- Only on `*Updated` and state-transition payloads. On `*Created` or `*Deleted`, `validate` fails with `ASYNC_REDACTED_CHANGES_INVALID_ON_CREATE_DELETE` (ERROR).
+- The shape is fixed: an `array` of `string`. Do not make it `required`.
+- An encrypted value object is named by the property that holds it, not by its members.
+- The generator warns when an entity's snapshot omits an encrypted field and one of its `*Updated` or transition payloads declares no `redactedChanges`: `ASYNC_REDACTED_CHANGES_UNDECLARED` (WARNING, generator `0.18.0`). It fires on transitions too, for example on a `UserDeactivated`.
+
+Choosing between the two is a project policy. The generator allows an acknowledged encrypted field in a snapshot. A project can instead decide that an encrypted field never enters a snapshot and always goes through `redactedChanges`; the kit does not require either.
 
 **Snapshot version cascade:** breaking changes to a snapshot (renamed/typed/new-required field, removed required field) bump `x-version.current` on every event message that `$ref`s that snapshot. Non-breaking changes (new optional field) require no bump anywhere. The Specfuse generator emits the impact graph at build time so cascades are visible at PR review.
 
@@ -860,9 +885,9 @@ Boolean. Waives the soft size warning when a snapshot exceeds the cap (default 2
 x-snapshot-size-acknowledged: true
 ```
 
-#### `x-snapshot-pii-acknowledged` (required on snapshot files that include PII/sensitive fields)
+#### `x-snapshot-pii-acknowledged` (required on snapshot files that include classified or encrypted fields)
 
-Per-field justification block listing properties whose source entity field carries `x-classification: [pii]` or `[sensitive]` and which the snapshot intentionally retains. Without an entry, the snapshot fails Spectral validation.
+Per-field justification block listing properties the snapshot intentionally retains whose source entity field carries `x-classification` `pii`, `sensitive`, `confidential` or `financial`, or is stored `x-protection.atRest: encrypted`. Without an entry, the generator's `validate` reports `ASYNC_SNAPSHOT_PII_UNACKNOWLEDGED` (WARNING) for a classified field and `ASYNC_SNAPSHOT_ENCRYPTED_FIELD_UNACKNOWLEDGED` (ERROR) for an encrypted one. `credential` and `cardholder` fields cannot be acknowledged into a snapshot at all (§2.3).
 
 ```yaml
 # At the root of CustomerSnapshot.yaml
@@ -877,7 +902,7 @@ Each entry must carry a justification ≥ 20 chars. The acknowledgement is revie
 
 From generator 0.9.0 the difference shows up in a document somebody reads. The `dataProtectionAudit` artifact (`Project_File.md` §11.5) builds its *"why each acknowledged disclosure was accepted"* list from the map form only. A field acknowledged in list form appears in the egress table as acknowledged and is then **missing from the justification list** — which is the shape of a decision nobody wrote down. A classified field reaching a snapshot with no acknowledgement at all is reported as a finding in the same section.
 
-> **Two limits on what is checked, both measured against `0.9.0` rather than read off a message.** The jar's own diagnostic text says the list form *"is still accepted but states no reason"*, and this handbook does **not** repeat that as fact: a message is not behaviour (`compatibility.md` §32 is the entry that lesson comes from). What was measured is narrower and worth knowing — on `examples/hello-orders`, `validate` reports nothing about snapshot PII whether the acknowledgement is a map, a bare list, or **absent entirely**. So the generator-side check did not fire in that configuration at all, and a clean `validate` is not evidence that a snapshot's PII disclosures are acknowledged. The kit's Spectral rule is what covers this today; run it.
+> **Which tool checks what (measured on generator `0.18.0`).** Whether a classified field is acknowledged depends on the source entity in the OpenAPI document, so only the generator checks it. On a copy of `examples/hello-orders` with `CustomerSnapshot`'s acknowledgement removed, `validate` reports `ASYNC_SNAPSHOT_PII_UNACKNOWLEDGED` for `firstName`, `lastName` and `email`. It is a WARNING, so `validate` still reports `PASSED`. The kit's Spectral `specfuse-async-snapshot-guardrails` checks only the acknowledgement's shape and targets (§2.3). On `0.9.0` the generator reported nothing in the same experiment; read a pre-`0.18.0` clean `validate` with that in mind. CI's `example-regen` repeats the experiment on every run.
 
 ### 4.3 Operation Extensions
 
@@ -1180,6 +1205,16 @@ The effective filter on a subscription (derived from the operation's `messages:`
 Recall that authors do NOT write a raw `filter` field directly (forbidden — see §4.3); the rule operates on the derived filter the generator produces.
 
 Enforced by Spectral rule `asyncapi-subscription-filter-entity-cap` (error severity) and mirrored in the Specfuse validator.
+
+**Notification fan-in has two stages, and stage 1 is split by area.** A project with a notification domain gains a notifiable event with almost every feature, so a single `on-notifiable-event` worker reaches this cap sooner or later. Splitting it then, around the one event that tipped it over, gives a series of one-off workers. Plan the seam from the start:
+
+- **Stage 1: one notify worker per business area** (`on-{area}-notify`). It subscribes to that area's notifiable events and turns each into `NotificationJob` rows. A new notifiable event joins its area's worker, or a new area gets a new `on-{area}-notify`. Never add a catch-all worker.
+- **Stage 2: one dispatcher per channel**, unchanged: each subscribes to `NotificationJob.Created` with `requiredHeaders: { channel: <X> }` (§0.8, decision 3).
+- Rules that apply to every notification, such as recipient fan-out, rendering or expiry, are repeated in each stage-1 worker's description, since no shared handler holds them.
+
+Area workers are worth having even below the cap: each gets its own DLQ, retry budget and owner.
+
+**Moving a message between workers, or renaming a worker, leaves the old subscription running.** The generated C# Service Bus provisioning creates a subscription only when it is missing and never deletes one. After a split, the old subscription keeps matching its messages with no handler left to read them, so they pile up until they expire or fill the subscription's quota. Someone has to delete it by hand. Plan every split together with that operations step. `clabonte/generator#2790` (open) proposes one correlation-filter rule per label instead of a single OR-ed SQL filter. That would change how the cap is counted, not this advice.
 
 #### 4.5.3 Per-subscription DLQ alerting
 

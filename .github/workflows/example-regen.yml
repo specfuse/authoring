@@ -1446,6 +1446,34 @@ jobs:
           [[ "$n" -gt 0 ]] || { echo "::error::generate exited 0 but wrote no files under out/"; exit 1; }
           echo "==> hello-orders validates and generates on the pinned jar ($n files)."
 
+      - name: Unacknowledged PII in a snapshot is reported (both directions)
+        if: steps.token.outputs.have == 'true'
+        # AsyncAPI_Handbook.md §4.2. Only the generator can see that a
+        # snapshot field is classified on its source entity; the kit's Spectral
+        # checks the acknowledgement's shape only. On 0.9.0 this check did not
+        # fire at all. The example acknowledges every classified field, so it
+        # must stay silent; a copy with the block stripped must not.
+        run: |
+          set -euo pipefail
+          grep -q ASYNC_SNAPSHOT_PII_UNACKNOWLEDGED "$RUNNER_TEMP/validate.out" \
+            && { echo "::error::hello-orders acknowledges its snapshot PII, yet validate reported it."; exit 1; }
+          W="$RUNNER_TEMP/snapshot-ack"
+          rm -rf "$W" && cp -R examples/hello-orders "$W"
+          cd "$W"
+          python3 - <<'PY'
+          import re
+          p = "api/specs/v1/domains/customer/events/CustomerSnapshot.yaml"
+          s = open(p).read()
+          t = re.sub(r"x-snapshot-pii-acknowledged:\n(  .*\n)+", "", s)
+          assert t != s, "CustomerSnapshot no longer carries an acknowledgement block"
+          open(p, "w").write(t)
+          PY
+          bash "$GITHUB_WORKSPACE/templates/project-init/scripts/specfuse/bundle-spec.sh"
+          bash "$GITHUB_WORKSPACE/templates/project-init/scripts/specfuse/bundle-async-spec.sh"
+          specfuse-authoring generate validate hello-orders-project.json > "$RUNNER_TEMP/snapshot-ack.out" 2>&1 || true
+          grep ASYNC_SNAPSHOT_PII_UNACKNOWLEDGED "$RUNNER_TEMP/snapshot-ack.out" \
+            || { echo "::error::ASYNC_SNAPSHOT_PII_UNACKNOWLEDGED did not fire on an unacknowledged snapshot. AsyncAPI_Handbook.md §2.3 says it does."; exit 1; }
+
       - name: Set up .NET
         if: steps.token.outputs.have == 'true'
         uses: actions/setup-dotnet@v4
