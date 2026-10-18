@@ -1,0 +1,197 @@
+# =============================================================================
+# Regression fixture: date masking (`masking.reveal`) and streamed responses
+# =============================================================================
+# Pins `specfuse-xprotection-masking-target`, the widened `masking` block of
+# `specfuse-xprotection-shape`, and `specfuse-xstream-declaration` in BOTH
+# directions. Every case was run through generator 0.19.0 first; each
+# violation is exactly one jar ERROR, and each silent case is clean on the jar.
+#
+# Expected findings (asserted by .github/workflows/example-regen.yml):
+#
+#   Profile.revealAll          xprotection-shape     MASKING_REVEAL_SHAPE (all three parts)
+#   Profile.revealPlusWindow   masking-target        MASKING_REVEAL_SHAPE (both shapes)
+#   Profile.revealOnString     masking-target        MASKING_NON_STRING
+#   Profile.revealOnDateTime   masking-target        MASKING_NON_STRING
+#   Profile.windowOnDate       masking-target        MASKING_NON_STRING
+#   Profile.windowOnInteger    masking-target        MASKING_NON_STRING
+#   Profile.hashedMasked       masking-target        PROTECTION_HASHED_MASKING_MUTEX
+#
+#   /wrongMedia                xstream-declaration   STREAM_UNKNOWN_MEDIA_TYPE
+#   /nonSuccess                xstream-declaration   STREAM_NON_SUCCESS_RESPONSE
+#   /mixed                     xstream-declaration   STREAM_MIXED_CONTENT
+#   /markerTrue                xstream-declaration   STREAM_UNKNOWN_OPTION
+#   /markerOption              xstream-declaration   STREAM_UNKNOWN_OPTION
+#   /notObject                 xstream-declaration   STREAM_ITEM_NOT_OBJECT
+#   /entityItem                xstream-declaration   STREAM_ITEM_IS_ENTITY
+#
+# Silent (accepted by the jar):
+#
+#   Profile.revealNothing      reveal: []
+#   Profile.revealMonthDay     reveal: [month, day]
+#   Profile.windowOnString     first/last on a plain string
+#   Profile.encryptedDate      encrypted date, no masking (jar masks it as reveal: [])
+#   /jsonLines, /serverSent    one item schema each, sole content, 2xx
+#
+# Not covered here: STREAM_ITEM_SHARED_WITH_JSON_BODY needs every body in the
+# document and stays with the generator's `validate`.
+#
+# Not a Specfuse-conformant example — do not copy.
+# =============================================================================
+openapi: 3.0.3
+info:
+  title: masking-and-stream fixture
+  version: "1.0.0"
+paths:
+  /jsonLines:
+    get:
+      operationId: jsonLines
+      responses:
+        "200":
+          description: One row per line
+          content:
+            application/jsonl:
+              x-stream: {}
+              schema: { $ref: "#/components/schemas/ReportRowItem" }
+  /serverSent:
+    get:
+      operationId: serverSent
+      responses:
+        "200":
+          description: One event per row
+          content:
+            text/event-stream:
+              x-stream: {}
+              schema: { $ref: "#/components/schemas/ProgressItem" }
+  /wrongMedia:
+    get:
+      operationId: wrongMedia
+      responses:
+        "200":
+          description: Not a stream media type
+          content:
+            application/json:
+              x-stream: {}
+              schema: { $ref: "#/components/schemas/ReportRowItem" }
+  /nonSuccess:
+    get:
+      operationId: nonSuccess
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: Streamed outside 2xx
+          content:
+            application/jsonl:
+              x-stream: {}
+              schema: { $ref: "#/components/schemas/ReportRowItem" }
+  /mixed:
+    get:
+      operationId: mixed
+      responses:
+        "200":
+          description: A second media type beside the stream
+          content:
+            application/jsonl:
+              x-stream: {}
+              schema: { $ref: "#/components/schemas/ReportRowItem" }
+            application/json:
+              schema: { $ref: "#/components/schemas/ProgressItem" }
+  /markerTrue:
+    get:
+      operationId: markerTrue
+      responses:
+        "200":
+          description: Marker is not an object
+          content:
+            application/jsonl:
+              x-stream: true
+              schema: { $ref: "#/components/schemas/ReportRowItem" }
+  /markerOption:
+    get:
+      operationId: markerOption
+      responses:
+        "200":
+          description: Marker carries an option that does not exist yet
+          content:
+            text/event-stream:
+              x-stream: { event: progress }
+              schema: { $ref: "#/components/schemas/ProgressItem" }
+  /notObject:
+    get:
+      operationId: notObject
+      responses:
+        "200":
+          description: Item is a string
+          content:
+            application/jsonl:
+              x-stream: {}
+              schema: { type: string }
+  /entityItem:
+    get:
+      operationId: entityItem
+      responses:
+        "200":
+          description: Item is an entity
+          content:
+            application/jsonl:
+              x-stream: {}
+              schema: { $ref: "#/components/schemas/Report" }
+components:
+  schemas:
+    ReportRowItem:
+      type: object
+      properties:
+        rowNumber: { type: integer }
+    ProgressItem:
+      type: object
+      properties:
+        percent: { type: integer }
+    Report:
+      type: object
+      x-entity: { domain: reporting, type: aggregate }
+      properties:
+        id: { type: string, format: uuid }
+    Profile:
+      type: object
+      properties:
+        revealAll:
+          type: string
+          format: date
+          x-protection: { atRest: encrypted, masking: { reveal: [year, month, day] } }
+        revealPlusWindow:
+          type: string
+          format: date
+          x-protection: { atRest: encrypted, masking: { reveal: [year], first: 1 } }
+        revealOnString:
+          type: string
+          x-protection: { atRest: encrypted, masking: { reveal: [year] } }
+        revealOnDateTime:
+          type: string
+          format: date-time
+          x-protection: { atRest: encrypted, masking: { reveal: [year] } }
+        windowOnDate:
+          type: string
+          format: date
+          x-protection: { atRest: encrypted, masking: { first: 2, last: 2 } }
+        windowOnInteger:
+          type: integer
+          x-protection: { atRest: encrypted, masking: { first: 1 } }
+        hashedMasked:
+          type: string
+          writeOnly: true
+          x-protection: { atRest: hashed, masking: { first: 2 } }
+        revealNothing:
+          type: string
+          format: date
+          x-protection: { atRest: encrypted, masking: { reveal: [] } }
+        revealMonthDay:
+          type: string
+          format: date
+          x-protection: { atRest: encrypted, masking: { reveal: [month, day] } }
+        windowOnString:
+          type: string
+          x-protection: { atRest: encrypted, masking: { first: 2, last: 2 } }
+        encryptedDate:
+          type: string
+          format: date
+          x-protection: { atRest: encrypted }

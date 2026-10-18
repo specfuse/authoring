@@ -259,9 +259,20 @@ NewCustomer:
 
 Through `0.13.0` the same replace erased all of these: an absent `writeOnly` property was reset to its default, and a project that masked responses by hand had the mask written over the real value.
 
+> **A masked date sent back is kept, on PUT and on PATCH (generator `0.19.0`).** A date masked with `x-protection.masking.reveal`, or an `atRest: encrypted` date with no `masking` (masked as `reveal: []`), reads back as a valid date with fixed fills, such as `1990-01-01` for `reveal: [year]` (`Vendor_Extensions.md` §1.5, "Masking a date"). A `pattern` cannot tell it from a real date, so the generated C# replace and the generated PATCH compare the incoming value with **the masked form of the stored value**, on the aggregate path and the related-entity path:
+>
+> | the body carries, for a masked date | PUT | PATCH |
+> |---|---|---|
+> | exactly the masked form of the stored date | keeps | keeps |
+> | any other date | sets it | sets it |
+> | nothing (absent) | keeps | keeps |
+> | `null` | keeps | clears, where `nullable: true` |
+>
+> **The known limit:** a genuine change to exactly the masked form, for example a birth date corrected to `1990-01-01` under `reveal: [year]`, is ignored on both verbs. The only way to store that value is a PATCH to `null` followed by a PATCH to the date, so **declare a `reveal`-masked date `nullable: true`**. String masks still have no echo detection: the bullet below stands for them.
+
 Three things the write-back does **not** do, each of which a spec author still owns:
 
-- **It does not detect an echoed mask.** A client that reads `****6789` and sends it back in the PUT body writes `****6789` into the column; the generator adds no echo check. Either give the field a `pattern` the mask cannot match (an SSN `pattern: '^[0-9]{9}$'` rejects `****6789` at the contract), or state in the property's `description` that clients omit unchanged masked fields. The first is enforceable; the second is not.
+- **It does not detect an echoed string mask.** (A masked **date** is the exception; see the note below.) A client that reads `****6789` and sends it back in the PUT body writes `****6789` into the column; the generator adds no echo check. Either give the field a `pattern` the mask cannot match (an SSN `pattern: '^[0-9]{9}$'` rejects `****6789` at the contract), or state in the property's `description` that clients omit unchanged masked fields. The first is enforceable; the second is not.
 - **It cannot clear such a field.** `null` keeps, because the generated C# body class cannot tell an absent property from an explicit `null`. Clearing is a **PATCH**: §1.5's tri-state applies a masked or `writeOnly` field only when the body carries it, so absent keeps, a value sets, and `null` clears where the property is `nullable: true`.
 - **It covers only the generated C# `Replace`.** Dart and TypeScript clients neither mask nor keep anything — they are clients, and the server decides. A hand-written replace (`x-manual`, or an overridden service method) gets none of this and must keep the values itself. Neither do other targets' generated servers.
 
@@ -431,6 +442,58 @@ The last two rows are one rule seen from two sides: a `default` on a `required` 
 > **Row four is intent, not yet behaviour.** No generated stack currently turns a `readOnly` + `required` property's `default` into a persistence default — not EF `HasDefaultValue`, not SQLAlchemy `default=`/`server_default=`, not a C# property initializer. The column lands `NOT NULL` with no database default and no writer able to fill it. A consumer hit both halves of that: the Python path raises on create because the property is correctly outside the writable whitelist, and the C# path silently inserts the CLR zero value — for an enum, a synthetic `UNKNOWN` that is not a literal of the declared enum. Note the asymmetry that makes it a generator bug rather than an authoring one: a *writable* sibling with the same `required` + `default` pair does receive its initializer. Adding `readOnly` loses it.
 >
 > Tracked in `compatibility.md`, follow-up 22. **If you already have such properties, sweep existing rows** — on the C# path the bad value inserts silently, so the damage predates the diagnosis.
+
+**A required property no route fills fails `validate` from generator `0.19.0`.** `CREATE_REQUIRED_PROPERTY_UNPOPULATED` (ERROR, a WARNING through `0.18.0`) and `CREATE_REQUIRED_FK_UNPOPULATED` (ERROR) report a required, non-nullable, non-`readOnly` property that a generated create cannot fill: it is not in `New{Resource}`, has no `default:` / `x-default`, and declares neither `x-copied-from` nor `x-populate-from`. A value that comes from the caller or the clock is `x-populate-from` (`Vendor_Extensions.md` §1.11), which also has the table for choosing a route.
+
+### 1.10 Streamed responses (`x-stream`, generator `0.19.0`)
+
+Some reads are better delivered a piece at a time than as one body: a large export, rows of a report as they are computed, progress of a long-running job, or results that arrive one by one from a slow source. Declare such a response with **`x-stream: {}` on its Media Type Object**. With the marker present, `schema` describes **one item** of the stream, not the whole body.
+
+```yaml
+# GET /reports/{reportId}/rows
+responses:
+  "200":
+    description: >-
+      Streams one ReportRowItem per line as the report is computed
+      (x-stream: `schema` is one item, not the body).
+    content:
+      application/jsonl:                    # or text/event-stream (SSE)
+        x-stream: {}
+        schema:
+          $ref: "#/components/schemas/ReportRowItem"
+```
+
+**Rules**, each a `validate` ERROR when broken:
+
+| Rule | Code |
+|---|---|
+| The media type is `text/event-stream` (Server-Sent Events) or `application/jsonl` (JSON Lines) | `STREAM_UNKNOWN_MEDIA_TYPE` |
+| `schema` is present and is an object | `STREAM_ITEM_NOT_OBJECT` |
+| Declared on a 2xx response only | `STREAM_NON_SUCCESS_RESPONSE` |
+| The streamed media type is the only entry in that response's `content`: no `application/json` beside it | `STREAM_MIXED_CONTENT` |
+| The value is exactly `{}`. Not `true`, and no keys: the object form only reserves room for future SSE options | `STREAM_UNKNOWN_OPTION` |
+| The item schema serves only the stream. It is not also an `application/json` request or response body anywhere in the spec | `STREAM_ITEM_SHARED_WITH_JSON_BODY` |
+| The item is not an `x-entity`. It is a read model | `STREAM_ITEM_IS_ENTITY` |
+
+**Give the stream its own item schema.** If a JSON endpoint returns the same shape, define a separate item schema (`ReportRowItem` beside `ReportRow`) rather than reusing it. The kit's `specfuse-xstream-declaration` reports every rule above at lint time except the shared-body one, which needs the whole document and stays with `validate`.
+
+**Expect exactly one `STREAM_NOT_YET_GENERATED` (WARNING) per streamed operation.** At `0.19.0` the generator validates the declaration but does not generate a stream yet: the operation is emitted as an ordinary single-body action over the item model. The warning is correct, not a spec defect, so do not baseline or suppress it. It goes away when the generator ships the C# server path.
+
+**The operation still resolves like any other read.** Until streams are generated, the rest of `validate` treats the operation like its JSON-array twin. `?unmask=` on it is `UNMASK_PARAMETER_ON_LIST`, and searchable-property and response-entity resolution see the item. Measured on a `hello-orders` copy, with a correct declaration each time:
+
+| where the stream sits | extra finding |
+|---|---|
+| under an optimistic aggregate's path, or `x-operation.target` naming one | that aggregate's ETag warning (`ENTITY_TAG_UNDECLARED_PUBLISHED` or `ENTITY_TAG_UNOBTAINABLE_PROJECTION`), as a list there would draw |
+| a path naming no entity, no `x-operation` | `OPERATION_MISSING_CATEGORY` (WARNING) |
+| a path naming no entity, `x-operation: { category: query }` with no `target` | `OPERATION_AGGREGATE_UNRESOLVABLE` (WARNING) |
+
+Treat these as warnings about the placeholder action the generator emits today. Re-check them when streams are generated.
+
+**Readers and tools that do not know `x-stream`** (Redoc, Spectral's core rules, openapi-generator defaults) read `schema` as the entire body. Say in the operation's `description` that it streams one item per line or event, so a human reader is not misled.
+
+**Keep declarations minimal.** When the generator moves to OpenAPI 3.2, `schema` becomes `itemSchema` and `x-stream` is dropped. A bare `x-stream: {}` keeps that rename mechanical.
+
+**Not supported yet; do not author against these:** SSE `event:` / `id:` fields, resume through `Last-Event-ID`, entity items, Azure Functions streaming, and the generated server and clients (an `IAsyncEnumerable<Item>` C# use case with a per-item flush, Dart `Stream<T>` and TypeScript `AsyncIterable<T>` clients). `extensions --format json` lists the marker under a new top-level `media-type` key. A tool that reads that JSON strictly must accept the key.
 
 ---
 
@@ -1417,7 +1480,7 @@ All write operations (POST/PUT/PATCH/DELETE) must support the `validateOnly` que
 - **CRITICAL (filterableProperties)**: All fields usable in OData `filter` expressions MUST be declared in `filterableProperties` (except generic parameters: page, pageSize, sort, search, filter, expand, validateOnly).
 - **CRITICAL (searchableProperties)**: All fields included in free-text `search` MUST be declared in `searchableProperties`. For BilingualText fields, reference subfields (e.g., `title.en`, `title.fr`).
 - Encryption is declared **per property**, not in `x-entity`: `x-protection: {atRest: encrypted}` on the property schema, with `x-protection.masking: {first, last}` for how many characters survive masking on reads. `x-entity.encryptedProperties` was retired in generator 0.7.0 and fails with `ENTITY_INVALID_CONFIG`. See `Vendor_Extensions.md` §1.5.
-- Writes accept plaintext. From generator `0.14.0` a C# API group registering `apiMapper` returns every masked field masked, on every response; an `atRest: encrypted` string with no declared `masking` reads back as `****` plus its last four characters. A read returns a field in the clear only through a declared `x-unmask` query parameter on the single-resource GET, behind a deny-by-default policy the host implements. See `Vendor_Extensions.md` §1.5, "Masking on the wire, and `x-unmask`", and §1.4.1 above for what a PUT does with a field it read masked.
+- Writes accept plaintext. From generator `0.14.0` a C# API group registering `apiMapper` returns every masked field masked, on every response; an `atRest: encrypted` string with no declared `masking` reads back as `****` plus its last four characters, and, from `0.19.0`, an encrypted `format: date` with no `masking` reads back as `0004-01-01`. A read returns a field in the clear only through a declared `x-unmask` query parameter on the single-resource GET, behind a deny-by-default policy the host implements. See `Vendor_Extensions.md` §1.5, "Masking on the wire, and `x-unmask`", and §1.4.1 above for what a PUT does with a field it read masked.
 - `aiAccess` (required on every `x-entity`): declares the AI agent access policy enforced by generated repositories. Absence triggers a validator WARN (`ENTITY_AIACCESS_MISSING`); for entities the AI must not touch, use the canonical Tier 0 form `operations: []` with `reason`. `operations` lists allowed verbs from `[read, create, update, delete]`; an empty array is the Tier 0 declaration. Write verbs require `writableProperties` and a `reason`. Fields declaring `x-protection: {atRest: encrypted}` are excluded from implicit read access and must be listed explicitly in `readableProperties` to be AI-readable. Full schema and examples: see `Vendor_Extensions.md` §1.1.1.
 
 ---
@@ -2384,7 +2447,7 @@ Any operation where the handler asks **"is the caller a member of this thing?"**
 
 - The role gate alone decides — no membership check in the handler.
 - Multiple non-privileged roles also lack the membership row in the seed fixture — use `x-self-scoped` to whitelist seeded roles instead of blacklisting the privileged role.
-- The principal is identity-resolved (per-user lookup) rather than membership-table-driven — that's `x-self-scoped` (404 failure mode), not `x-membership-gated` (403).
+- The principal is identity-resolved (per-user lookup) rather than membership-table-driven — that's `x-self-scoped` (404 failure mode), not `x-membership-gated` (403). The one 403 case that does belong to `x-self-scoped` is a create filling a property from `x-populate-from: caller.<name>` (`Vendor_Extensions.md` §1.11).
 - The privileged role isn't in `x-roles` to begin with — nothing to strip.
 
 ### Authoring shape

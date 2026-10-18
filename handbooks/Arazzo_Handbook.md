@@ -336,7 +336,7 @@ The recipe pattern that makes the kind visible:
 
 When the principal is a **device** — a kiosk, a terminal signed in as itself — `ref` is that device's identity id, and the actor's `role` is the device role the operation's `x-roles` lists. A person's actor on a device-only route fails the role gate instead.
 
-A single `ref` carries one id. A token whose role claim also carries a domain id (an `employeeId` inside an object-shaped roles claim) is not minted from `ref`; that shape is a generator question (`clabonte/generator#2352`). Checking that a `ref` output traces back to the identity entity, and that an actor's `role` is in each of its steps' operation `x-roles`, is a generator ask (`clabonte/generator#2414`); until it lands, review both by hand.
+A single `ref` carries one id. A token whose role claim also carries a domain id (an `employeeId` inside an object-shaped roles claim) is not minted from `ref`; that shape is a generator question (`clabonte/generator#2352`). Checking that a `ref` output traces back to the identity entity is a generator ask (`clabonte/generator#2414`); review it by hand. From generator `0.19.0` the other half is checked: `ARAZZO_ACTOR_ROLE_NOT_PERMITTED` (WARNING) reports a step whose actor's role is not in the called operation's `x-roles`, since the generated `[RoleRequired]` would answer `403`. It runs in roles mode only (the mode a sequence-form `info.x-roles` implies; scopes mode has `ARAZZO_ACTOR_LACKS_SCOPE` below). It never flags a `superuser` actor, an operation listing an `implicit` role, an operation with no `x-roles`, or a step whose `successCriteria` assert `$statusCode == 403`, which is a deliberate refusal. Roles compare ignoring case.
 
 **Role enum (project-defined, closed set):**
 
@@ -346,7 +346,7 @@ The role values are project-specific. The project declares its closed role set i
 
 - it runs only under `authorization.mode: scopes` (`Project_File.md` §16); under the default `roles` it never runs;
 - it compares grants: a `superuser: true` role and a step whose operation declares no `x-scopes` are skipped, and a role from a sequence-form registry grants nothing, so under `scopes` every step it takes on a scoped operation fails;
-- it checks scopes, not membership: whether the actor's role is in the operation's `x-roles` is not checked by anything (`clabonte/generator#2414`).
+- it checks scopes, not membership. Membership is `ARAZZO_ACTOR_ROLE_NOT_PERMITTED` from generator `0.19.0`, in roles mode (above).
 
 **It fires from generator `0.15.0`, and never at `0.14.0`** (`clabonte/generator#2418`). Through `0.14.0` it looked each step's `operationId` up by exact key, while the generator keys operations PascalCased, so every step found no operation and was skipped. Measured on a mapping-form copy of `hello-orders` under `mode: scopes`, with a `Customer` whose grants miss the scenario's `order.*` scopes: `0.14.0` reports only `OPERATION_ROLE_LACKS_SCOPE` on the operations; a build of generator main adds one `ARAZZO_ACTOR_LACKS_SCOPE` per step (three). On `0.14.0`, read `OPERATION_ROLE_LACKS_SCOPE` as the check that catches an under-granted actor.
 

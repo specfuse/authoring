@@ -1033,11 +1033,11 @@ Three opt-in artifact ids, none in the lists above, which predate them. Each is 
 
 `mutationBinding` is one concept with a per-language layout: a Riverpod mutation provider in Dart, a Vue mutation composable in TypeScript — one per write operation, each with a generated `mutationBindingTest`. The query side keeps its framework-named ids (`dartQueryProvider` / `typescriptQueryComposable`).
 
-### 11.4.1 Deprecated artifact ids (generator `0.11.0`)
+### 11.4.1 Removed artifact ids (deprecated in `0.11.0`, removed in `0.19.0`)
 
-These ids still generate the same files as their replacement, and each logs a `WARN` naming the replacement. They are temporary aliases that a later generator release removes, so **update `artifacts[]` now**:
+**From generator `0.19.0` these ids fail the load.** A group still declaring one fails `Project.Load` (`UNKNOWN_ARTIFACT_TYPE`): nothing is cleaned and nothing is generated. Measured on `0.19.0`: `validate` exits 2 with *"Group '…' declares artifact 'dartJsonFixture', which this generator does not recognise for language 'Dart'"*, followed by the recognised list. From `0.11.0` through `0.18.0` they generated the same files as their replacement and logged a `WARN`. Rename each in `artifacts[]`:
 
-| Deprecated id | Replacement |
+| Removed id | Replacement |
 |---|---|
 | `dartDto` | `dto` |
 | `dartEntityBuilder` | `entityBuilder` |
@@ -1054,7 +1054,7 @@ These ids still generate the same files as their replacement, and each logs a `W
 
 | Retired id | What happens | What to do |
 |---|---|---|
-| `dartDtoMapper` | Emits no files. The project still loads and generates, with a load-time `WARN` naming the id and the group, under both `validate` and `generate`. A `cleanGenerated` group whose `cleanScope` covers `lib/data` removes the `lib/data/mappers/` files it emitted before. The release after `0.15.0` removes the id, and declaring it then fails the load with `UNKNOWN_ARTIFACT_TYPE`. | Remove it from `artifacts[]` and delete any hand-written import of `data/mappers/`. The entity's own `toJson()` is the supported serializer; the old `toMap()` put enums, dates and nested models into the map raw (`clabonte/generator#1860`). |
+| `dartDtoMapper` | Emits no files. The project still loads and generates, with a load-time `WARN` naming the id and the group, under both `validate` and `generate`. A `cleanGenerated` group whose `cleanScope` covers `lib/data` removes the `lib/data/mappers/` files it emitted before. The generator's `0.15.0` notes said the next release would remove the id. It has not: on `0.19.0` it still loads, with the same `WARN` (measured). | Remove it from `artifacts[]` and delete any hand-written import of `data/mappers/`. The entity's own `toJson()` is the supported serializer; the old `toMap()` put enums, dates and nested models into the map raw (`clabonte/generator#1860`). |
 
 ### 11.5 Markdown artifacts
 
