@@ -254,6 +254,50 @@ table.cap td:first-child { white-space: nowrap; font-family: var(--mono); font-s
 .trans { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
 .trans button { all: unset; cursor: pointer; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 .trans button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Project file */
+.json { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 6px; font: 13px/1.6 var(--mono); overflow-x: auto; white-space: pre; }
+.json .jk { all: unset; cursor: pointer; color: var(--accent); border-radius: 4px; padding: 0 2px; }
+.json .jk.warn { color: var(--human); }
+.json .jk:hover { background: var(--accent-soft); }
+.json .jk[aria-current="true"] { background: var(--ink); color: var(--surface); }
+.json .jk:focus-visible { outline: 2px solid var(--accent); }
+.json .js { color: var(--ink); }
+.json .jn { color: var(--gen); }
+.json .jp { color: var(--muted); }
+.cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+.cards div { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 14px; min-width: 0; }
+.cards b { display: block; margin-bottom: 2px; }
+.cards.warn div { border-left: 3px solid var(--human); }
+ol.steps { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; counter-reset: s; }
+ol.steps li { counter-increment: s; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13.5px; flex: 1 1 150px; min-width: 0; }
+ol.steps li::before { content: counter(s); display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: var(--surface); font: 600 11px var(--mono); margin-right: 6px; }
+ol.steps b { font-weight: 600; }
+/* Components */
+.fan { display: grid; grid-template-columns: minmax(0, 240px) 40px minmax(0, 1fr); gap: 10px; align-items: stretch; }
+.fan .src { background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--ink); border-radius: 8px; padding: 12px 14px; display: grid; gap: 4px; align-content: start; }
+.fan .src b { font-family: var(--display); font-size: 17px; }
+.fan .src span { font: 12px var(--mono); color: var(--muted); }
+.fan .arrows { display: grid; place-items: center; color: var(--muted); font: 600 22px var(--mono); }
+.fan .targets { display: grid; gap: 8px; }
+.tgt { all: unset; cursor: pointer; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 8px; padding: 8px 12px; }
+.tgt.gen { border-left-color: var(--gen); }
+.tgt .g { font-weight: 600; }
+.tgt .l { font: 12px var(--mono); color: var(--muted); }
+.tgt .d { grid-column: 1 / -1; font: 12px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.tgt[aria-current="true"] { box-shadow: 0 0 0 2px var(--ink); }
+.tgt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rules { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+/* Loop */
+.fronts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
+.fronts div { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 14px; min-width: 0; }
+.fronts div.on { box-shadow: 0 0 0 2px var(--accent); }
+.fronts code { font-weight: 600; display: block; margin-bottom: 2px; }
+.cmdchain { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 10px 0; }
+.cmdchain code { background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 2px 6px; font-size: 12.5px; }
+.cmdchain i { color: var(--muted); font-style: normal; }
+table.surf { border-collapse: collapse; width: 100%; font-size: 14px; }
+table.surf th, table.surf td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.surf th { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
 .foot { margin-top: 40px; font-size: 13px; color: var(--muted); max-width: 80ch; }
 
 @media (max-width: 980px) {
@@ -268,7 +312,9 @@ table.cap td:first-child { white-space: nowrap; font-family: var(--mono); font-s
   nav.views button[aria-selected="true"] { box-shadow: inset 0 -3px 0 var(--accent); }
   .board, .finder, .sim, .mach-board { grid-template-columns: minmax(0, 1fr); }
   .mach-board .detail { position: static; }
-  .own { grid-template-columns: minmax(0, 1fr); }
+  .own, .cards, .fronts { grid-template-columns: minmax(0, 1fr); }
+  .fan { grid-template-columns: minmax(0, 1fr); }
+  .fan .arrows { transform: rotate(90deg); height: 30px; }
 }
 @media (max-width: 560px) {
   .chain { grid-template-columns: minmax(0, 1fr); }
@@ -309,6 +355,9 @@ table.cap td:first-child { white-space: nowrap; font-family: var(--mono); font-s
     {"id": "lifecycle", "name": "Idea to specs", "sub": "The initiative lifecycle"},
     {"id": "states", "name": "State machine", "sub": "Every state and transition"},
     {"id": "structure", "name": "Your project", "sub": "What lives where"},
+    {"id": "projectfile", "name": "Project file", "sub": "<project>-project.json"},
+    {"id": "components", "name": "Specs and components", "sub": "Where generated code goes"},
+    {"id": "loop", "name": "The loop", "sub": "When and how to use it"},
     {"id": "skills", "name": "Which skill?", "sub": "Find the right command"},
     {"id": "validation", "name": "Validation", "sub": "What catches what"},
     {"id": "upgrade", "name": "Upgrades", "sub": "What happens to a file"}
@@ -917,6 +966,521 @@ table.cap td:first-child { white-space: nowrap; font-family: var(--mono); font-s
     ["file-generator-issue", "works", "Files against the generator repo on GitHub."]
   ],
 
+  "projectFile": {
+   "sample": {
+    "name": "hello-orders",
+    "description": "Orders backend, mobile app and AI services.",
+    "openApiSpecifications": "./output/openapi-bundled.yaml",
+    "asyncSpecifications": "./output/asyncapi-bundled.yaml",
+    "arazzoSpecifications": "./api/specs/v1",
+    "asyncSourceRoot": "./api/specs/v1",
+    "dbContextClassname": "HelloOrdersDbContext",
+    "stateDir": "./.specfuse/state",
+    "tenancy": {
+     "tenant": {
+      "entity": "Tenant",
+      "foreignKey": "TenantId",
+      "marker": "ITenantOwned"
+     }
+    },
+    "broker": {
+     "type": "azureServiceBus"
+    },
+    "groups": [
+     {
+      "name": "Domain",
+      "language": "C#",
+      "basePackage": "HelloOrders.Domain",
+      "destination": "../Backend/",
+      "cleanGenerated": true,
+      "artifacts": [
+       "entity",
+       "valueObject",
+       "enum",
+       "apiController",
+       "apiModel"
+      ]
+     },
+     {
+      "name": "AppCore",
+      "language": "dart",
+      "basePackage": "hello_orders_core",
+      "destination": "../hello_orders_app/packages/",
+      "cleanGenerated": true,
+      "cleanScope": [
+       "hello_orders_core/lib/domain",
+       "hello_orders_core/lib/data"
+      ],
+      "artifacts": [
+       "entity",
+       "enum",
+       "dto",
+       "dartApiClient",
+       "dartRepositoryInterface",
+       "dartRepositoryImpl"
+      ]
+     },
+     {
+      "name": "Contracts",
+      "language": "python",
+      "basePackage": "hello_orders_contracts",
+      "destination": "../hello-orders-ai/libs/contracts/src",
+      "cleanGenerated": true,
+      "artifacts": [
+       "entity",
+       "enum",
+       "event",
+       "asyncEventHandler"
+      ]
+     },
+     {
+      "name": "Documentation - Technical References",
+      "language": "markdown",
+      "destination": "./docs/generated",
+      "artifacts": [
+       "recipeDocumentation",
+       "entityDiagram",
+       "eventCatalog",
+       "channelTopology",
+       "docsIndex"
+      ]
+     }
+    ]
+   },
+   "keys": {
+    "name": {
+     "sec": "21-name",
+     "kind": "identity",
+     "t": "Project name. Templates receive it and the generator derives defaults from it, such as the DbContext name.",
+     "req": "recommended"
+    },
+    "description": {
+     "sec": "22-description",
+     "kind": "identity",
+     "t": "Free text. The generator does not read it.",
+     "req": "optional"
+    },
+    "openApiSpecifications": {
+     "sec": "11-openapispecifications",
+     "kind": "specs",
+     "t": "The bundled OpenAPI file, not api/specs/v1/openapi.yaml. bundle-spec.sh (or the bundle skill) writes it to output/, so bundle before you generate or validate.",
+     "req": "required to generate"
+    },
+    "asyncSpecifications": {
+     "sec": "12-asyncspecifications",
+     "kind": "specs",
+     "t": "The bundled AsyncAPI file, written by bundle-async-spec.sh. Leave it out if the project has no async specs.",
+     "req": "optional"
+    },
+    "arazzoSpecifications": {
+     "sec": "13-arazzospecifications",
+     "kind": "specs",
+     "t": "A directory, read unbundled: every .arazzo.yaml and .recipe.yaml under it.",
+     "req": "optional"
+    },
+    "asyncSourceRoot": {
+     "sec": "14-asyncsourceroot",
+     "kind": "specs",
+     "t": "The unbundled spec tree. Bundling erases file paths, so the generator reads this to find entity snapshots and check where they sit.",
+     "req": "optional"
+    },
+    "dbContextClassname": {
+     "sec": "23-dbcontextclassname-c-only",
+     "kind": "identity",
+     "t": "Overrides the EF Core DbContext class name. C# only; other languages ignore it.",
+     "req": "optional · C#"
+    },
+    "stateDir": {
+     "sec": "24-statedir",
+     "kind": "identity",
+     "t": "Where the generator keeps one baseline per group (<group>.json). Each regen's CHANGELOG.md is diffed against it, so it must describe code that shipped on the component's main. Set it explicitly: when unset, its default depends on how the generator was invoked.",
+     "req": "optional, set it",
+     "warn": true
+    },
+    "tenancy": {
+     "sec": "41-tenancy-c-only-today",
+     "kind": "runtime",
+     "t": "The tenant (and optional sub-tenant) entity, its foreign key and a marker interface. Drives C# marker-interface generation today.",
+     "req": "optional · C#"
+    },
+    "tenancy.tenant": {"sec": "41-tenancy-c-only-today", "kind": "runtime", "t": "The tenant entity. A sub-tenant, tenancy.subTenant, takes the same three fields.", "req": "with tenancy"},
+   "tenancy.tenant.entity": {
+     "sec": "41-tenancy-c-only-today",
+     "kind": "runtime",
+     "t": "PascalCase tenant entity name.",
+     "req": "with tenancy"
+    },
+    "tenancy.tenant.foreignKey": {
+     "sec": "41-tenancy-c-only-today",
+     "kind": "runtime",
+     "t": "PascalCase foreign-key column, ending in Id.",
+     "req": "with tenancy"
+    },
+    "tenancy.tenant.marker": {
+     "sec": "41-tenancy-c-only-today",
+     "kind": "runtime",
+     "t": "Marker interface name: I plus PascalCase.",
+     "req": "with tenancy"
+    },
+    "broker": {
+     "sec": "51-broker",
+     "kind": "runtime",
+     "t": "Messaging-broker settings for the C# event runtime.",
+     "req": "optional · C#"
+    },
+    "broker.type": {
+     "sec": "51-broker",
+     "kind": "runtime",
+     "t": "azureServiceBus is the only working value.",
+     "req": "optional"
+    },
+    "groups": {
+     "sec": "71-groups",
+     "kind": "groups",
+     "t": "One entry per output tree. You generate one group at a time by name; generate.sh loops over several.",
+     "req": "required to generate"
+    },
+    "groups[].name": {
+     "sec": "81-name",
+     "kind": "groups",
+     "t": "The label you pass to --group (and to generate.sh) and see in diagnostics.",
+     "req": "recommended"
+    },
+    "groups[].language": {
+     "sec": "83-language",
+     "kind": "groups",
+     "t": "csharp / c#, python, dart / flutter, or markdown. Picks the template family and which artifacts are allowed.",
+     "req": "required"
+    },
+    "groups[].basePackage": {
+     "sec": "85-basepackage",
+     "kind": "groups",
+     "t": "Namespace, package or library root for the generated code.",
+     "req": "required for code"
+    },
+    "groups[].destination": {
+     "sec": "86-destination",
+     "kind": "groups",
+     "t": "Where the tree is written, resolved from the directory you run the generator in. ../Backend/ writes into a sibling repo, which is how components receive code: run from the spec repo root, with every repo checked out side by side.",
+     "req": "required for code",
+     "warn": true
+    },
+    "groups[].cleanGenerated": {
+     "sec": "89-cleangenerated",
+     "kind": "groups",
+     "t": "Deletes the group's generated subtree before writing it again. Files outside that subtree are never touched, so keep hand-written code outside it.",
+     "req": "optional, default false",
+     "warn": true
+    },
+    "groups[].cleanScope": {
+     "sec": "810-cleanscope",
+     "kind": "groups",
+     "t": "Exactly which folders to wipe, relative to destination, instead of the language default. List generated folders one by one; patterns are not supported and silently clean nothing.",
+     "req": "optional",
+     "warn": true
+    },
+    "groups[].artifacts": {
+     "sec": "87-artifacts",
+     "kind": "groups",
+     "t": "Which artifact types to emit. An artifact not listed is not produced, and nothing warns. The allowed ids depend on the language.",
+     "req": "required for code"
+    }
+   },
+   "more": [
+    [
+     "namingOverrides",
+     "31-namingoverrides",
+     "Identifier casing per role, project-wide."
+    ],
+    [
+     "encryption",
+     "15-encryption",
+     "Compliance floors and key scope for x-protection. Absent means no floors apply and nothing warns."
+    ],
+    [
+     "authorization",
+     "16-authorization",
+     "Roles or scopes mode and the claims the generated C# runtime reads."
+    ],
+    [
+     "functionalTests",
+     "16-authorization",
+     "xUnit collection assignment for generated API functional tests."
+    ],
+    [
+     "groups[].domains",
+     "8131-domains",
+     "Generate only some domains: exactly one of include or exclude."
+    ],
+    [
+     "groups[].pillar",
+     "8132-pillar",
+     "Scope a group to the domains a pillar owns."
+    ],
+    [
+     "groups[].filter",
+     "811-filter-asyncapi-workers-only-v1",
+     "Predicate tree for AsyncAPI workers only."
+    ],
+    [
+     "persistence",
+     "6-persistence",
+     "Multi-backend persistence. Read by nothing today: declaring it changes nothing."
+    ]
+   ],
+   "footguns": [
+    [
+     "Unknown fields are silently ignored",
+     "A typo such as cleanScopes or tenancyConfig is dropped with no warning, and generation runs misconfigured. Copy field names from a known-good file and diff the output after every edit.",
+     "project-file"
+    ],
+    [
+     "Paths resolve from where you run it",
+     "Run the generator from the spec repo root. From anywhere else, every relative path, destination included, points somewhere else.",
+     "working-directory-and-path-resolution"
+    ],
+    [
+     "A regen writes into other repos, and deletes",
+     "With cleanGenerated, each group's generated tree is wiped first. Make sure every destination repo is on a branch you can throw away; generate.sh refuses dirty ones.",
+     "89-cleangenerated"
+    ],
+    [
+     "Some blocks are inert",
+     "persistence is read by nothing yet, and an absent encryption block means no compliance floors, silently.",
+     "6-persistence"
+    ]
+   ],
+   "lifecycle": [
+    [
+     "Load",
+     "The JSON is read; unknown fields are dropped."
+    ],
+    [
+     "Resolve paths",
+     "Relative paths against the working directory (CLI)."
+    ],
+    [
+     "Validate",
+     "OpenAPI, AsyncAPI and Arazzo, through the spec paths, unless --skip-validation."
+    ],
+    [
+     "Emit each group",
+     "Clean if asked, then write the group's artifacts to its destination."
+    ],
+    [
+     "Record",
+     "Each group's surface goes to <stateDir>/<group>.json, and CHANGELOG.md is written."
+    ],
+    [
+     "AI access manifest",
+     "ai-access-manifest.json, once, beside the bundled OpenAPI file."
+    ]
+   ]
+  },
+
+  "components": {
+   "targets": [
+    {
+     "group": "Domain",
+     "lang": "C#",
+     "repo": "Backend/",
+     "kind": "auto",
+     "gen": "gen-src/ folders inside each project; *.g.cs files with an <auto-generated/> header",
+     "ext": "partial classes in src/, generated *Base classes you derive from, mapper hook partials",
+     "build": "gen-src/ belongs to existing projects; Directory.Build.props compiles gen-src/ and src/ together. Exclude gen-src/ from coverage.",
+     "post": "None."
+    },
+    {
+     "group": "AppCore",
+     "lang": "Dart / Flutter",
+     "repo": "hello_orders_app/",
+     "kind": "auto",
+     "gen": "A package owned entirely by the generator, e.g. packages/hello_orders_core",
+     "ext": "extension methods in the app's lib/; screens, view models and navigation stay in the app",
+     "build": "A path dependency in the app's pubspec.yaml.",
+     "post": "dart pub get, then dart run build_runner build --delete-conflicting-outputs inside the package. Put it in scripts/post-generate.sh so it runs after each regen."
+    },
+    {
+     "group": "Contracts",
+     "lang": "Python",
+     "repo": "hello-orders-ai/",
+     "kind": "auto",
+     "gen": "_generated/ packages (the default wipe target)",
+     "ext": "your handler.py / composition.py beside the generated handler_base.py: subclass, don't patch",
+     "build": "Members of a uv workspace.",
+     "post": "None."
+    },
+    {
+     "group": "Documentation - Technical References",
+     "lang": "Markdown",
+     "repo": "this spec repo",
+     "kind": "gen",
+     "gen": "docs/generated/ in the spec repo",
+     "ext": "nothing: regenerate instead of editing",
+     "build": "None.",
+     "post": "Prefer generate-scenario-docs.sh, which adds the scenario pages and cross-links."
+    }
+   ],
+   "regen": [
+    {
+     "t": "Spec change merges",
+     "who": "human",
+     "body": "The spec PR merges in the spec repo first. A component PR generated from a spec that is not on main yet makes the component depend on a spec that does not exist."
+    },
+    {
+     "t": "Regenerate on a branch",
+     "who": "auto",
+     "body": "From the spec repo root, with each destination repo on a fresh branch. generate.sh bundles once, then generates each named group, lists every destination with its repo and branch, and stops if one has uncommitted changes.",
+     "cmd": "./scripts/specfuse/generate.sh --list\n./scripts/specfuse/generate.sh Domain AppCore"
+    },
+    {
+     "t": "One PR per component",
+     "who": "human",
+     "body": "Each component PR holds only the regen and the changes it requires. Review it beyond a green build: diff changed models by file name, enum values, operation parameters, and every hand-written type that mirrors a generated one."
+    },
+    {
+     "t": "Component PRs merge",
+     "who": "human",
+     "body": "Commit generated code in the component, so every regen is a reviewable diff and CI builds without Java or generator access."
+    },
+    {
+     "t": "Advance the baseline",
+     "who": "auto",
+     "body": "Only now, from a clean spec repo: advance-state.sh re-captures each group's stateDir baseline from the merged component code, and keeps it only for repos that are clean, on their default branch and level with origin. Commit the state files in a spec-repo PR of their own.",
+     "cmd": "./scripts/specfuse/advance-state.sh --dry-run\n./scripts/specfuse/advance-state.sh"
+    }
+   ],
+   "rules": [
+    "Component repos never run the generator, fetch the jar or check out the specs.",
+    "Never hand-edit generated code. Fix the spec or report the generator, then regenerate.",
+    "Check the generated package before writing a model, DTO, repository or client by hand.",
+    "Never commit .specfuse/state from a spec branch or a local regen; it adds phantom Breaking entries to later changelogs."
+   ]
+  },
+
+  "loop": {
+   "frontends": [
+    [
+     "authored",
+     "The spec tree is the deliverable: work units author spec files. Used in the specs repo for spec-before-mint."
+    ],
+    [
+     "consumed",
+     "Specs were authored upstream; the loop implements against a handoff manifest. Used in component repos."
+    ],
+    [
+     "none",
+     "No specs: the task graph is authored directly. The short path for single-repo work."
+    ]
+   ],
+   "choices": [
+    {
+     "q": "Author the specs for a shaped idea, more than one sitting of work",
+     "where": "Specs repo",
+     "front": "authored",
+     "steps": [
+      "/specfuse:roadmap-add",
+      "/specfuse:pick-feature",
+      "/specfuse:draft-feature",
+      "specfuse run",
+      "/specfuse:arm-gate",
+      "/specfuse:wrap-feature",
+      "/specfuse-authoring:prepare-handoff"
+     ],
+     "body": "A loop feature gives spec authoring what a session does not: gated human review at /arm-gate, verification as the exit oracle, and a record per work unit. Record the feature in the dossier's graduated_to and the start date in started.",
+     "notes": [
+      "Every work unit must leave the whole spec tree validating; one dangling $ref breaks the bundle and fails every layer.",
+      "A structural assertion block stands in for the red test, since a spec has no test to fail first.",
+      "Point the verification gates at ./scripts/specfuse/validate-specs.sh; /specfuse:derive-verification drafts them from what the repo runs."
+     ]
+    },
+    {
+     "q": "Make a small or exploratory spec change",
+     "where": "Specs repo, no loop",
+     "front": null,
+     "steps": [
+      "/specfuse-authoring:design-scenario",
+      "/specfuse-authoring:validate",
+      "commit and PR"
+     ],
+     "body": "A session with the design skills and the validators is enough when the change fits in one sitting. A gate cycle around a one-file change is ceremony without a checkpoint.",
+     "notes": [
+      "The design skills ask, generate and validate in one flow; review-scenario gives a cold second opinion."
+     ]
+    },
+    {
+     "q": "Implement a feature the orchestrator dispatched",
+     "where": "Component repo",
+     "front": "consumed",
+     "steps": [
+      "/specfuse:adopt-feature",
+      "/specfuse:draft-feature",
+      "specfuse lint",
+      "specfuse run",
+      "/specfuse:arm-gate",
+      "/specfuse:wrap-feature"
+     ],
+     "body": "adopt-feature lists the repo's open specfuse:feature issues and scaffolds the one you pick, with its first work unit seeded from the issue body.",
+     "notes": [
+      "Run adopt-feature interactively: it needs your pick.",
+      "One driver per working tree; concurrent features need separate git worktrees."
+     ]
+    },
+    {
+     "q": "Implement against the specs without an orchestrator",
+     "where": "Component repo",
+     "front": "none",
+     "steps": [
+      "regen PR merged",
+      "/specfuse:roadmap-add",
+      "/specfuse:pick-feature",
+      "/specfuse:draft-feature",
+      "specfuse run",
+      "/specfuse:arm-gate",
+      "/specfuse:wrap-feature"
+     ],
+     "body": "Regenerate first and merge that PR, so the feature builds on generated code that is already on main. The feature is then ordinary loop work in that repo, extending the generated code by hand.",
+     "notes": [
+      "Keep the regen and the feature in separate PRs: the regen is reviewed as generated output, the feature as code."
+     ]
+    },
+    {
+     "q": "Fix a bug",
+     "where": "Any repo, no feature",
+     "front": null,
+     "steps": [
+      "/specfuse:fix-bug"
+     ],
+     "body": "One bug, one branch, one PR, test first. The skill refuses and proposes a feature if the work turns out to be large.",
+     "notes": [
+      "A bug in generated code is a spec fix or a generator issue, not a hand edit: /specfuse-authoring:file-generator-issue."
+     ]
+    }
+   ],
+   "surfaces": [
+    [
+     "State lives in",
+     "WU and GATE file frontmatter",
+     "GitHub issue labels and the registry"
+    ],
+    [
+     "Dispatch",
+     "the driver runs claude -p per work unit",
+     "inbox files and a polling loop"
+    ],
+    [
+     "Branch and merge",
+     "one branch, one squashed commit per WU",
+     "a branch and PR per task, merge watcher"
+    ],
+    [
+     "Spec front-end",
+     "authored, consumed or none",
+     "spec-first, from a dossier or a manifest"
+    ]
+   ]
+  },
+
   "tree": [
     {"p": "CLAUDE.md", "d": 0, "o": "yours", "what": "Project instructions for Claude Code. Seeded once by init from the kit template.", "up": "Never touched by upgrade."},
     {"p": "<project>-project.json", "d": 0, "o": "yours", "what": "The generator's project file: where the bundles are, which artifact groups to generate, encryption profiles.", "up": "Never touched by upgrade.", "link": ["Project file handbook", "../handbooks/Project_File.md"]},
@@ -1092,7 +1656,7 @@ table.cap td:first-child { white-space: nowrap; font-family: var(--mono); font-s
   const slash = n => `/specfuse-authoring:${n}`;
   const link = ([text, href]) => `<a href="${esc(href)}">${esc(text)}</a>`;
   const nav = $("#nav"), main = $("#main");
-  const ui = { mode: "orchestrated", sel: { kind: "state", m: "backlog", id: "ready" }, view: "picture", plane: "kit", life: "spec-first", stage: 0, node: 0, intent: null, query: "", mistake: 0,
+  const ui = { pfkey: "groups[].destination", tgt: 0, regen: 1, choice: 0, mode: "orchestrated", sel: { kind: "state", m: "backlog", id: "ready" }, view: "picture", plane: "kit", life: "spec-first", stage: 0, node: 0, intent: null, query: "", mistake: 0,
                sim: { area: "kit", ships: true, disk: "asWritten", manifest: true, version: "older" } };
 
   function readHash() {
@@ -1258,6 +1822,93 @@ table.cap td:first-child { white-space: nowrap; font-family: var(--mono); font-s
       <section class="panel"><p>Green boxes end a machine; dashed boxes are side states. ${standalone() ? "Grey arrows need the orchestration repo. The red arrow is the gap: an ending the kit does not document yet." : "Switch to <b>Without one</b> to see what changes when no orchestration repo is configured."} These diagrams mirror ${link(["Unit lifecycles", D.machine.source])}, which also covers features, gates and work units; the rules for each backlog state are in the ${link(["backlog template", "../templates/initiative-backlog.template.md"])}.</p></section>`;
   }
 
+
+  /* ---------- Project file ---------- */
+  function jsonHtml(v, path, ind) {
+    const pad = "  ".repeat(ind);
+    if (Array.isArray(v)) {
+      if (v.every(x => typeof x !== "object")) return `<span class="jp">[</span>${v.map(x => `<span class="js">${esc(JSON.stringify(x))}</span>`).join('<span class="jp">, </span>')}<span class="jp">]</span>`;
+      return `<span class="jp">[</span>\n${v.map(x => pad + "  " + jsonHtml(x, path + "[]", ind + 1)).join('<span class="jp">,</span>\n')}\n${pad}<span class="jp">]</span>`;
+    }
+    if (v && typeof v === "object") {
+      const rows = Object.entries(v).map(([k, x]) => {
+        const kp = path ? `${path}.${k}` : k;
+        const info = D.projectFile.keys[kp];
+        const key = info ? `<button class="jk${info.warn ? " warn" : ""}" data-pfkey="${esc(kp)}" aria-current="${kp === ui.pfkey}">"${esc(k)}"</button>` : `<span class="jp">"${esc(k)}"</span>`;
+        return `${pad}  ${key}<span class="jp">: </span>${jsonHtml(x, kp, ind + 1)}`;
+      });
+      return `<span class="jp">{</span>\n${rows.join('<span class="jp">,</span>\n')}\n${pad}<span class="jp">}</span>`;
+    }
+    return `<span class="${typeof v === "string" ? "js" : "jn"}">${esc(JSON.stringify(v))}</span>`;
+  }
+  const PF = "../handbooks/Project_File.md";
+  function viewProjectFile() {
+    const P = D.projectFile, k = P.keys[ui.pfkey];
+    const kindLabel = { specs: "where the specs are", identity: "project", runtime: "generated runtime", groups: "output groups" }[k.kind];
+    return `<h2>Project file</h2>
+      <p class="summary"><code>&lt;project&gt;-project.json</code> is the generator's only input besides the specs: <b>where the bundled specs are, and which code to generate into which folder</b>. <code>init</code> seeds it with an empty <code>groups</code> list, and upgrade never touches it. The example generates into three component repos plus the spec repo's own docs. <b>Select a key</b> for what it does; orange keys are the ones that bite.</p>
+      <div class="board" style="grid-template-columns:minmax(0,1fr) minmax(0,340px)">
+        <div class="json" role="group" aria-label="Example project file">${jsonHtml(P.sample, "", 0)}</div>
+        <div class="detail">
+          <span class="who ${k.warn ? "human" : ""}">${esc(kindLabel)}</span>
+          <h3><code>${esc(ui.pfkey)}</code></h3>
+          <p>${esc(k.t)}</p>
+          <dl><dt>Required</dt><dd>${esc(k.req)}</dd><dt>Read</dt><dd>${link(["Project_File.md", PF + "#" + k.sec])}</dd></dl>
+        </div>
+      </div>
+      <section class="panel"><h3>Four things to know before editing it</h3><div class="cards warn">${P.footguns.map(([t, b, a]) => `<div><b>${esc(t)}</b>${esc(b)} ${link(["More", PF + "#" + a])}</div>`).join("")}</div></section>
+      <section class="panel"><h3>Not in the example</h3><div class="cards">${P.more.map(([n, a, t]) => `<div><b><code>${esc(n)}</code></b>${esc(t)} ${link(["§", PF + "#" + a])}</div>`).join("")}</div>
+        <p style="margin-top:10px">The generator version is not set here: <code>specfuse authoring generate</code> resolves it from the kit's pin. See ${link(["generator access", "https://github.com/specfuse/authoring/blob/main/docs/generator-access.md"])}.</p></section>
+      <section class="panel"><h3>What the generator does with it</h3><ol class="steps">${P.lifecycle.map(([t, b]) => `<li><b>${esc(t)}</b><br>${esc(b)}</li>`).join("")}</ol></section>`;
+  }
+
+  /* ---------- Specs and components ---------- */
+  function viewComponents() {
+    const C = D.components, t = C.targets[ui.tgt], r = C.regen[ui.regen];
+    return `<h2>Specs and components</h2>
+      <p class="summary">One <b>spec repo</b> holds the specs, the project file and the generator's baselines. The <b>component repos</b> (a backend, an app, services) receive generated code through each group's <code>destination</code>, and build on it by hand. Generation always runs from the spec repo. <b>Select a component</b>, then walk the regen flow.</p>
+      <div class="fan">
+        <div class="src"><b>Spec repo</b><span>api/specs/v1/</span><span>&lt;project&gt;-project.json</span><span>.specfuse/state/&lt;group&gt;.json</span><span>scripts/specfuse/generate.sh</span></div>
+        <div class="arrows" aria-hidden="true">→</div>
+        <div class="targets">${C.targets.map((x, i) => `<button class="tgt ${x.kind}" data-tgt="${i}" aria-current="${i === ui.tgt}"><span class="g">${esc(x.group)}</span><span class="l">${esc(x.lang)}</span><span class="d">→ ${esc(x.repo)}</span></button>`).join("")}</div>
+      </div>
+      <div class="detail" style="margin-top:14px">
+        <span class="who ${t.kind === "gen" ? "gen" : ""}">${esc(t.lang)}</span>
+        <h3>${esc(t.group)} <small style="font-weight:400;color:var(--muted)">→ ${esc(t.repo)}</small></h3>
+        <dl><dt>Generated code</dt><dd>${esc(t.gen)}</dd><dt>Hand-written code</dt><dd>${esc(t.ext)}</dd><dt>Build</dt><dd>${esc(t.build)}</dd><dt>After generating</dt><dd>${esc(t.post)}</dd></dl>
+      </div>
+      <h3 style="font-family:var(--display);font-size:19px;margin:26px 0 6px">The regen flow</h3>
+      <p class="summary">The order matters: spec first, then components, then the baseline.</p>
+      <div class="board">
+        <ol class="track">${C.regen.map((x, i) => `<li><button class="stage ${x.who}" data-regen="${i}" aria-current="${i === ui.regen}"><span class="k">${i + 1}</span><span><span class="t">${esc(x.t)}</span></span></button></li>`).join("")}</ol>
+        <div class="detail"><span class="who ${r.who === "human" ? "human" : ""}">${r.who === "human" ? "you" : "a script does this"}</span><h3>${esc(r.t)}</h3><p>${esc(r.body)}</p>${r.cmd ? `<code class="cmd">${esc(r.cmd)}</code>` : ""}</div>
+      </div>
+      <section class="panel"><h3>House rules</h3><ul class="rules">${C.rules.map(x => `<li>${esc(x)}</li>`).join("")}</ul>
+        <p style="margin-top:10px">The full guide, with build wiring per language and the review checklist: ${link(["Setting up component repos", "https://github.com/specfuse/authoring/blob/main/docs/component-repos.md"])}.</p></section>`;
+  }
+
+  /* ---------- The loop ---------- */
+  function viewLoop() {
+    const Lp = D.loop, c = Lp.choices[ui.choice];
+    return `<h2>The loop</h2>
+      <p class="summary">The Specfuse loop runs a feature as gates of small work units: a driver dispatches each unit to a fresh session and accepts it only when verification passes, and you review at each gate. The kit authors and validates specs; <b>the loop is how larger pieces of work get done under that discipline</b>, in the spec repo or in a component. It comes with the same <code>pipx install specfuse</code>; <code>specfuse init &lt;repo&gt;</code> sets it up in a repo, and its own flows page lands at <code>.specfuse/docs/flows.html</code>.</p>
+      <div class="fronts">${Lp.frontends.map(([n, t]) => `<div class="${c.front === n ? "on" : ""}"><code>spec front-end: ${esc(n)}</code>${esc(t)}</div>`).join("")}</div>
+      <div class="controlrow"><span class="lbl">I want to</span></div>
+      <div class="board">
+        <ul class="intents" style="list-style:none;margin:0;padding:0;display:grid;gap:2px">${Lp.choices.map((x, i) => `<li><button class="intent" data-choice="${i}" aria-current="${i === ui.choice}"><span>${esc(x.q)}</span><span class="sk">${esc(x.where)}</span></button></li>`).join("")}</ul>
+        <div class="detail">
+          <span class="who ${c.front ? "" : "human"}">${c.front ? "loop · " + esc(c.front) : "no loop feature"}</span>
+          <h3>${esc(c.where)}</h3>
+          <p>${esc(c.body)}</p>
+          <div class="cmdchain">${c.steps.map(x => `<code>${esc(x)}</code>`).join("<i>→</i>")}</div>
+          ${c.notes.length ? `<div class="stops"><h4>Keep in mind</h4><ul>${c.notes.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}
+        </div>
+      </div>
+      <section class="panel"><h3>Loop or orchestrator</h3><p>Both run the same gate cycle and work-unit contract. They differ in reach: the loop works inside one repo; the orchestrator spans repos and dispatches loop features into them.</p>
+        <div class="tablewrap"><table class="surf"><thead><tr><th></th><th>Loop · one repo</th><th>Orchestrator · many repos</th></tr></thead><tbody>${Lp.surfaces.map(([a, b, c2]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td><td>${esc(c2)}</td></tr>`).join("")}</tbody></table></div>
+        <p style="margin-top:10px">${link(["Loop methodology", "https://github.com/specfuse/loop/blob/main/docs/methodology.md"])} · ${link(["Product lifecycle", "https://github.com/specfuse/specfuse/blob/main/docs/product-lifecycle.md"])}</p></section>`;
+  }
+
   /* ---------- Structure ---------- */
   function viewStructure() {
     const n = D.tree[ui.node];
@@ -1392,7 +2043,7 @@ table.cap td:first-child { white-space: nowrap; font-family: var(--mono); font-s
       <section class="panel"><h3>Skills update separately</h3><p>Upgrade carries the contract the skills read. The skills and agents themselves come from the plugin: <code>/plugin update specfuse-authoring@specfuse</code>. Upgrade also refuses a downgrade, so install the newer CLI before upgrading a project someone else already moved forward.</p><p>${link(["Keep assets current", "https://github.com/specfuse/authoring/blob/main/docs/getting-started.md#7-keep-assets-current"])}</p></section>`;
   }
 
-  const VIEWS = { picture: viewPicture, lifecycle: viewLifecycle, states: viewStates, structure: viewStructure, skills: viewSkills, validation: viewValidation, upgrade: viewUpgrade };
+  const VIEWS = { picture: viewPicture, lifecycle: viewLifecycle, states: viewStates, projectfile: viewProjectFile, components: viewComponents, loop: viewLoop, structure: viewStructure, skills: viewSkills, validation: viewValidation, upgrade: viewUpgrade };
   function render() {
     renderNav();
     main.setAttribute("aria-labelledby", "tab-" + ui.view);
@@ -1400,10 +2051,14 @@ table.cap td:first-child { white-space: nowrap; font-family: var(--mono); font-s
   }
 
   main.addEventListener("click", e => {
-    const t = e.target.closest("[data-plane],[data-life],[data-stage],[data-node],[data-intent],[data-mistake],[data-sim],[data-state],[data-edge],[data-mode]");
+    const t = e.target.closest("[data-plane],[data-life],[data-stage],[data-node],[data-intent],[data-mistake],[data-sim],[data-state],[data-edge],[data-mode],[data-pfkey],[data-tgt],[data-regen],[data-choice]");
     if (!t) return;
     const d = t.dataset;
-    if (d.mode) {
+    if (d.pfkey) ui.pfkey = d.pfkey;
+    else if (d.tgt) ui.tgt = +d.tgt;
+    else if (d.regen) ui.regen = +d.regen;
+    else if (d.choice) ui.choice = +d.choice;
+    else if (d.mode) {
       ui.mode = d.mode;
       const cur = D.machine[ui.sel.m];
       if (ui.sel.kind === "edge" && !cur.edges.some(x => x.id === ui.sel.id && edgeShown(x))) ui.sel = { kind: "state", m: "backlog", id: "ready" };
@@ -1421,7 +2076,7 @@ table.cap td:first-child { white-space: nowrap; font-family: var(--mono); font-s
       ui.sim[d.sim] = v;
       if (!ui.sim.ships && ui.sim.disk === "same") ui.sim.disk = "asWritten";
     }
-    const key = ["stage", "node", "plane", "state", "edge"].find(k => t.dataset[k] != null);
+    const key = ["stage", "node", "plane", "state", "edge", "pfkey", "tgt", "regen", "choice"].find(k => t.dataset[k] != null);
     const inSvg = !!t.closest("svg");
     render();
     if (key && (inSvg || (key !== "state" && key !== "edge"))) {

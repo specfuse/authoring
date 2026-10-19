@@ -11,6 +11,9 @@ wrong fails CI instead of shipping a stale map:
   - backlog states          against the State: line of the backlog template,
                             and the idea state machine against those states
   - no-orchestrator table   covers every skill
+  - project file example    keys against Project_File.md's quick reference,
+                            artifact ids against its per-language lists, and
+                            every section anchor the page links
   - readiness checklist     against the idea dossier template
   - validation layers       against LAYERS in scripts/specfuse/validate-specs.sh
   - Spectral rule names     against the kit's rulesets
@@ -88,6 +91,62 @@ for key in ("backlog", "registry"):
 same_set("no-orchestrator table", {r[0] for r in data["standalone"]}, skill_dirs)
 for name, status, _ in data["standalone"]:
     check(status in {"works", "degrades", "unavailable", "idle"}, f"no-orchestrator table: {name!r} has unknown status {status!r}")
+
+# Project file: every key in the example is documented in Project_File.md's
+# quick reference, every artifact id is one the handbook lists for that group's
+# language, and every section anchor the page links to exists.
+handbook = (ROOT / "handbooks" / "Project_File.md").read_text(encoding="utf-8")
+quick = handbook.split("## Quick Reference", 1)[1].split("\n## ", 1)[0]
+documented = {re.sub(r"(\[\])+$", "", m) for m in re.findall(r"^\| `([^`]+)`", quick, re.M)}
+
+
+def flatten(obj: object, prefix: str = "") -> set[str]:
+    keys: set[str] = set()
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            path = f"{prefix}.{k}" if prefix else k
+            keys.add(path)
+            keys |= flatten(v, path)
+    elif isinstance(obj, list):
+        for item in obj:
+            keys |= flatten(item, f"{prefix}[]")
+    return keys
+
+
+pf = data["projectFile"]
+sample_keys = flatten(pf["sample"])
+# An intermediate object (tenancy.tenant) counts when its fields are documented.
+for k in sorted(k for k in sample_keys - documented if not any(d.startswith(k + ".") for d in documented)):
+    errors.append(f"project file example uses {k!r}, which Project_File.md's quick reference does not document")
+same_set("project file key notes", set(pf["keys"]), sample_keys)
+for k, _, _ in pf["more"]:
+    check(k in documented, f"project file 'not in the example' names {k!r}, which the quick reference does not document")
+
+
+def slug(heading: str) -> str:
+    text = re.sub(r"[^\w\- ]", "", heading.strip().lower())
+    return text.replace(" ", "-")
+
+
+anchors = {slug(h) for h in re.findall(r"^#{1,4} (.+)$", handbook, re.M)}
+cited = [k["sec"] for k in pf["keys"].values()] + [a for _, a, _ in pf["more"]] + [a for *_, a in pf["footguns"]]
+for a in sorted(set(cited)):
+    check(a in anchors, f"project file view links Project_File.md#{a}, which is not a heading there")
+
+lang_sections = {"c#": "### 11.1", "csharp": "### 11.1", "python": "### 11.2", "dart": "### 11.3", "flutter": "### 11.3", "markdown": "### 11.5"}
+for g in pf["sample"]["groups"]:
+    head = lang_sections.get(g["language"].lower())
+    if not head:
+        errors.append(f"project file example group {g['name']!r} has a language the check cannot map: {g['language']!r}")
+        continue
+    body = handbook.split(head, 1)[1].split("\n### 11.", 1)[0]
+    for art in g.get("artifacts", []):
+        check(f"`{art}`" in body, f"project file example group {g['name']!r} lists artifact {art!r}, not in Project_File.md {head[4:]}")
+
+for ch in data["loop"]["choices"]:
+    for step in ch["steps"]:
+        if step.startswith("/specfuse-authoring:"):
+            check(step.split(":", 1)[1] in skill_dirs, f"loop choice {ch['q']!r} names unknown skill {step!r}")
 
 # Backlog states: "State: `idea` → `shaping` → … (or `delivered` / `parked` / `dropped`)".
 backlog = (ROOT / "templates" / "initiative-backlog.template.md").read_text(encoding="utf-8")
