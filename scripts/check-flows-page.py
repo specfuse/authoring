@@ -8,7 +8,9 @@ wrong fails CI instead of shipping a stale map:
 
   - skills and agents       against plugins/specfuse-authoring/{skills,agents}
   - the skill finder        covers every skill and names no unknown one
-  - backlog states          against the State: line of the backlog template
+  - backlog states          against the State: line of the backlog template,
+                            and the idea state machine against those states
+  - no-orchestrator table   covers every skill
   - readiness checklist     against the idea dossier template
   - validation layers       against LAYERS in scripts/specfuse/validate-specs.sh
   - Spectral rule names     against the kit's rulesets
@@ -71,6 +73,21 @@ for lc in data["lifecycles"]:
 for name, agent in data["agents"].items():
     for s in agent["by"]:
         check(s in skill_dirs, f"agent {name!r} is used by unknown skill {s!r}")
+
+# State machine: the idea machine draws exactly the template's states, every
+# transition names a real skill, and the no-orchestrator table covers every skill.
+machine = data["machine"]
+same_set("idea state machine", set(machine["backlog"]["states"]), set(data["backlogStates"]))
+for key in ("backlog", "registry"):
+    states = machine[key]["states"]
+    for e in machine[key]["edges"]:
+        check(e["from"] in states or e["from"] == "start", f"{key} edge {e['id']!r} starts at unknown state {e['from']!r}")
+        check(e["to"] in states, f"{key} edge {e['id']!r} ends at unknown state {e['to']!r}")
+        if e.get("by"):
+            check(e["by"] in skill_dirs, f"{key} edge {e['id']!r} names unknown skill {e['by']!r}")
+same_set("no-orchestrator table", {r[0] for r in data["standalone"]}, skill_dirs)
+for name, status, _ in data["standalone"]:
+    check(status in {"works", "degrades", "unavailable", "idle"}, f"no-orchestrator table: {name!r} has unknown status {status!r}")
 
 # Backlog states: "State: `idea` → `shaping` → … (or `delivered` / `parked` / `dropped`)".
 backlog = (ROOT / "templates" / "initiative-backlog.template.md").read_text(encoding="utf-8")

@@ -210,6 +210,50 @@ table.exit th { font-size: 12px; color: var(--muted); text-transform: uppercase;
 section.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-top: 22px; }
 section.panel h3 { font-family: var(--display); font-size: 19px; margin: 0 0 4px; }
 section.panel > p { color: var(--muted); margin: 0 0 10px; max-width: 72ch; }
+/* State machine */
+.machine { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
+.machine svg { display: block; min-width: 720px; width: 100%; height: auto; }
+.machine .st rect { fill: var(--surface); stroke: var(--accent); stroke-width: 2; }
+.machine .st.end rect { stroke: var(--ok); }
+.machine .st.side rect { stroke-dasharray: 5 4; }
+.machine .st text { fill: var(--ink); font: 600 13.5px var(--mono); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.machine .st, .machine .ed { cursor: pointer; }
+.machine .st.sel rect { fill: var(--accent-soft); stroke-width: 3; }
+.machine .st.end.sel rect { fill: var(--ok-soft); }
+.machine .st.off rect { stroke: var(--line); }
+.machine .st.off text { fill: var(--muted); }
+.machine .ed path.line { fill: none; stroke: var(--muted); stroke-width: 1.6; }
+.machine .ed path.hit { fill: none; stroke: transparent; stroke-width: 16; }
+.machine .ed text { fill: var(--muted); font: 500 11.5px var(--body); text-anchor: middle; paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+.machine .ed.dashed path.line { stroke-dasharray: 5 4; }
+.machine .ed.off path.line { stroke: var(--line); stroke-dasharray: 2 4; }
+.machine .ed.off text { fill: var(--muted); opacity: .6; }
+.machine .ed.gap path.line { stroke: var(--stop); stroke-dasharray: 6 4; }
+.machine .ed.gap text { fill: var(--stop); }
+.machine .ed.sel path.line { stroke: var(--ink); stroke-width: 2.6; }
+.machine .ed.sel text { fill: var(--ink); font-weight: 600; }
+.machine .ed:hover path.line { stroke: var(--ink); }
+.machine .ed:focus-visible, .machine .st:focus-visible { outline: none; }
+.machine .ed:focus-visible path.line, .machine .st:focus-visible rect { stroke: var(--ink); stroke-width: 3; }
+.machine .start { fill: var(--ink); }
+.machine .veil { fill: var(--surface); opacity: .8; }
+.machine .veiltext { fill: var(--stop); font: 600 15px var(--body); text-anchor: middle; }
+.mach-head { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; margin: 22px 0 8px; }
+.mach-head h3 { font-family: var(--display); font-size: 19px; margin: 0; }
+.mach-head span { font-size: 13px; color: var(--muted); }
+.mach-board { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 320px); gap: 18px; align-items: start; }
+.mach-board .detail { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); }
+.badge { display: inline-block; font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .05em; padding: 2px 7px; border-radius: 5px; }
+.badge.works { background: var(--ok-soft); color: var(--ok); }
+.badge.degrades { background: var(--human-soft); color: var(--human); }
+.badge.unavailable { background: var(--stop-soft); color: var(--stop); }
+.badge.idle { background: var(--bg); color: var(--muted); border: 1px solid var(--line); }
+table.cap { border-collapse: collapse; width: 100%; font-size: 14px; }
+table.cap td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.cap td:first-child { white-space: nowrap; font-family: var(--mono); font-size: 13px; }
+.trans { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
+.trans button { all: unset; cursor: pointer; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.trans button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .foot { margin-top: 40px; font-size: 13px; color: var(--muted); max-width: 80ch; }
 
 @media (max-width: 980px) {
@@ -222,7 +266,8 @@ section.panel > p { color: var(--muted); margin: 0 0 10px; max-width: 72ch; }
   nav.views button { white-space: nowrap; }
   nav.views button .s { display: none; }
   nav.views button[aria-selected="true"] { box-shadow: inset 0 -3px 0 var(--accent); }
-  .board, .finder, .sim { grid-template-columns: minmax(0, 1fr); }
+  .board, .finder, .sim, .mach-board { grid-template-columns: minmax(0, 1fr); }
+  .mach-board .detail { position: static; }
   .own { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 560px) {
@@ -262,6 +307,7 @@ section.panel > p { color: var(--muted); margin: 0 0 10px; max-width: 72ch; }
   "views": [
     {"id": "picture", "name": "Big picture", "sub": "Where the kit sits"},
     {"id": "lifecycle", "name": "Idea to specs", "sub": "The initiative lifecycle"},
+    {"id": "states", "name": "State machine", "sub": "Every state and transition"},
     {"id": "structure", "name": "Your project", "sub": "What lives where"},
     {"id": "skills", "name": "Which skill?", "sub": "Find the right command"},
     {"id": "validation", "name": "Validation", "sub": "What catches what"},
@@ -289,9 +335,9 @@ section.panel > p { color: var(--muted); margin: 0 0 10px; max-width: 72ch; }
      "body": "prepare-handoff runs the full validation suite, regenerates scenario docs and bundles, builds the operation, async, entity and scenario inventories, and has the handoff-composer agent write one manifest. It writes nothing outside your repo.",
      "facts": [["Skill", "<code>/specfuse-authoring:prepare-handoff</code>"], ["Backlog effect", "The idea becomes <code>specified</code>"]],
      "links": [["Backlog template", "../templates/initiative-backlog.template.md"]]},
-    {"id": "orchestrator", "kind": "human", "row": "down", "title": "Orchestration repo", "sub": "Registry entry and the INIT- mint", "path": "features/INIT-YYYY-NNNN.md",
+    {"id": "orchestrator", "kind": "human", "row": "down", "title": "Orchestration repo", "sub": "Registry and the INIT- mint · optional", "path": "features/INIT-YYYY-NNNN.md",
      "body": "A person decides to implement. initiative-intake mints the INIT-YYYY-NNNN correlation ID, writes the registry entry and emits initiative_created. From a manifest the initiative starts at planning, and decomposition into per-repo work reads the manifest's component inventory instead of guessing it.",
-     "facts": [["Skill", "<code>/specfuse-authoring:initiative-intake</code>"], ["Configured by", "<code>repos.orchestrator</code> in <code>.specfuse/authoring/config.yml</code>"]],
+     "facts": [["Skill", "<code>/specfuse-authoring:initiative-intake</code>"], ["Configured by", "<code>repos.orchestrator</code> in <code>.specfuse/authoring/config.yml</code>"], ["Without one", "Ideation, design, validation and generation still work; handoff and intake do not. See the State machine view."]],
      "links": [["Backlog template", "../templates/initiative-backlog.template.md"]]},
     {"id": "loop", "kind": "gen", "row": "down", "title": "Implementation", "sub": "Component repos and their agents", "path": "specfuse:spec-issue",
      "body": "Component repos implement against your specs. When an implementing agent finds a problem in a spec it files an issue labelled specfuse:spec-issue; spec-issue-triage decides whether the fix is a spec correction you make here or a generator template bug to report upstream.",
@@ -370,7 +416,505 @@ section.panel > p { color: var(--muted); margin: 0 0 10px; max-width: 72ch; }
         "body": "Runs Specfuse validation, turns failures into actionable feedback, and owns the <code>drafting → validating → planning</code> transitions. It emits <code>spec_validated</code> and never transitions on a failed run. At <code>planning</code> the PM agent takes over.",
         "stops": ["You ask for validation; on failure you fix and run again."]}
      ],
-     "aside": "Both paths are legal. What is never right is dispatching implementation against specs that do not exist."}
+     "aside": "Both paths are legal. What is never right is dispatching implementation against specs that do not exist."},
+    {"id": "standalone", "name": "No orchestrator", "tag": "kit only",
+     "summary": "A specs repo with the kit but no orchestration repo: nothing to hand off to and nothing to mint into. Ideation, design, validation and generation all work. Handoff, intake, spec-drafting and spec-validation do not, because each reads or writes the orchestration repo.",
+     "stages": [
+       {"t": "Capture the idea", "skill": "ideation-capture", "kind": "auto", "state": "idea",
+        "body": "Unchanged. Capture never touches the orchestration repo.",
+        "writes": "<code>docs/product/INITIATIVE_BACKLOG.md</code> and a dossier"},
+       {"t": "Shape it to ready", "skill": "ideation-shape", "kind": "human", "state": "ready",
+        "body": "Works from the backlog alone. The one check it cannot make is overlap with already-minted initiatives; the report says <em>Overlap against minted work was not checked</em> instead of stopping.",
+        "stops": ["All four readiness items checked."], "readiness": true},
+       {"t": "Publish to GitHub", "skill": "ideation-publish", "kind": "human", "state": "ready", "optional": true,
+        "body": "Optional and unchanged. It needs <code>github.ideas.repo</code> in <code>config.yml</code>, not an orchestrator. A GitHub issue and Project board can stand in for the planning an orchestrator would do."},
+       {"t": "Author the specs", "skill": "design-scenario", "also": ["design-async", "design-recipe", "create-job", "create-worker"], "kind": "auto", "state": "ready",
+        "body": "Interactively with the design skills, or as a loop feature if the Specfuse loop is installed (then set <code>graduated_to</code> and <code>started</code>). <code>spec-drafting</code> is not available: it works inside a minted initiative.",
+        "writes": "<code>api/specs/v1/</code>"},
+       {"t": "Validate", "skill": "validate", "also": ["validate-async", "validate-scenarios", "review-scenario"], "kind": "auto", "state": "ready",
+        "body": "The full suite runs entirely in your repo. It replaces <code>spec-validation</code>, which records its result in the registry.",
+        "cmd": "./scripts/specfuse/validate-specs.sh"},
+       {"t": "Generate and build", "skill": "generate", "also": ["bundle"], "kind": "auto", "state": "ready",
+        "body": "Generate code and docs from the validated specs and implement against them yourself. There is no handoff manifest: <code>prepare-handoff</code> stops at its first step without the orchestration repo's handoff contract.",
+        "writes": "Generated code, <code>api/docs/flows/</code>, <code>docs/generated/</code>"},
+       {"t": "Close the idea", "kind": "end", "state": "delivered",
+        "body": "No skill takes an idea past <code>ready</code> here: <code>specified</code> needs a manifest and <code>minted</code> needs a registry. Record <code>delivered</code> by hand in the dossier and the row once the specs are authored and validated.",
+        "stops": ["You record <code>delivered</code>, or <code>parked</code> / <code>dropped</code>. The templates describe <code>delivered</code> as following <code>specified</code>, so this ending is not documented there yet; see the State machine view."]}
+     ],
+     "aside": "<code>ideation-groom</code> still runs and grades every class except <em>overtaken</em>. It keeps listing <code>ready</code> ideas as ready to mint, which here you can read as ready to close."}
+  ],
+
+  "machine": {
+   "source": "https://github.com/specfuse/specfuse/blob/main/docs/unit-lifecycles.md",
+   "backlog": {
+    "viewBox": "0 0 900 400",
+    "start": {
+     "x": 20,
+     "y": 200
+    },
+    "states": {
+     "idea": {
+      "x": 105,
+      "y": 200,
+      "meaning": "Captured and not yet shaped. A one-line row and a stub dossier is a valid, encouraged state: the backlog's job is to lose no idea.",
+      "sets": "idea_id, slug"
+     },
+     "shaping": {
+      "x": 270,
+      "y": 200,
+      "meaning": "The dossier is being worked: context, scope, target repos, readiness checklist. It stays here until every readiness item is checked and no [blocking] unknown remains.",
+      "sets": "target_repos, bundles / bundled_into"
+     },
+     "ready": {
+      "x": 440,
+      "y": 200,
+      "meaning": "Cleared to have its specs authored, not cleared to mint. Authoring is not a backlog state: when a loop feature starts authoring the specs, the dossier records graduated_to and started, and the idea stays ready until the manifest is published.",
+      "sets": "graduated_to, started"
+     },
+     "specified": {
+      "x": 625,
+      "y": 200,
+      "meaning": "The specs exist and a handoff manifest is published. A decision is owed: implement it or record it as delivered. A waypoint, never a resting place; ideation-groom reports one that ages.",
+      "sets": "handoff"
+     },
+     "minted": {
+      "x": 815,
+      "y": 200,
+      "meaning": "Graduated: an INIT-YYYY-NNNN exists in the orchestration repo. The row stays as a breadcrumb; the registry takes over. Bundled rows flip with the lead.",
+      "sets": "minted_init",
+      "end": true
+     },
+     "delivered": {
+      "x": 625,
+      "y": 345,
+      "meaning": "The terminal state for spec-only work: the spec tree was the whole deliverable, so no INIT- is minted. A deliberate act a person records, not a state a row decays into.",
+      "end": true
+     },
+     "parked": {
+      "x": 190,
+      "y": 62,
+      "meaning": "A good idea at the wrong time. Kept, and revisited at groom.",
+      "side": true
+     },
+     "dropped": {
+      "x": 530,
+      "y": 62,
+      "meaning": "Decided against. The row and dossier stay with a one-line reason, so the idea is not proposed again.",
+      "end": true,
+      "side": true
+     }
+    },
+    "edges": [
+     {
+      "id": "capture",
+      "from": "start",
+      "to": "idea",
+      "by": "ideation-capture",
+      "cond": "Any time. A typed title, or --from-issue <url> for an idea someone filed on GitHub.",
+      "writes": "A row in docs/product/INITIATIVE_BACKLOG.md and docs/product/backlog/IDEA-NNN-<slug>.md"
+     },
+     {
+      "id": "shape",
+      "from": "idea",
+      "to": "shaping",
+      "by": "ideation-shape",
+      "label": "shape",
+      "cond": "The first substantive edit to the dossier.",
+      "writes": "Dossier and row state",
+      "degrades": "Overlap with already-minted initiatives is not checked; the report says so."
+     },
+     {
+      "id": "ready",
+      "from": "shaping",
+      "to": "ready",
+      "by": "ideation-shape",
+      "label": "4/4 ready",
+      "cond": "All four readiness items genuinely checked and no [blocking] unknown left. The skill then offers ideation-publish.",
+      "writes": "Dossier and row state",
+      "degrades": "Overlap with already-minted initiatives is not checked."
+     },
+     {
+      "id": "reshape",
+      "from": "ready",
+      "to": "shaping",
+      "by": "ideation-groom",
+      "label": "under-shaped",
+      "bend": -46,
+      "cond": "Groom finds the readiness boxes checked but the dossier thin or unsupported. Reverted when you accept the report.",
+      "writes": "The backlog index"
+     },
+     {
+      "id": "handoff",
+      "from": "ready",
+      "to": "specified",
+      "by": "prepare-handoff",
+      "label": "handoff",
+      "needs": "orchestrator",
+      "cond": "The specs are authored and the whole suite validates. The manifest carries the id of the loop feature that authored the specs.",
+      "writes": "api/docs/handoffs/<id>.md; the dossier's handoff field",
+      "why": "prepare-handoff reads the handoff contract from the orchestration repo and stops at its first step when that repo cannot be resolved."
+     },
+     {
+      "id": "mint-direct",
+      "from": "ready",
+      "to": "minted",
+      "by": "initiative-intake",
+      "label": "mint first",
+      "bend": 112,
+      "needs": "orchestrator",
+      "cond": "Mint-first path: a ready idea with no graduated_to. The specs will be drafted inside the INIT-, starting at drafting.",
+      "writes": "The registry entry in the orchestration repo; minted_init on the dossier",
+      "why": "Intake writes the registry entry in the orchestration repo and mints the id from it.",
+      "ldx": 78
+     },
+     {
+      "id": "mint",
+      "from": "specified",
+      "to": "minted",
+      "by": "initiative-intake",
+      "label": "mint",
+      "needs": "orchestrator",
+      "cond": "A person decides to implement. Intake reads the dossier and the manifest; the initiative starts at planning.",
+      "writes": "The registry entry with specs_source; minted_init on the dossier",
+      "why": "Intake writes the registry entry in the orchestration repo and mints the id from it."
+     },
+     {
+      "id": "deliver",
+      "from": "specified",
+      "to": "delivered",
+      "by": null,
+      "label": "spec-only",
+      "cond": "The spec tree is the whole deliverable; no component repo will implement it as an initiative.",
+      "writes": "Dossier and row state, by hand. On a published idea, ideation-publish shows the reason before posting it.",
+      "ldy": 40,
+      "ldx": -30
+     },
+     {
+      "id": "gap",
+      "from": "ready",
+      "to": "delivered",
+      "by": null,
+      "label": "by hand",
+      "bend": -30,
+      "gap": true,
+      "only": "standalone",
+      "cond": "Without an orchestration repo no skill moves an idea past ready: prepare-handoff cannot publish a manifest, so specified is unreachable, and there is nothing to mint into. The workable ending today is to record delivered by hand once the specs are authored and validated.",
+      "writes": "Dossier and row state, by hand",
+      "why": "The templates describe delivered as following specified, so this ending is not documented there yet."
+     },
+     {
+      "id": "park-idea",
+      "from": "idea",
+      "to": "parked",
+      "by": "ideation-groom",
+      "cond": "Stale: untouched a long while, no momentum. Parked when you accept the groom report.",
+      "writes": "The backlog index"
+     },
+     {
+      "id": "park-shaping",
+      "from": "shaping",
+      "to": "parked",
+      "by": "ideation-groom",
+      "bend": 18,
+      "cond": "Stale: untouched a long while, no momentum.",
+      "writes": "The backlog index"
+     },
+     {
+      "id": "revisit",
+      "from": "parked",
+      "to": "shaping",
+      "by": null,
+      "bend": 18,
+      "dashed": true,
+      "cond": "Picked back up. Parked ideas are revisited at groom; resuming one is your call.",
+      "writes": "Row state, then ideation-shape"
+     },
+     {
+      "id": "drop-parked",
+      "from": "parked",
+      "to": "dropped",
+      "by": null,
+      "cond": "Decided against after parking. Record a one-line reason.",
+      "writes": "Row state and reason"
+     },
+     {
+      "id": "drop-idea",
+      "from": "idea",
+      "to": "dropped",
+      "by": null,
+      "cond": "Decided against. The row is kept with a one-line reason, never deleted.",
+      "writes": "Row state and reason"
+     },
+     {
+      "id": "drop-shaping",
+      "from": "shaping",
+      "to": "dropped",
+      "by": null,
+      "cond": "Decided against, for example because it duplicates already-minted work.",
+      "writes": "Row state and reason"
+     },
+     {
+      "id": "drop-ready",
+      "from": "ready",
+      "to": "dropped",
+      "by": "ideation-groom",
+      "cond": "Overtaken: groom finds it overlaps an already-minted INIT- and recommends dropped with a link.",
+      "writes": "The backlog index",
+      "degrades": "Without an orchestration repo groom cannot see minted work, so it reports overtaken as not assessed."
+     }
+    ]
+   },
+   "registry": {
+    "viewBox": "0 0 900 340",
+    "start": {
+     "x": 22,
+     "y": 70
+    },
+    "states": {
+     "drafting": {
+      "x": 140,
+      "y": 70,
+      "meaning": "Minted from a dossier; the specs are being drafted with spec-drafting and the design skills."
+     },
+     "validating": {
+      "x": 310,
+      "y": 70,
+      "meaning": "spec-validation has run or is running. A failed run emits no transition and leaves the initiative here; it never goes back to drafting."
+     },
+     "planning": {
+      "x": 480,
+      "y": 70,
+      "meaning": "The plane handoff has happened: the pm agent owns the initiative and decomposes it into a feature graph."
+     },
+     "plan_review": {
+      "x": 650,
+      "y": 70,
+      "meaning": "The pm has proposed a feature graph and waits for a person to approve it. The pm never approves its own plan."
+     },
+     "generating": {
+      "x": 820,
+      "y": 70,
+      "meaning": "Approved. The pm generates code and opens one specfuse:feature issue per feature, per repo."
+     },
+     "in_progress": {
+      "x": 820,
+      "y": 205,
+      "meaning": "Component repos are running their loop features. The merge watcher closes tasks as PRs merge."
+     },
+     "done": {
+      "x": 650,
+      "y": 205,
+      "meaning": "The last feature is done and the pm has written the cross-component retro.",
+      "end": true
+     },
+     "blocked": {
+      "x": 310,
+      "y": 205,
+      "meaning": "An agent escalated. A person resolves the escalation and the initiative returns to drafting.",
+      "side": true
+     },
+     "abandoned": {
+      "x": 820,
+      "y": 300,
+      "meaning": "Stopped by a person, or by the pm cascading an abandonment.",
+      "end": true,
+      "side": true
+     }
+    },
+    "edges": [
+     {
+      "id": "r-intake",
+      "from": "start",
+      "to": "drafting",
+      "by": "initiative-intake",
+      "cond": "Mint first: intake mints the INIT-, writes the registry entry and emits initiative_created.",
+      "writes": "features/INIT-YYYY-NNNN.md in the orchestration repo"
+     },
+     {
+      "id": "r-manifest",
+      "from": "start",
+      "to": "planning",
+      "by": "initiative-intake",
+      "label": "from a manifest",
+      "bend": -58,
+      "cond": "Spec-before-mint: the specs were authored and validated under gates before the mint, so drafting and validating are skipped. The registry records specs_source.",
+      "writes": "features/INIT-YYYY-NNNN.md with specs_source"
+     },
+     {
+      "id": "r-validate",
+      "from": "drafting",
+      "to": "validating",
+      "by": "spec-validation",
+      "label": "validate",
+      "cond": "You ask for validation. The transition is emitted before the validator runs, so the log records the attempt even if it crashes.",
+      "writes": "Registry state and an event"
+     },
+     {
+      "id": "r-fail",
+      "from": "validating",
+      "to": "validating",
+      "by": "spec-validation",
+      "label": "fails",
+      "self": true,
+      "cond": "Errors found: no transition is emitted. Fix the specs and run validation again from here. Three failures in a row raise a spinning_detected escalation.",
+      "writes": "Nothing in the registry state"
+     },
+     {
+      "id": "r-pass",
+      "from": "validating",
+      "to": "planning",
+      "by": "spec-validation",
+      "label": "clean pass",
+      "cond": "Zero errors. This is the plane handoff from the specs agent to the pm.",
+      "writes": "Registry state and events"
+     },
+     {
+      "id": "r-plan",
+      "from": "planning",
+      "to": "plan_review",
+      "by": null,
+      "label": "pm plans",
+      "agent": "pm",
+      "cond": "The pm decomposes the initiative into a feature graph and writes a plan-review file.",
+      "writes": "Feature graph INIT-…/FNN, plan-review file"
+     },
+     {
+      "id": "r-reject",
+      "from": "plan_review",
+      "to": "planning",
+      "by": null,
+      "label": "rejected",
+      "bend": 34,
+      "cond": "A person rejects the plan; the pm plans again.",
+      "writes": "Registry state"
+     },
+     {
+      "id": "r-approve",
+      "from": "plan_review",
+      "to": "generating",
+      "by": null,
+      "label": "approved",
+      "cond": "The approval gate. A person approves; the pm never self-approves.",
+      "writes": "Registry state"
+     },
+     {
+      "id": "r-dispatch",
+      "from": "generating",
+      "to": "in_progress",
+      "by": null,
+      "label": "dispatched",
+      "agent": "pm",
+      "cond": "The first task issue is opened in a component repo.",
+      "writes": "specfuse:feature issues"
+     },
+     {
+      "id": "r-done",
+      "from": "in_progress",
+      "to": "done",
+      "by": null,
+      "label": "all merged",
+      "agent": "merge watcher, then pm",
+      "cond": "The last feature is done and the pm writes the retro.",
+      "writes": "Root LEARNINGS.md"
+     },
+     {
+      "id": "r-abandon",
+      "from": "in_progress",
+      "to": "abandoned",
+      "by": null,
+      "cond": "A person stops the initiative, or the pm cascades an abandonment.",
+      "writes": "Registry state"
+     },
+     {
+      "id": "r-block-d",
+      "from": "drafting",
+      "to": "blocked",
+      "by": null,
+      "agent": "any agent",
+      "cond": "Escalation. Any agent can block an initiative from drafting, validating, planning, generating or in_progress.",
+      "writes": "Registry state"
+     },
+     {
+      "id": "r-block-v",
+      "from": "validating",
+      "to": "blocked",
+      "by": null,
+      "agent": "any agent",
+      "cond": "Escalation, for example spinning_detected after three failed validations.",
+      "writes": "Registry state",
+      "bend": -52
+     },
+     {
+      "id": "r-block-p",
+      "from": "planning",
+      "to": "blocked",
+      "by": null,
+      "agent": "any agent",
+      "cond": "Escalation.",
+      "writes": "Registry state"
+     },
+     {
+      "id": "r-block-g",
+      "from": "generating",
+      "to": "blocked",
+      "by": null,
+      "agent": "any agent",
+      "cond": "Escalation.",
+      "writes": "Registry state"
+     },
+     {
+      "id": "r-block-i",
+      "from": "in_progress",
+      "to": "blocked",
+      "by": null,
+      "agent": "any agent",
+      "bend": -40,
+      "cond": "Escalation.",
+      "writes": "Registry state"
+     },
+     {
+      "id": "r-unblock",
+      "from": "blocked",
+      "to": "drafting",
+      "by": null,
+      "label": "resolved",
+      "bend": -30,
+      "cond": "A person resolves the escalation; the initiative returns to drafting.",
+      "writes": "Registry state"
+     }
+    ]
+   }
+  },
+
+  "standalone": [
+    ["ideation-capture", "works", "Writes only to this repo."],
+    ["ideation-shape", "degrades", "Shapes from the backlog alone; overlap with minted work is not checked and the report says so."],
+    ["ideation-publish", "works", "Needs github.ideas.repo in config.yml, not the orchestrator."],
+    ["ideation-groom", "degrades", "Every class is graded except overtaken, reported as not assessed. It keeps listing ready ideas as ready to mint."],
+    ["initiative-intake", "unavailable", "Writes the registry entry in the orchestration repo and mints the INIT- from it."],
+    ["spec-drafting", "unavailable", "Works inside a minted INIT- and updates its registry entry. Use the design skills and the handbooks instead."],
+    ["spec-validation", "unavailable", "Owns the registry's drafting → validating → planning transitions. Use validate, validate-async and validate-scenarios instead."],
+    ["prepare-handoff", "unavailable", "Reads the handoff contract from the orchestration repo and stops at its first step without it."],
+    ["spec-issue-triage", "idle", "Spec issues are filed from the orchestrator side, so nothing arrives to triage."],
+    ["design-scenario", "works", ""],
+    ["update-scenario", "works", ""],
+    ["deprecate-scenario", "works", ""],
+    ["design-recipe", "works", ""],
+    ["design-flow", "works", ""],
+    ["design-async", "works", ""],
+    ["create-job", "works", ""],
+    ["create-worker", "works", ""],
+    ["list-scenarios", "works", ""],
+    ["review-scenario", "works", ""],
+    ["impact-scenarios", "works", ""],
+    ["validate", "works", ""],
+    ["validate-async", "works", ""],
+    ["validate-scenarios", "works", ""],
+    ["preview", "works", ""],
+    ["preview-async", "works", ""],
+    ["bundle", "works", ""],
+    ["generate", "works", "Needs generator access, not the orchestrator."],
+    ["file-generator-issue", "works", "Files against the generator repo on GitHub."]
   ],
 
   "tree": [
@@ -548,7 +1092,7 @@ section.panel > p { color: var(--muted); margin: 0 0 10px; max-width: 72ch; }
   const slash = n => `/specfuse-authoring:${n}`;
   const link = ([text, href]) => `<a href="${esc(href)}">${esc(text)}</a>`;
   const nav = $("#nav"), main = $("#main");
-  const ui = { view: "picture", plane: "kit", life: "spec-first", stage: 0, node: 0, intent: null, query: "", mistake: 0,
+  const ui = { mode: "orchestrated", sel: { kind: "state", m: "backlog", id: "ready" }, view: "picture", plane: "kit", life: "spec-first", stage: 0, node: 0, intent: null, query: "", mistake: 0,
                sim: { area: "kit", ships: true, disk: "asWritten", manifest: true, version: "older" } };
 
   function readHash() {
@@ -617,6 +1161,101 @@ section.panel > p { color: var(--muted); margin: 0 0 10px; max-width: 72ch; }
         </div>
       </div>
       <section class="panel"><p>${L.aside}</p><p>States: <code>idea → shaping → ready → specified → minted</code>, with <code>delivered</code>, <code>parked</code> and <code>dropped</code> on the side. Read the <a href="../templates/initiative-backlog.template.md">backlog template</a> for what each one means.</p></section>`;
+  }
+
+
+  /* ---------- State machine ---------- */
+  const NW = 116, NH = 38;
+  function clipTo(c, toward) {
+    const dx = toward.x - c.x, dy = toward.y - c.y;
+    if (!dx && !dy) return { x: c.x, y: c.y };
+    const t = Math.min(dx ? (NW / 2 + 3) / Math.abs(dx) : Infinity, dy ? (NH / 2 + 3) / Math.abs(dy) : Infinity);
+    return { x: c.x + dx * t, y: c.y + dy * t };
+  }
+  function edgeGeom(M, e) {
+    const a = e.from === "start" ? M.start : M.states[e.from], b = M.states[e.to];
+    if (e.self) {
+      const x = b.x, y = b.y + NH / 2;
+      return { d: `M ${x - 22} ${y} C ${x - 40} ${y + 58}, ${x + 40} ${y + 58}, ${x + 22} ${y}`, lx: x, ly: y + 58 };
+    }
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const bend = e.bend || 0;
+    const c = { x: mx - (b.y - a.y) / len * bend, y: my + (b.x - a.x) / len * bend };
+    const p0 = e.from === "start" ? { x: a.x + 7, y: a.y } : clipTo(a, bend ? c : b);
+    const p1 = clipTo(b, bend ? c : a);
+    const lx = (p0.x + 2 * c.x + p1.x) / 4, ly = (p0.y + 2 * c.y + p1.y) / 4;
+    return { d: bend ? `M ${p0.x} ${p0.y} Q ${c.x} ${c.y} ${p1.x} ${p1.y}` : `M ${p0.x} ${p0.y} L ${p1.x} ${p1.y}`, lx: lx + (e.ldx || 0), ly: ly - 7 + (e.ldy || 0) };
+  }
+  const standalone = () => ui.mode === "standalone";
+  const edgeShown = e => !e.only || (e.only === "standalone") === standalone();
+  const edgeOff = (m, e) => standalone() && (m === "registry" || e.needs === "orchestrator");
+  const stateOff = (m, id) => standalone() && (m === "registry" || id === "specified" || id === "minted");
+  function machineSvg(key) {
+    const M = D.machine[key];
+    const edges = M.edges.filter(edgeShown).map(e => {
+      const g = edgeGeom(M, e);
+      const off = edgeOff(key, e);
+      const cls = ["ed", e.dashed ? "dashed" : "", e.gap ? "gap" : "", off ? "off" : "", ui.sel.kind === "edge" && ui.sel.id === e.id ? "sel" : ""].join(" ");
+      const mk = e.gap ? "gap" : off ? "off" : "on";
+      return `<g class="${cls}" data-edge="${esc(e.id)}" data-m="${key}" tabindex="0" role="button" aria-label="${esc(edgeName(e) + (e.by ? ", " + e.by : ""))}"><path class="hit" d="${g.d}"></path><path class="line" d="${g.d}" marker-end="url(#arr-${key}-${mk})"></path>${e.label ? `<text x="${g.lx.toFixed(1)}" y="${g.ly.toFixed(1)}">${esc(e.label)}</text>` : ""}</g>`;
+    }).join("");
+    const nodes = Object.entries(M.states).map(([id, st]) => {
+      const cls = ["st", st.end ? "end" : "", st.side ? "side" : "", stateOff(key, id) ? "off" : "", ui.sel.kind === "state" && ui.sel.m === key && ui.sel.id === id ? "sel" : ""].join(" ");
+      return `<g class="${cls}" data-state="${esc(id)}" data-m="${key}" tabindex="0" role="button" aria-label="${esc("State " + id)}"><rect x="${st.x - NW / 2}" y="${st.y - NH / 2}" width="${NW}" height="${NH}" rx="19"></rect><text x="${st.x}" y="${st.y}">${esc(id)}</text></g>`;
+    }).join("");
+    const [, , w, h] = M.viewBox.split(" ").map(Number);
+    const veil = key === "registry" && standalone() ? `<rect class="veil" x="0" y="0" width="${w}" height="${h}"></rect><text class="veiltext" x="${w / 2}" y="${h / 2 + 5}">No orchestration repo, so no registry: none of these states exist.</text>` : "";
+    const markers = [["on", "var(--muted)"], ["off", "var(--line)"], ["gap", "var(--stop)"]].map(([id, c]) => `<marker id="arr-${key}-${id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" style="fill:${c}"></path></marker>`).join("");
+    return `<div class="machine"><svg viewBox="${M.viewBox}" role="group" aria-label="${key === "backlog" ? "Backlog state machine" : "Initiative registry state machine"}"><defs>${markers}</defs><circle class="start" cx="${M.start.x}" cy="${M.start.y}" r="7"></circle>${edges}${nodes}${veil}</svg></div>`;
+  }
+  function edgeName(e) { return `${e.from === "start" ? "(new)" : e.from} → ${e.to}`; }
+  function edgeBy(e) { return e.by ? `<code>${slash(e.by)}</code>` : e.agent ? esc(`The ${e.agent}`) : "A person"; }
+  function machineDetail() {
+    const M = D.machine[ui.sel.m];
+    if (ui.sel.kind === "state") {
+      const st = M.states[ui.sel.id];
+      const ins = M.edges.filter(e => e.to === ui.sel.id && e.from !== ui.sel.id && edgeShown(e));
+      const outs = M.edges.filter(e => e.from === ui.sel.id && edgeShown(e));
+      const li = e => `<li><button data-edge="${esc(e.id)}" data-m="${ui.sel.m}">${esc(edgeName(e))}</button> <span class="empty">${e.by ? esc(e.by) : e.agent ? esc(e.agent) : "a person"}${edgeOff(ui.sel.m, e) ? " · unavailable" : ""}</span></li>`;
+      const off = stateOff(ui.sel.m, ui.sel.id);
+      return `<span class="who ${off ? "stop" : st.end ? "end" : ""}">${off ? "unreachable without an orchestrator" : ui.sel.m === "backlog" ? "backlog state" : "initiative state"}</span>
+        <h3><code>${esc(ui.sel.id)}</code></h3><p>${esc(st.meaning)}</p>
+        ${st.sets ? `<dl><dt>Dossier fields</dt><dd><code>${esc(st.sets)}</code></dd></dl>` : ""}
+        ${ins.length ? `<p style="margin:12px 0 0"><b>Reached by</b></p><ul class="trans">${ins.map(li).join("")}</ul>` : ""}
+        ${outs.length ? `<p style="margin:12px 0 0"><b>Leaves by</b></p><ul class="trans">${outs.map(li).join("")}</ul>` : ""}`;
+    }
+    const e = M.edges.find(x => x.id === ui.sel.id);
+    const off = edgeOff(ui.sel.m, e);
+    const [whoCls, whoTxt] = e.gap ? ["stop", "not documented yet"] : off ? ["stop", "unavailable without an orchestrator"] : e.by ? ["", "a skill does this"] : e.agent ? ["gen", "an agent does this"] : ["human", "a person decides"];
+    return `<span class="who ${whoCls}">${whoTxt}</span>
+      <h3>${esc(edgeName(e))}</h3><p>${esc(e.cond)}</p>
+      <dl>
+        <dt>By</dt><dd>${edgeBy(e)}</dd>
+        ${e.writes ? `<dt>Writes</dt><dd>${esc(e.writes)}</dd>` : ""}
+        ${e.needs ? `<dt>Needs</dt><dd>The orchestration repo (<code>repos.orchestrator</code> in <code>config.yml</code>)</dd>` : ""}
+        ${(off || e.gap) && e.why ? `<dt>Why</dt><dd>${esc(e.why)}</dd>` : ""}
+        ${standalone() && e.degrades ? `<dt>Without it</dt><dd>${esc(e.degrades)}</dd>` : ""}
+      </dl>`;
+  }
+  function viewStates() {
+    const mode = [["orchestrated", "With an orchestration repo"], ["standalone", "Without one"]];
+    const order = ["unavailable", "idle", "degrades", "works"];
+    const cap = standalone() ? `<section class="panel"><h3>What still works without an orchestrator</h3><p>Each skill when <code>repos.orchestrator</code> does not resolve. Skills that only read the orchestration repo degrade and say so; skills that write to it, or need a file it holds, cannot run.</p><div class="tablewrap"><table class="cap"><tbody>${order.flatMap(k => D.standalone.filter(r => r[1] === k)).map(([n, k, why]) => `<tr><td>${esc(n)}</td><td><span class="badge ${k}">${k}</span></td><td>${esc(why)}</td></tr>`).join("")}</tbody></table></div></section>` : "";
+    return `<h2>State machine</h2>
+      <p class="summary">Two state machines meet at the mint. The <b>backlog</b> lives in your repo, in each dossier's <code>state:</code> and its index row. The <b>initiative</b> lives in the orchestration repo's registry and starts when an INIT- is minted. <b>Select a state or an arrow</b> for what it means, who moves it and what it writes.</p>
+      <div class="controlrow"><span class="lbl">Project</span><div class="seg">${mode.map(([v, t]) => `<button class="chip" data-mode="${v}" aria-pressed="${ui.mode === v}">${t}</button>`).join("")}</div></div>
+      <div class="mach-board">
+        <div style="min-width:0">
+          <div class="mach-head" style="margin-top:0"><h3>Idea</h3><span><code>docs/product/backlog/IDEA-NNN-&lt;slug&gt;.md</code></span></div>
+          ${machineSvg("backlog")}
+          <div class="mach-head"><h3>Initiative</h3><span><code>features/INIT-YYYY-NNNN.md</code> in the orchestration repo</span></div>
+          ${machineSvg("registry")}
+        </div>
+        <div class="detail">${machineDetail()}</div>
+      </div>
+      ${cap}
+      <section class="panel"><p>Green boxes end a machine; dashed boxes are side states. ${standalone() ? "Grey arrows need the orchestration repo. The red arrow is the gap: an ending the kit does not document yet." : "Switch to <b>Without one</b> to see what changes when no orchestration repo is configured."} These diagrams mirror ${link(["Unit lifecycles", D.machine.source])}, which also covers features, gates and work units; the rules for each backlog state are in the ${link(["backlog template", "../templates/initiative-backlog.template.md"])}.</p></section>`;
   }
 
   /* ---------- Structure ---------- */
@@ -753,7 +1392,7 @@ section.panel > p { color: var(--muted); margin: 0 0 10px; max-width: 72ch; }
       <section class="panel"><h3>Skills update separately</h3><p>Upgrade carries the contract the skills read. The skills and agents themselves come from the plugin: <code>/plugin update specfuse-authoring@specfuse</code>. Upgrade also refuses a downgrade, so install the newer CLI before upgrading a project someone else already moved forward.</p><p>${link(["Keep assets current", "https://github.com/specfuse/authoring/blob/main/docs/getting-started.md#7-keep-assets-current"])}</p></section>`;
   }
 
-  const VIEWS = { picture: viewPicture, lifecycle: viewLifecycle, structure: viewStructure, skills: viewSkills, validation: viewValidation, upgrade: viewUpgrade };
+  const VIEWS = { picture: viewPicture, lifecycle: viewLifecycle, states: viewStates, structure: viewStructure, skills: viewSkills, validation: viewValidation, upgrade: viewUpgrade };
   function render() {
     renderNav();
     main.setAttribute("aria-labelledby", "tab-" + ui.view);
@@ -761,10 +1400,17 @@ section.panel > p { color: var(--muted); margin: 0 0 10px; max-width: 72ch; }
   }
 
   main.addEventListener("click", e => {
-    const t = e.target.closest("[data-plane],[data-life],[data-stage],[data-node],[data-intent],[data-mistake],[data-sim]");
+    const t = e.target.closest("[data-plane],[data-life],[data-stage],[data-node],[data-intent],[data-mistake],[data-sim],[data-state],[data-edge],[data-mode]");
     if (!t) return;
     const d = t.dataset;
-    if (d.plane) ui.plane = d.plane;
+    if (d.mode) {
+      ui.mode = d.mode;
+      const cur = D.machine[ui.sel.m];
+      if (ui.sel.kind === "edge" && !cur.edges.some(x => x.id === ui.sel.id && edgeShown(x))) ui.sel = { kind: "state", m: "backlog", id: "ready" };
+    }
+    else if (d.state) ui.sel = { kind: "state", m: d.m, id: d.state };
+    else if (d.edge) ui.sel = { kind: "edge", m: d.m, id: d.edge };
+    else if (d.plane) ui.plane = d.plane;
     else if (d.life) { ui.life = d.life; ui.stage = 0; }
     else if (d.stage) ui.stage = +d.stage;
     else if (d.node) ui.node = +d.node;
@@ -775,12 +1421,17 @@ section.panel > p { color: var(--muted); margin: 0 0 10px; max-width: 72ch; }
       ui.sim[d.sim] = v;
       if (!ui.sim.ships && ui.sim.disk === "same") ui.sim.disk = "asWritten";
     }
-    const sel = t.dataset.stage || t.dataset.node || t.dataset.plane;
+    const key = ["stage", "node", "plane", "state", "edge"].find(k => t.dataset[k] != null);
+    const inSvg = !!t.closest("svg");
     render();
-    if (sel != null) {
-      const again = main.querySelector(`[data-${t.dataset.stage ? "stage" : t.dataset.node ? "node" : "plane"}="${sel}"]`);
+    if (key && (inSvg || (key !== "state" && key !== "edge"))) {
+      const again = main.querySelector(`${inSvg ? "svg " : ""}[data-${key}="${t.dataset[key].replace(/"/g, '\\"')}"]`);
       if (again) again.focus({ preventScroll: true });
     }
+  });
+  main.addEventListener("keydown", e => {
+    const g = e.target.closest && e.target.closest("svg [data-state], svg [data-edge]");
+    if (g && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); g.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
   });
   main.addEventListener("input", e => {
     if (e.target.id !== "skill-q") return;
