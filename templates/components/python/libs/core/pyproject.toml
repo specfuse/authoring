@@ -1,0 +1,21 @@
+# Seeded once by `specfuse authoring add-component` for generator {{GeneratorVersion}}. Yours to change.
+[project]
+name = "{{CoreDist}}"
+version = "0.1.0"
+description = "Generated runtime for {{ProjectName}}: repositories, unit of work, event outbox and emitters."
+requires-python = ">=3.12"
+dependencies = [
+    "{{ContractsDist}}",
+    "opentelemetry-api>=1.0",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "sqlalchemy[asyncio]>=2.0",
+    "structlog>=24.1",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

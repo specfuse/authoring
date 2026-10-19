@@ -1561,6 +1561,85 @@ jobs:
             -p:GenSrc="$P/out-error-shape/HelloOrders.Domain/gen-src"
           echo "==> domainExceptions compiles against the kit's Error."
 
+      - name: A seeded C# component builds and serves (add-component drift guard, #177)
+        if: steps.token.outputs.have == 'true'
+        # `add-component csharp` seeds project files whose package references
+        # must match what the pinned generator's output compiles against. A pin
+        # that needs a new package fails HERE, not in an adopter's first build.
+        # hello-orders gains a `tenancy` block in this copy only: C# services
+        # need the event runtime, which needs tenancy (clabonte/generator#2883).
+        run: |
+          set -euo pipefail
+          R="$RUNNER_TEMP/component-cs" && mkdir -p "$R"
+          cp -R examples/hello-orders "$R/hello-orders"
+          cd "$R/hello-orders"
+          python3 - <<'EOF'
+          import json
+          p = "hello-orders-project.json"
+          d = json.load(open(p))
+          d["tenancy"] = {"tenant": {"entity": "Tenant", "foreignKey": "TenantId", "marker": "IHelloTenantScoped"}}
+          json.dump(d, open(p, "w"), indent=2)
+          EOF
+          specfuse-authoring add-component csharp Backend --group-prefix Backend --no-generate
+          bash "$GITHUB_WORKSPACE/templates/project-init/scripts/specfuse/bundle-spec.sh"
+          bash "$GITHUB_WORKSPACE/templates/project-init/scripts/specfuse/bundle-async-spec.sh"
+          for g in BackendDomain BackendInfrastructure BackendApi; do
+            specfuse-authoring generate generate --group "$g" hello-orders-project.json
+          done
+          cd "$R/Backend"
+          dotnet build -nologo
+          # The composition root resolves: a list, a missing resource, a bad body.
+          dotnet run --project HelloOrders.Api --no-build --urls http://127.0.0.1:5180 > "$RUNNER_TEMP/api.log" 2>&1 &
+          API_PID=$!
+          for _ in $(seq 1 60); do curl -s -o /dev/null http://127.0.0.1:5180/ && break; sleep 1; done
+          T=11111111-1111-1111-1111-111111111111
+          code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
+          list=$(code "http://127.0.0.1:5180/v1/tenants/$T/customers")
+          missing=$(code "http://127.0.0.1:5180/v1/customers/$T")
+          bad=$(code -X POST -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:5180/v1/tenants/$T/customers")
+          kill "$API_PID" || true
+          echo "list=$list missing=$missing bad=$bad"
+          if [[ "$list $missing $bad" != "200 404 400" ]]; then
+            cat "$RUNNER_TEMP/api.log"
+            echo "::error::the seeded C# component built but did not serve as expected (want 200 404 400)"; exit 1
+          fi
+          echo "==> add-component csharp: seeds, builds, and serves on the pinned generator."
+
+      - name: A seeded Python component installs, imports and passes its tests (add-component drift guard, #177)
+        if: steps.token.outputs.have == 'true'
+        # The project is renamed PascalCase in this copy only: the generator
+        # derives an invalid package root from kebab-case names
+        # (clabonte/generator#2882), and add-component refuses them.
+        run: |
+          set -euo pipefail
+          pip install --quiet uv
+          R="$RUNNER_TEMP/component-py" && mkdir -p "$R"
+          cp -R examples/hello-orders "$R/hello-orders"
+          cd "$R/hello-orders"
+          sed -i 's/"name": "hello-orders"/"name": "HelloOrders"/' hello-orders-project.json
+          specfuse-authoring add-component python hello-orders-ai --no-generate
+          bash "$GITHUB_WORKSPACE/templates/project-init/scripts/specfuse/bundle-spec.sh"
+          bash "$GITHUB_WORKSPACE/templates/project-init/scripts/specfuse/bundle-async-spec.sh"
+          for g in PythonContracts PythonCore; do
+            specfuse-authoring generate generate --group "$g" hello-orders-project.json
+          done
+          cd "$R/hello-orders-ai"
+          uv sync --all-packages
+          uv run python - <<'EOF'
+          import importlib, pkgutil, sys
+          failed = []
+          for root in ("ho_contracts", "ho_core"):
+              for m in pkgutil.walk_packages(importlib.import_module(root).__path__, root + "."):
+                  try:
+                      importlib.import_module(m.name)
+                  except Exception as e:
+                      failed.append(f"{m.name}: {type(e).__name__}: {e}")
+          print("\n".join(failed) or "every generated module imports")
+          sys.exit(1 if failed else 0)
+          EOF
+          uv run pytest -q
+          echo "==> add-component python: seeds, installs, imports and tests on the pinned generator."
+
       - name: Validate a fresh scaffold
         if: steps.token.outputs.have == 'true'
         run: |
