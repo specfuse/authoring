@@ -168,6 +168,7 @@ To pull newer skills themselves, run `/plugin update specfuse-authoring@specfuse
 
 ## Where to go next
 
+- [`flows.html`](flows.html) — interactive map of the lifecycle, project layout, skills, validation and upgrades; also in your project at `.specfuse/authoring/docs/flows.html`
 - [`README.md`](../README.md) — kit overview and asset map
 - [`handbooks/`](../handbooks/) — the full authoring contract
 - [`component-repos.md`](component-repos.md) — setting up the repos that receive generated code

@@ -71,6 +71,7 @@ See [`examples/hello-orders/`](examples/hello-orders/) for a complete worked exa
 | Look up a `x-*` extension | [`handbooks/Vendor_Extensions.md`](handbooks/Vendor_Extensions.md) | — |
 | Implement field encryption at runtime | [`handbooks/Field_Encryption_Runtime.md`](handbooks/Field_Encryption_Runtime.md) | — |
 | Configure the generator project file | [`handbooks/Project_File.md`](handbooks/Project_File.md) | — |
+| See how it all fits together | [`docs/flows.html`](docs/flows.html), an interactive map of the lifecycle, project layout, skills, validation layers and upgrades. Every project gets a copy at `.specfuse/authoring/docs/flows.html`. | Open it in a browser |
 | See a complete worked example | [`examples/hello-orders/README.md`](examples/hello-orders/README.md) | — |
 
 ## Relationship to other Specfuse repos

@@ -1,0 +1,2111 @@
+<!doctype html>
+<!--
+Copyright 2026 Specfuse Contributors
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+Interactive companion to the handbooks, docs/getting-started.md and the
+ideation templates. Shipped into every project as
+.specfuse/authoring/docs/flows.html, so it always describes the installed kit.
+scripts/check-flows-page.py keeps the embedded data (#kit-data) in step with the
+plugin's skills and agents, the backlog states, the validation layers in
+validate-specs.sh and the upgrade overlay in specfuse/authoring/scaffold.py.
+The Markdown stays the source of truth; every panel links to it.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Specfuse Authoring Flows</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a left rail of six views; each view is a track or map beside a detail card; one column on phones. Same family as the loop's flows page, with the authoring accent. */
+:root {
+  --bg: #f2f5f4;
+  --surface: #ffffff;
+  --ink: #16252a;
+  --muted: #586b70;
+  --line: #d3dedc;
+  --accent: #0f6b6e;        /* a skill or the kit does this */
+  --accent-soft: #dcefee;
+  --human: #b45f06;         /* a person decides or acts */
+  --human-soft: #fbeedd;
+  --ok: #2c7a3a;
+  --ok-soft: #e1f2e3;
+  --stop: #a3302a;
+  --stop-soft: #f8e2e0;
+  --gen: #5b4bb3;           /* generated or downstream */
+  --gen-soft: #ebe8fa;
+  --display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1719; --surface: #152226; --ink: #e2ecec; --muted: #93a8ab; --line: #27403f;
+    --accent: #5fc9c4; --accent-soft: #12332f; --human: #f0a24b; --human-soft: #3a2812;
+    --ok: #6fd17f; --ok-soft: #133019; --stop: #f08a83; --stop-soft: #3b1816;
+    --gen: #a99cf5; --gen-soft: #241f45; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1719; --surface: #152226; --ink: #e2ecec; --muted: #93a8ab; --line: #27403f;
+  --accent: #5fc9c4; --accent-soft: #12332f; --human: #f0a24b; --human-soft: #3a2812;
+  --ok: #6fd17f; --ok-soft: #133019; --stop: #f08a83; --stop-soft: #3b1816;
+  --gen: #a99cf5; --gen-soft: #241f45; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--body); margin: 0; }
+a { color: var(--accent); text-underline-offset: 2px; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 64px; }
+header.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; margin-bottom: 22px; }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(28px, 4vw, 40px); line-height: 1.05; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+.lede { margin: 6px 0 0; color: var(--muted); max-width: 64ch; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.dot.auto { background: var(--accent); }
+.dot.human { background: var(--human); }
+.dot.end { background: var(--ok); }
+.dot.gen { background: var(--gen); }
+.dot.stop { background: var(--stop); }
+
+.layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; }
+nav.views { display: flex; flex-direction: column; gap: 4px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); align-self: start; }
+nav.views button { all: unset; cursor: pointer; padding: 9px 12px; border-radius: 8px; display: grid; gap: 1px; }
+nav.views button .n { font-weight: 600; }
+nav.views button .s { font-size: 12.5px; color: var(--muted); }
+nav.views button:hover { background: var(--surface); }
+nav.views button[aria-selected="true"] { background: var(--surface); box-shadow: inset 3px 0 0 var(--accent); }
+button:focus-visible, .stage:focus-visible, .chip:focus-visible, .node:focus-visible, .tnode:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+h2 { font-family: var(--display); font-weight: 700; font-size: 26px; margin: 0 0 4px; text-wrap: balance; }
+.summary { max-width: 72ch; margin: 0 0 18px; color: var(--muted); }
+.summary b { color: var(--ink); }
+
+.board { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 20px; align-items: start; }
+ol.track { list-style: none; margin: 0; padding: 0; position: relative; }
+ol.track::before { content: ""; position: absolute; left: 15px; top: 14px; bottom: 14px; width: 2px; background: var(--line); }
+.stage { all: unset; cursor: pointer; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 10px; align-items: start; padding: 7px 8px 7px 0; border-radius: 8px; width: 100%; position: relative; }
+.stage .k { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font: 600 12px var(--mono); background: var(--surface); border: 2px solid var(--accent); color: var(--accent); z-index: 1; }
+.stage.human .k { border-color: var(--human); color: var(--human); }
+.stage.end .k { border-color: var(--ok); color: var(--ok); }
+.stage .t { font-weight: 600; padding-top: 5px; }
+.stage .c { font: 12.5px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.stage:hover .t { text-decoration: underline; text-underline-offset: 3px; }
+.stage[aria-current="true"] { background: var(--surface); }
+.stage[aria-current="true"] .k { background: var(--accent); color: var(--surface); }
+.stage.human[aria-current="true"] .k { background: var(--human); }
+.stage.end[aria-current="true"] .k { background: var(--ok); }
+.branchnote { margin: 2px 0 6px 42px; font-size: 12.5px; color: var(--muted); }
+
+.detail { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; min-width: 0; }
+.who { display: inline-block; font: 600 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 3px 8px; border-radius: 5px; background: var(--accent-soft); color: var(--accent); }
+.who.human { background: var(--human-soft); color: var(--human); }
+.who.end { background: var(--ok-soft); color: var(--ok); }
+.who.gen { background: var(--gen-soft); color: var(--gen); }
+.who.stop { background: var(--stop-soft); color: var(--stop); }
+.who.yours { background: var(--bg); color: var(--ink); border: 1px solid var(--line); }
+.detail h3 { font-family: var(--display); font-size: 21px; margin: 10px 0 6px; overflow-wrap: anywhere; }
+.detail p { margin: 0 0 10px; max-width: 68ch; }
+.detail dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; margin: 12px 0 0; font-size: 14px; }
+.detail dt { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; padding-top: 2px; }
+.detail dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+code, .cmd { font-family: var(--mono); font-size: 13px; }
+.cmd { display: block; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; overflow-x: auto; white-space: pre; }
+.stops { margin-top: 14px; border-top: 1px dashed var(--line); padding-top: 12px; }
+.stops h4 { margin: 0 0 6px; font-size: 13px; color: var(--human); text-transform: uppercase; letter-spacing: .05em; }
+.stops ul { margin: 0; padding-left: 18px; }
+.stops li { margin-bottom: 4px; }
+
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { all: unset; cursor: pointer; font: 500 13px var(--body); padding: 5px 11px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); }
+.chip.mono { font-family: var(--mono); }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.controlrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 16px; }
+.controlrow .lbl { font-size: 13px; font-weight: 600; }
+
+/* Big picture: a left-to-right chain of planes, stacked on phones. */
+.chain { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
+.node { all: unset; cursor: pointer; display: grid; gap: 4px; align-content: start; background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--accent); border-radius: 8px; padding: 12px 14px; position: relative; min-width: 0; }
+.node.human { border-top-color: var(--human); }
+.node.gen { border-top-color: var(--gen); }
+.node.yours { border-top-color: var(--ink); }
+.node .t { font-family: var(--display); font-weight: 700; font-size: 17px; }
+.node .s { font-size: 13px; color: var(--muted); }
+.node .p { font: 12px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.node[aria-current="true"] { box-shadow: 0 0 0 2px var(--ink); }
+.node:hover .t { text-decoration: underline; text-underline-offset: 3px; }
+.chain .node:not(:last-child)::after { content: "→"; position: absolute; right: -13px; top: 50%; transform: translateY(-50%); color: var(--muted); font: 600 16px var(--mono); }
+.chain.back .node:not(:last-child)::after { content: "←"; }
+.planes-caption { font-size: 12.5px; color: var(--muted); margin: -4px 0 12px; }
+.own { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+.own div { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 14px; min-width: 0; }
+.own b { display: block; font-family: var(--mono); font-size: 13px; }
+
+/* Backlog state strip */
+.states { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 16px; }
+.state { font: 500 12px var(--mono); padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); background: var(--surface); }
+.state.on { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+.state.side { border-style: dashed; }
+
+/* Structure tree */
+.tree { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 6px; font: 13px/1.5 var(--mono); overflow-x: auto; }
+.tnode { all: unset; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 2px 8px; border-radius: 5px; white-space: nowrap; }
+.tnode:hover { background: var(--bg); }
+.tnode[aria-current="true"] { background: var(--accent-soft); }
+.tnode .bar { width: 4px; align-self: stretch; border-radius: 2px; background: var(--ink); flex: none; }
+.tnode.kit .bar { background: var(--accent); }
+.tnode.gen .bar { background: var(--gen); }
+.tnode.record .bar { background: var(--stop); }
+.tnode .ind { color: var(--muted); }
+
+/* Skill finder */
+.finder { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.search { width: 100%; font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); margin-bottom: 12px; }
+.intents { display: grid; gap: 14px; }
+.intents h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.intents ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.intent { all: unset; cursor: pointer; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 6px 10px; border-radius: 6px; width: 100%; box-sizing: border-box; }
+.intent:hover { background: var(--surface); }
+.intent[aria-current="true"] { background: var(--surface); box-shadow: inset 3px 0 0 var(--accent); }
+.intent .sk { font: 12px var(--mono); color: var(--muted); }
+.intent:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.empty { color: var(--muted); font-size: 14px; }
+
+/* Validation */
+.layers { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; counter-reset: layer; }
+.layers li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 10px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.layers .n { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font: 600 12px var(--mono); background: var(--bg); color: var(--muted); }
+.layers .l { font-weight: 600; font-size: 14px; }
+.layers .sc { display: block; font: 12px var(--mono); color: var(--muted); font-weight: 400; overflow-wrap: anywhere; }
+.layers .v { font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .05em; padding: 2px 7px; border-radius: 5px; color: var(--muted); }
+.layers li.hit { border-color: var(--stop); background: var(--stop-soft); }
+.layers li.hit .n { background: var(--stop); color: var(--surface); }
+.layers li.hit .v { color: var(--stop); }
+.layers li.cascade { border-color: var(--stop); border-style: dashed; }
+.layers li.cascade .v { color: var(--stop); }
+.layers li.pass .v { color: var(--ok); }
+table.exit { border-collapse: collapse; width: 100%; font-size: 14px; margin-top: 8px; }
+table.exit th, table.exit td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.exit th { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+.tablewrap { overflow-x: auto; }
+
+/* Upgrade simulator */
+.sim { display: grid; grid-template-columns: minmax(0, 330px) minmax(0, 1fr); gap: 22px; align-items: start; }
+.controls { display: grid; gap: 16px; }
+.controls .q { display: grid; gap: 6px; }
+.controls .q > span { font-size: 13px; font-weight: 600; }
+.controls .q small { font-weight: 400; color: var(--muted); }
+.outcome { padding: 14px 16px; border-radius: 10px; font-weight: 600; font-size: 17px; font-family: var(--display); }
+.outcome small { display: block; font: 400 14px/1.5 var(--body); color: var(--ink); margin-top: 4px; }
+.outcome.ok { background: var(--ok-soft); color: var(--ok); }
+.outcome.human { background: var(--human-soft); color: var(--human); }
+.outcome.stop { background: var(--stop-soft); color: var(--stop); }
+.outcome.quiet { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
+.term { margin-top: 12px; background: #10191b; color: #d6e4e3; border-radius: 8px; padding: 10px 12px; font: 12.5px/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.term .err { color: #f3b26b; }
+.term .dim { color: #7f9796; }
+section.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-top: 22px; }
+section.panel h3 { font-family: var(--display); font-size: 19px; margin: 0 0 4px; }
+section.panel > p { color: var(--muted); margin: 0 0 10px; max-width: 72ch; }
+/* State machine */
+.machine { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
+.machine svg { display: block; min-width: 720px; width: 100%; height: auto; }
+.machine .st rect { fill: var(--surface); stroke: var(--accent); stroke-width: 2; }
+.machine .st.end rect { stroke: var(--ok); }
+.machine .st.side rect { stroke-dasharray: 5 4; }
+.machine .st text { fill: var(--ink); font: 600 13.5px var(--mono); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.machine .st, .machine .ed { cursor: pointer; }
+.machine .st.sel rect { fill: var(--accent-soft); stroke-width: 3; }
+.machine .st.end.sel rect { fill: var(--ok-soft); }
+.machine .st.off rect { stroke: var(--line); }
+.machine .st.off text { fill: var(--muted); }
+.machine .ed path.line { fill: none; stroke: var(--muted); stroke-width: 1.6; }
+.machine .ed path.hit { fill: none; stroke: transparent; stroke-width: 16; }
+.machine .ed text { fill: var(--muted); font: 500 11.5px var(--body); text-anchor: middle; paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+.machine .ed.dashed path.line { stroke-dasharray: 5 4; }
+.machine .ed.off path.line { stroke: var(--line); stroke-dasharray: 2 4; }
+.machine .ed.off text { fill: var(--muted); opacity: .6; }
+.machine .ed.gap path.line { stroke: var(--stop); stroke-dasharray: 6 4; }
+.machine .ed.gap text { fill: var(--stop); }
+.machine .ed.sel path.line { stroke: var(--ink); stroke-width: 2.6; }
+.machine .ed.sel text { fill: var(--ink); font-weight: 600; }
+.machine .ed:hover path.line { stroke: var(--ink); }
+.machine .ed:focus-visible, .machine .st:focus-visible { outline: none; }
+.machine .ed:focus-visible path.line, .machine .st:focus-visible rect { stroke: var(--ink); stroke-width: 3; }
+.machine .start { fill: var(--ink); }
+.machine .veil { fill: var(--surface); opacity: .8; }
+.machine .veiltext { fill: var(--stop); font: 600 15px var(--body); text-anchor: middle; }
+.mach-head { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; margin: 22px 0 8px; }
+.mach-head h3 { font-family: var(--display); font-size: 19px; margin: 0; }
+.mach-head span { font-size: 13px; color: var(--muted); }
+.mach-board { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 320px); gap: 18px; align-items: start; }
+.mach-board .detail { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); }
+.badge { display: inline-block; font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .05em; padding: 2px 7px; border-radius: 5px; }
+.badge.works { background: var(--ok-soft); color: var(--ok); }
+.badge.degrades { background: var(--human-soft); color: var(--human); }
+.badge.unavailable { background: var(--stop-soft); color: var(--stop); }
+.badge.idle { background: var(--bg); color: var(--muted); border: 1px solid var(--line); }
+table.cap { border-collapse: collapse; width: 100%; font-size: 14px; }
+table.cap td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.cap td:first-child { white-space: nowrap; font-family: var(--mono); font-size: 13px; }
+.trans { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
+.trans button { all: unset; cursor: pointer; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.trans button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Project file */
+.json { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 6px; font: 13px/1.6 var(--mono); overflow-x: auto; white-space: pre; }
+.json .jk { all: unset; cursor: pointer; color: var(--accent); border-radius: 4px; padding: 0 2px; }
+.json .jk.warn { color: var(--human); }
+.json .jk:hover { background: var(--accent-soft); }
+.json .jk[aria-current="true"] { background: var(--ink); color: var(--surface); }
+.json .jk:focus-visible { outline: 2px solid var(--accent); }
+.json .js { color: var(--ink); }
+.json .jn { color: var(--gen); }
+.json .jp { color: var(--muted); }
+.cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+.cards div { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 14px; min-width: 0; }
+.cards b { display: block; margin-bottom: 2px; }
+.cards.warn div { border-left: 3px solid var(--human); }
+ol.steps { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; counter-reset: s; }
+ol.steps li { counter-increment: s; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13.5px; flex: 1 1 150px; min-width: 0; }
+ol.steps li::before { content: counter(s); display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: var(--surface); font: 600 11px var(--mono); margin-right: 6px; }
+ol.steps b { font-weight: 600; }
+/* Components */
+.fan { display: grid; grid-template-columns: minmax(0, 240px) 40px minmax(0, 1fr); gap: 10px; align-items: stretch; }
+.fan .src { background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--ink); border-radius: 8px; padding: 12px 14px; display: grid; gap: 4px; align-content: start; }
+.fan .src b { font-family: var(--display); font-size: 17px; }
+.fan .src span { font: 12px var(--mono); color: var(--muted); }
+.fan .arrows { display: grid; place-items: center; color: var(--muted); font: 600 22px var(--mono); }
+.fan .targets { display: grid; gap: 8px; }
+.tgt { all: unset; cursor: pointer; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 8px; padding: 8px 12px; }
+.tgt.gen { border-left-color: var(--gen); }
+.tgt .g { font-weight: 600; }
+.tgt .l { font: 12px var(--mono); color: var(--muted); }
+.tgt .d { grid-column: 1 / -1; font: 12px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.tgt[aria-current="true"] { box-shadow: 0 0 0 2px var(--ink); }
+.tgt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rules { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+/* Loop */
+.fronts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
+.fronts div { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 14px; min-width: 0; }
+.fronts div.on { box-shadow: 0 0 0 2px var(--accent); }
+.fronts code { font-weight: 600; display: block; margin-bottom: 2px; }
+.cmdchain { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 10px 0; }
+.cmdchain code { background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 2px 6px; font-size: 12.5px; }
+.cmdchain i { color: var(--muted); font-style: normal; }
+table.surf { border-collapse: collapse; width: 100%; font-size: 14px; }
+table.surf th, table.surf td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.surf th { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.foot { margin-top: 40px; font-size: 13px; color: var(--muted); max-width: 80ch; }
+
+/* Detail panels follow the scroll beside long lists; on phones they stack below instead. */
+@media (min-width: 861px) {
+  .board > .detail, .finder > div:last-child { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); max-height: calc(100vh - 24px); overflow-y: auto; }
+}
+@media (max-width: 980px) {
+  .chain { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .chain .node:nth-child(2n)::after { display: none; }
+}
+@media (max-width: 860px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  nav.views { position: static; flex-direction: row; overflow-x: auto; gap: 6px; padding-bottom: 4px; }
+  nav.views button { white-space: nowrap; }
+  nav.views button .s { display: none; }
+  nav.views button[aria-selected="true"] { box-shadow: inset 0 -3px 0 var(--accent); }
+  .board, .finder, .sim, .mach-board { grid-template-columns: minmax(0, 1fr); }
+  .mach-board .detail { position: static; }
+  .own, .cards, .fronts { grid-template-columns: minmax(0, 1fr); }
+  .fan { grid-template-columns: minmax(0, 1fr); }
+  .fan .arrows { transform: rotate(90deg); height: 30px; }
+}
+@media (max-width: 560px) {
+  .chain { grid-template-columns: minmax(0, 1fr); }
+  .chain .node::after { display: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .detail, .outcome { transition: background-color .15s ease; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Specfuse Authoring Flows</h1>
+      <p class="lede">How an idea becomes validated specs, what lives where in your project, which skill to reach for, and what <code>specfuse authoring upgrade</code> will do to your files.</p>
+    </div>
+    <div class="legend" aria-label="Legend">
+      <span><i class="dot auto"></i>a skill or the kit</span>
+      <span><i class="dot human"></i>you decide</span>
+      <span><i class="dot gen"></i>generated or downstream</span>
+      <span><i class="dot end"></i>done here</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="views" id="nav" role="tablist" aria-label="Views"></nav>
+    <main id="main"></main>
+  </div>
+
+  <p class="foot">The handbooks and templates are the source of truth; this page is a map of them and links to each. It ships with the kit and <code>specfuse authoring upgrade</code> replaces it, so it describes the version you have installed. Skills are invoked as <code>/specfuse-authoring:&lt;name&gt;</code> once the plugin is installed.</p>
+</div>
+
+<script type="application/json" id="kit-data">
+{
+  "views": [
+    {"id": "picture", "name": "Big picture", "sub": "Where the kit sits"},
+    {"id": "lifecycle", "name": "Idea to specs", "sub": "The initiative lifecycle"},
+    {"id": "states", "name": "State machine", "sub": "Every state and transition"},
+    {"id": "structure", "name": "Your project", "sub": "What lives where"},
+    {"id": "projectfile", "name": "Project file", "sub": "<project>-project.json"},
+    {"id": "components", "name": "Specs and components", "sub": "Where generated code goes"},
+    {"id": "loop", "name": "The loop", "sub": "When and how to use it"},
+    {"id": "skills", "name": "Which skill?", "sub": "Find the right command"},
+    {"id": "validation", "name": "Validation", "sub": "What catches what"},
+    {"id": "upgrade", "name": "Upgrades", "sub": "What happens to a file"}
+  ],
+
+  "planes": [
+    {"id": "kit", "kind": "auto", "row": "forward", "title": "Authoring kit", "sub": "The contract: rules, samples, linters, skills", "path": "specfuse authoring init | upgrade",
+     "body": "The kit defines how specs are written. Handbooks state the rules, samples show the canonical shapes, Spectral rulesets enforce them, and the validation scripts run every layer. The Claude Code skills and agents ship separately as the specfuse-authoring plugin in the specfuse marketplace.",
+     "facts": [["Delivered by", "<code>specfuse authoring init</code> once, then <code>specfuse authoring upgrade</code>"], ["Skills", "<code>/plugin install specfuse-authoring@specfuse</code>, updated with <code>/plugin update</code>"], ["Lands in", "<code>.specfuse/authoring/</code> and <code>scripts/specfuse/</code>"]],
+     "links": [["Getting started", "https://github.com/specfuse/authoring/blob/main/docs/getting-started.md"], ["Kit README", "https://github.com/specfuse/authoring/blob/main/README.md"]]},
+    {"id": "specs", "kind": "yours", "row": "forward", "title": "Your specs repo", "sub": "OpenAPI, AsyncAPI, Arazzo, backlog", "path": "api/specs/v1/  docs/product/",
+     "body": "You own everything you author: the OpenAPI operations and models, the AsyncAPI channels, events and workers, the Arazzo scenarios and setup recipes, and the ideation backlog. Skills write here with you; the kit's upgrade never touches it.",
+     "facts": [["Specs", "<code>api/specs/v1/</code>"], ["Backlog", "<code>docs/product/INITIATIVE_BACKLOG.md</code> plus one dossier per idea"], ["Generator config", "<code>&lt;project&gt;-project.json</code>"]],
+     "links": [["API handbook", "../handbooks/API_Handbook.md"], ["AsyncAPI handbook", "../handbooks/AsyncAPI_Handbook.md"], ["Arazzo handbook", "../handbooks/Arazzo_Handbook.md"]]},
+    {"id": "generator", "kind": "auto", "row": "forward", "title": "Generator", "sub": "Validates the model, generates the code", "path": "generator.lock",
+     "body": "The Specfuse generator reads your bundled specs through the project file. Its validate pass is the last and broadest gate: the DDD ruleset, the async cross-spec rules and the source-tree rules. Its generate pass produces code and documentation. The kit pins one generator version and checks the jar's checksum before running it.",
+     "facts": [["Validate", "<code>./scripts/specfuse/validate-generator.sh</code>"], ["Generate", "<code>specfuse authoring generate --group &lt;group&gt; &lt;project&gt;-project.json</code>"], ["Access", "Needs a generator token; see generator access"]],
+     "links": [["Project file", "../handbooks/Project_File.md"], ["Generator access", "https://github.com/specfuse/authoring/blob/main/docs/generator-access.md"]]},
+    {"id": "output", "kind": "gen", "row": "forward", "title": "Generated output", "sub": "Backend, frontend, workers, docs", "path": "output/  api/docs/flows/  docs/generated/",
+     "body": "Generated code (C# backend and workers, Flutter frontend, per the groups your project file declares), the bundled specs under output/, and Markdown documentation: one page per scenario under api/docs/flows/ plus technical references under docs/generated/. Regenerate rather than edit.",
+     "facts": [["Bundles", "<code>output/openapi-bundled.yaml</code>, <code>output/asyncapi-bundled.yaml</code>"], ["Scenario docs", "<code>./scripts/specfuse/generate-scenario-docs.sh</code>"]],
+     "links": [["Vendor extensions", "../handbooks/Vendor_Extensions.md"]]},
+    {"id": "handoff", "kind": "auto", "row": "down", "title": "Handoff manifest", "sub": "Packages finished specs for implementation", "path": "api/docs/handoffs/",
+     "body": "prepare-handoff runs the full validation suite, regenerates scenario docs and bundles, builds the operation, async, entity and scenario inventories, and has the handoff-composer agent write one manifest. It writes nothing outside your repo.",
+     "facts": [["Skill", "<code>/specfuse-authoring:prepare-handoff</code>"], ["Backlog effect", "The idea becomes <code>specified</code>"]],
+     "links": [["Backlog template", "../templates/initiative-backlog.template.md"]]},
+    {"id": "orchestrator", "kind": "human", "row": "down", "title": "Orchestration repo", "sub": "Registry and the INIT- mint · optional", "path": "features/INIT-YYYY-NNNN.md",
+     "body": "A person decides to implement. initiative-intake mints the INIT-YYYY-NNNN correlation ID, writes the registry entry and emits initiative_created. From a manifest the initiative starts at planning, and decomposition into per-repo work reads the manifest's component inventory instead of guessing it.",
+     "facts": [["Skill", "<code>/specfuse-authoring:initiative-intake</code>"], ["Configured by", "<code>repos.orchestrator</code> in <code>.specfuse/authoring/config.yml</code>"], ["Without one", "Ideation, design, validation and generation still work; handoff and intake do not. See the State machine view."]],
+     "links": [["Backlog template", "../templates/initiative-backlog.template.md"]]},
+    {"id": "loop", "kind": "gen", "row": "down", "title": "Implementation", "sub": "Component repos and their agents", "path": "specfuse:spec-issue",
+     "body": "Component repos implement against your specs. When an implementing agent finds a problem in a spec it files an issue labelled specfuse:spec-issue; spec-issue-triage decides whether the fix is a spec correction you make here or a generator template bug to report upstream.",
+     "facts": [["Spec problems come back as", "<code>specfuse:spec-issue</code> issues, handled by <code>/specfuse-authoring:spec-issue-triage</code>"], ["Generated code wrong", "<code>/specfuse-authoring:file-generator-issue</code>"]],
+     "links": [["AI access policy", "../handbooks/AI_Access_Policy_Framework.md"]]}
+  ],
+
+  "owners": [
+    ["specfuse/authoring", "This kit: handbooks, samples, Spectral rulesets, validation scripts, the authoring skills and agents, and the idea dossier template."],
+    ["Your specs repo", "Every spec file, the backlog and dossiers, the project file, config.yml, CLAUDE.md."],
+    ["The orchestration repo", "Initiative registry entries and the INIT- mint. It reads your handoff manifest; it never reads your backlog."],
+    ["specfuse/loop", "The methodology and the rules for spec work units when specs are authored under gates."]
+  ],
+
+  "backlogStates": ["idea", "shaping", "ready", "specified", "minted", "delivered", "parked", "dropped"],
+  "backlogSide": ["delivered", "parked", "dropped"],
+  "readiness": [
+    "Problem stated (a real pain/opportunity, not a solution in disguise)",
+    "Value clear (one-sentence user-observable outcome)",
+    "Rough scope + boundary (in and out, coarse but bounded)",
+    "Target repos named (which components it spans)"
+  ],
+
+  "lifecycles": [
+    {"id": "spec-first", "name": "Specs before the mint", "tag": "default",
+     "summary": "The default for spec-first projects. You author the specs under gates first; the INIT- is minted from the handoff manifest, so the orchestrator decomposes a known spec surface instead of rediscovering it.",
+     "stages": [
+       {"t": "Capture the idea", "skill": "ideation-capture", "kind": "auto", "state": "idea",
+        "body": "Record the idea before it is lost. One row in the backlog index and a stub dossier, both at <code>idea</code>. No interview and no readiness check: capture is meant to be cheap. Ideas from people outside the project can come in with <code>--from-issue &lt;url&gt;</code>.",
+        "writes": "<code>docs/product/INITIATIVE_BACKLOG.md</code> row and <code>docs/product/backlog/IDEA-NNN-&lt;slug&gt;.md</code>"},
+       {"t": "Shape it to ready", "skill": "ideation-shape", "kind": "human", "state": "shaping",
+        "body": "Work the dossier until its specs can be authored. The skill infers what it can from your files and asks you the rest, moving the idea <code>idea → shaping → ready</code>. It is also where you decide to bundle several ideas into one initiative.",
+        "writes": "The dossier and the index row's state",
+        "stops": ["All four readiness items must be checked before the idea is <code>ready</code>.", "Bundling is your decision, recorded in the lead dossier's <code>bundles:</code>. It is never inferred."],
+        "readiness": true},
+       {"t": "Publish to GitHub", "skill": "ideation-publish", "kind": "human", "state": "ready", "optional": true,
+        "body": "Optional. Opens a GitHub issue for the idea so it can be assigned and planned on a GitHub Project while its specs are authored. Offered when the idea reaches <code>ready</code>, never done automatically. After that the issue mirrors the idea's state.",
+        "writes": "One GitHub issue, in the repo set under <code>github:</code> in <code>config.yml</code>",
+        "stops": ["You confirm anything that adds new public text."]},
+       {"t": "Author the specs", "skill": "design-scenario", "also": ["design-async", "design-recipe", "create-job", "create-worker"], "kind": "auto", "state": "ready",
+        "body": "Authoring happens in a loop feature, under gates, not in a backlog state. The dossier records which feature (<code>graduated_to</code>) and since when (<code>started</code>). Each work unit must leave the whole spec tree validating. The design skills do the shaping of each scenario, event, job, worker and recipe.",
+        "writes": "<code>api/specs/v1/</code>",
+        "stops": ["You review and arm each gate's work units (<code>/arm-gate</code> in the loop).", "A dangling <code>$ref</code> breaks the bundle and fails every validation layer at once."]},
+       {"t": "Validate everything", "skill": "validate", "also": ["validate-async", "validate-scenarios", "review-scenario"], "kind": "auto", "state": "ready",
+        "body": "Run the full suite: OpenAPI, AsyncAPI and Arazzo structure and lint, then the generator's cross-spec gate. <code>review-scenario</code> gives each new scenario a cold second opinion before merge. See the Validation view for what each layer catches.",
+        "writes": "Nothing in your specs; bundles under <code>output/</code>",
+        "cmd": "./scripts/specfuse/validate-specs.sh"},
+       {"t": "Publish the handoff", "skill": "prepare-handoff", "kind": "auto", "state": "specified",
+        "body": "Packages the finished specs: re-runs validation, regenerates scenario docs and bundles, builds the inventories and has the <code>handoff-composer</code> agent write the manifest. The idea becomes <code>specified</code>, and its dossier records the manifest in <code>handoff</code>.",
+        "writes": "<code>api/docs/handoffs/</code>"},
+       {"t": "Decide: implement or not", "kind": "human", "state": "specified",
+        "body": "<code>specified</code> is a waypoint, never a resting place: it means the specs exist and a decision is owed. Implement it, or record it as <code>delivered</code> when the spec tree is the whole deliverable. <code>ideation-groom</code> reports any <code>specified</code> idea that sits too long.",
+        "stops": ["Mint it (next stage), or mark it <code>delivered</code>: a spec-only idea gets no INIT-, because a registry entry nothing implements does nothing.", "Or park it: <code>parked</code> is a good idea at the wrong time."]},
+       {"t": "Mint the initiative", "skill": "initiative-intake", "kind": "end", "state": "minted",
+        "body": "Reads the dossier and the manifest, mints <code>INIT-YYYY-NNNN</code>, writes the registry entry in the orchestration repo with <code>specs_source</code> pointing at the manifest, and starts it at <code>planning</code>. The backlog row, and any bundled rows, flip to <code>minted</code> and link the INIT-.",
+        "writes": "The orchestration repo's registry; your backlog row"}
+     ],
+     "aside": "Run <code>/specfuse-authoring:ideation-groom</code> now and then: it surfaces ideas ready to mint, parks stale ones, flags duplicates, undated feature starts and orphaned dossiers. It never deletes a row."},
+    {"id": "mint-first", "name": "Mint first", "tag": "small specs",
+     "summary": "The older order, still right when the specs are small next to the implementation. The INIT- is minted from the dossier alone and the specs are drafted inside the initiative, with the specs agent as partner.",
+     "stages": [
+       {"t": "Capture the idea", "skill": "ideation-capture", "kind": "auto", "state": "idea",
+        "body": "Same as the default path: one index row and a stub dossier at <code>idea</code>.",
+        "writes": "<code>docs/product/INITIATIVE_BACKLOG.md</code> and a dossier"},
+       {"t": "Shape it to ready", "skill": "ideation-shape", "kind": "human", "state": "ready",
+        "body": "Work the dossier through the four-point readiness checklist. A <code>ready</code> idea with no <code>graduated_to</code> is eligible for intake on this path.",
+        "stops": ["All four readiness items checked."], "readiness": true},
+       {"t": "Mint the initiative", "skill": "initiative-intake", "kind": "human", "state": "minted",
+        "body": "Mints <code>INIT-YYYY-NNNN</code> from the dossier, writes the registry entry, emits <code>initiative_created</code> and sets the initiative to <code>drafting</code>. No downstream skill can work on the initiative until this entry exists.",
+        "writes": "The orchestration repo's registry; your backlog row",
+        "stops": ["You decide to start the initiative; the mint is not reversible, an INIT- id is never reused."]},
+       {"t": "Draft the specs", "skill": "spec-drafting", "also": ["design-scenario", "design-async", "design-recipe"], "kind": "human", "state": "minted",
+        "body": "Three conversational phases: feature scoping, spec drafting, pre-validation review. Your product judgment leads; the skill keeps acceptance criteria concrete, single-behavior and testable. It never runs the validator or changes frontmatter.",
+        "writes": "The initiative's specs"},
+       {"t": "Validate and hand to planning", "skill": "spec-validation", "kind": "end", "state": "minted",
+        "body": "Runs Specfuse validation, turns failures into actionable feedback, and owns the <code>drafting → validating → planning</code> transitions. It emits <code>spec_validated</code> and never transitions on a failed run. At <code>planning</code> the PM agent takes over.",
+        "stops": ["You ask for validation; on failure you fix and run again."]}
+     ],
+     "aside": "Both paths are legal. What is never right is dispatching implementation against specs that do not exist."},
+    {"id": "standalone", "name": "No orchestrator", "tag": "kit only",
+     "summary": "A specs repo with the kit but no orchestration repo: nothing to hand off to and nothing to mint into. Ideation, design, validation and generation all work. Handoff, intake, spec-drafting and spec-validation do not, because each reads or writes the orchestration repo.",
+     "stages": [
+       {"t": "Capture the idea", "skill": "ideation-capture", "kind": "auto", "state": "idea",
+        "body": "Unchanged. Capture never touches the orchestration repo.",
+        "writes": "<code>docs/product/INITIATIVE_BACKLOG.md</code> and a dossier"},
+       {"t": "Shape it to ready", "skill": "ideation-shape", "kind": "human", "state": "ready",
+        "body": "Works from the backlog alone. The one check it cannot make is overlap with already-minted initiatives; the report says <em>Overlap against minted work was not checked</em> instead of stopping.",
+        "stops": ["All four readiness items checked."], "readiness": true},
+       {"t": "Publish to GitHub", "skill": "ideation-publish", "kind": "human", "state": "ready", "optional": true,
+        "body": "Optional and unchanged. It needs <code>github.ideas.repo</code> in <code>config.yml</code>, not an orchestrator. A GitHub issue and Project board can stand in for the planning an orchestrator would do."},
+       {"t": "Author the specs", "skill": "design-scenario", "also": ["design-async", "design-recipe", "create-job", "create-worker"], "kind": "auto", "state": "ready",
+        "body": "Interactively with the design skills, or as a loop feature if the Specfuse loop is installed (then set <code>graduated_to</code> and <code>started</code>). <code>spec-drafting</code> is not available: it works inside a minted initiative.",
+        "writes": "<code>api/specs/v1/</code>"},
+       {"t": "Validate", "skill": "validate", "also": ["validate-async", "validate-scenarios", "review-scenario"], "kind": "auto", "state": "ready",
+        "body": "The full suite runs entirely in your repo. It replaces <code>spec-validation</code>, which records its result in the registry.",
+        "cmd": "./scripts/specfuse/validate-specs.sh"},
+       {"t": "Generate and build", "skill": "generate", "also": ["bundle"], "kind": "auto", "state": "ready",
+        "body": "Generate code and docs from the validated specs and implement against them yourself. There is no handoff manifest: <code>prepare-handoff</code> stops at its first step without the orchestration repo's handoff contract.",
+        "writes": "Generated code, <code>api/docs/flows/</code>, <code>docs/generated/</code>"},
+       {"t": "Close the idea", "kind": "end", "state": "delivered",
+        "body": "No skill takes an idea past <code>ready</code> here: <code>specified</code> needs a manifest and <code>minted</code> needs a registry. Record <code>delivered</code> by hand in the dossier and the row once the specs are authored and validated.",
+        "stops": ["You record <code>delivered</code>, or <code>parked</code> / <code>dropped</code>. The templates describe <code>delivered</code> as following <code>specified</code>, so this ending is not documented there yet; see the State machine view."]}
+     ],
+     "aside": "<code>ideation-groom</code> still runs and grades every class except <em>overtaken</em>. It keeps listing <code>ready</code> ideas as ready to mint, which here you can read as ready to close."}
+  ],
+
+  "machine": {
+   "source": "https://github.com/specfuse/specfuse/blob/main/docs/unit-lifecycles.md",
+   "backlog": {
+    "viewBox": "0 0 900 400",
+    "start": {
+     "x": 20,
+     "y": 200
+    },
+    "states": {
+     "idea": {
+      "x": 105,
+      "y": 200,
+      "meaning": "Captured and not yet shaped. A one-line row and a stub dossier is a valid, encouraged state: the backlog's job is to lose no idea.",
+      "sets": "idea_id, slug"
+     },
+     "shaping": {
+      "x": 270,
+      "y": 200,
+      "meaning": "The dossier is being worked: context, scope, target repos, readiness checklist. It stays here until every readiness item is checked and no [blocking] unknown remains.",
+      "sets": "target_repos, bundles / bundled_into"
+     },
+     "ready": {
+      "x": 440,
+      "y": 200,
+      "meaning": "Cleared to have its specs authored, not cleared to mint. Authoring is not a backlog state: when a loop feature starts authoring the specs, the dossier records graduated_to and started, and the idea stays ready until the manifest is published.",
+      "sets": "graduated_to, started"
+     },
+     "specified": {
+      "x": 625,
+      "y": 200,
+      "meaning": "The specs exist and a handoff manifest is published. A decision is owed: implement it or record it as delivered. A waypoint, never a resting place; ideation-groom reports one that ages.",
+      "sets": "handoff"
+     },
+     "minted": {
+      "x": 815,
+      "y": 200,
+      "meaning": "Graduated: an INIT-YYYY-NNNN exists in the orchestration repo. The row stays as a breadcrumb; the registry takes over. Bundled rows flip with the lead.",
+      "sets": "minted_init",
+      "end": true
+     },
+     "delivered": {
+      "x": 625,
+      "y": 345,
+      "meaning": "The terminal state for spec-only work: the spec tree was the whole deliverable, so no INIT- is minted. A deliberate act a person records, not a state a row decays into.",
+      "end": true
+     },
+     "parked": {
+      "x": 190,
+      "y": 62,
+      "meaning": "A good idea at the wrong time. Kept, and revisited at groom.",
+      "side": true
+     },
+     "dropped": {
+      "x": 530,
+      "y": 62,
+      "meaning": "Decided against. The row and dossier stay with a one-line reason, so the idea is not proposed again.",
+      "end": true,
+      "side": true
+     }
+    },
+    "edges": [
+     {
+      "id": "capture",
+      "from": "start",
+      "to": "idea",
+      "by": "ideation-capture",
+      "cond": "Any time. A typed title, or --from-issue <url> for an idea someone filed on GitHub.",
+      "writes": "A row in docs/product/INITIATIVE_BACKLOG.md and docs/product/backlog/IDEA-NNN-<slug>.md"
+     },
+     {
+      "id": "shape",
+      "from": "idea",
+      "to": "shaping",
+      "by": "ideation-shape",
+      "label": "shape",
+      "cond": "The first substantive edit to the dossier.",
+      "writes": "Dossier and row state",
+      "degrades": "Overlap with already-minted initiatives is not checked; the report says so."
+     },
+     {
+      "id": "ready",
+      "from": "shaping",
+      "to": "ready",
+      "by": "ideation-shape",
+      "label": "4/4 ready",
+      "cond": "All four readiness items genuinely checked and no [blocking] unknown left. The skill then offers ideation-publish.",
+      "writes": "Dossier and row state",
+      "degrades": "Overlap with already-minted initiatives is not checked."
+     },
+     {
+      "id": "reshape",
+      "from": "ready",
+      "to": "shaping",
+      "by": "ideation-groom",
+      "label": "under-shaped",
+      "bend": -46,
+      "cond": "Groom finds the readiness boxes checked but the dossier thin or unsupported. Reverted when you accept the report.",
+      "writes": "The backlog index"
+     },
+     {
+      "id": "handoff",
+      "from": "ready",
+      "to": "specified",
+      "by": "prepare-handoff",
+      "label": "handoff",
+      "needs": "orchestrator",
+      "cond": "The specs are authored and the whole suite validates. The manifest carries the id of the loop feature that authored the specs.",
+      "writes": "api/docs/handoffs/<id>.md; the dossier's handoff field",
+      "why": "prepare-handoff reads the handoff contract from the orchestration repo and stops at its first step when that repo cannot be resolved."
+     },
+     {
+      "id": "mint-direct",
+      "from": "ready",
+      "to": "minted",
+      "by": "initiative-intake",
+      "label": "mint first",
+      "bend": 112,
+      "needs": "orchestrator",
+      "cond": "Mint-first path: a ready idea with no graduated_to. The specs will be drafted inside the INIT-, starting at drafting.",
+      "writes": "The registry entry in the orchestration repo; minted_init on the dossier",
+      "why": "Intake writes the registry entry in the orchestration repo and mints the id from it.",
+      "ldx": 78
+     },
+     {
+      "id": "mint",
+      "from": "specified",
+      "to": "minted",
+      "by": "initiative-intake",
+      "label": "mint",
+      "needs": "orchestrator",
+      "cond": "A person decides to implement. Intake reads the dossier and the manifest; the initiative starts at planning.",
+      "writes": "The registry entry with specs_source; minted_init on the dossier",
+      "why": "Intake writes the registry entry in the orchestration repo and mints the id from it."
+     },
+     {
+      "id": "deliver",
+      "from": "specified",
+      "to": "delivered",
+      "by": null,
+      "label": "spec-only",
+      "cond": "The spec tree is the whole deliverable; no component repo will implement it as an initiative.",
+      "writes": "Dossier and row state, by hand. On a published idea, ideation-publish shows the reason before posting it.",
+      "ldy": 40,
+      "ldx": -30
+     },
+     {
+      "id": "gap",
+      "from": "ready",
+      "to": "delivered",
+      "by": null,
+      "label": "by hand",
+      "bend": -30,
+      "gap": true,
+      "only": "standalone",
+      "cond": "Without an orchestration repo no skill moves an idea past ready: prepare-handoff cannot publish a manifest, so specified is unreachable, and there is nothing to mint into. The workable ending today is to record delivered by hand once the specs are authored and validated.",
+      "writes": "Dossier and row state, by hand",
+      "why": "The templates describe delivered as following specified, so this ending is not documented there yet."
+     },
+     {
+      "id": "park-idea",
+      "from": "idea",
+      "to": "parked",
+      "by": "ideation-groom",
+      "cond": "Stale: untouched a long while, no momentum. Parked when you accept the groom report.",
+      "writes": "The backlog index"
+     },
+     {
+      "id": "park-shaping",
+      "from": "shaping",
+      "to": "parked",
+      "by": "ideation-groom",
+      "bend": 18,
+      "cond": "Stale: untouched a long while, no momentum.",
+      "writes": "The backlog index"
+     },
+     {
+      "id": "revisit",
+      "from": "parked",
+      "to": "shaping",
+      "by": null,
+      "bend": 18,
+      "dashed": true,
+      "cond": "Picked back up. Parked ideas are revisited at groom; resuming one is your call.",
+      "writes": "Row state, then ideation-shape"
+     },
+     {
+      "id": "drop-parked",
+      "from": "parked",
+      "to": "dropped",
+      "by": null,
+      "cond": "Decided against after parking. Record a one-line reason.",
+      "writes": "Row state and reason"
+     },
+     {
+      "id": "drop-idea",
+      "from": "idea",
+      "to": "dropped",
+      "by": null,
+      "cond": "Decided against. The row is kept with a one-line reason, never deleted.",
+      "writes": "Row state and reason"
+     },
+     {
+      "id": "drop-shaping",
+      "from": "shaping",
+      "to": "dropped",
+      "by": null,
+      "cond": "Decided against, for example because it duplicates already-minted work.",
+      "writes": "Row state and reason"
+     },
+     {
+      "id": "drop-ready",
+      "from": "ready",
+      "to": "dropped",
+      "by": "ideation-groom",
+      "cond": "Overtaken: groom finds it overlaps an already-minted INIT- and recommends dropped with a link.",
+      "writes": "The backlog index",
+      "degrades": "Without an orchestration repo groom cannot see minted work, so it reports overtaken as not assessed."
+     }
+    ]
+   },
+   "registry": {
+    "viewBox": "0 0 900 340",
+    "start": {
+     "x": 22,
+     "y": 70
+    },
+    "states": {
+     "drafting": {
+      "x": 140,
+      "y": 70,
+      "meaning": "Minted from a dossier; the specs are being drafted with spec-drafting and the design skills."
+     },
+     "validating": {
+      "x": 310,
+      "y": 70,
+      "meaning": "spec-validation has run or is running. A failed run emits no transition and leaves the initiative here; it never goes back to drafting."
+     },
+     "planning": {
+      "x": 480,
+      "y": 70,
+      "meaning": "The plane handoff has happened: the pm agent owns the initiative and decomposes it into a feature graph."
+     },
+     "plan_review": {
+      "x": 650,
+      "y": 70,
+      "meaning": "The pm has proposed a feature graph and waits for a person to approve it. The pm never approves its own plan."
+     },
+     "generating": {
+      "x": 820,
+      "y": 70,
+      "meaning": "Approved. The pm generates code and opens one specfuse:feature issue per feature, per repo."
+     },
+     "in_progress": {
+      "x": 820,
+      "y": 205,
+      "meaning": "Component repos are running their loop features. The merge watcher closes tasks as PRs merge."
+     },
+     "done": {
+      "x": 650,
+      "y": 205,
+      "meaning": "The last feature is done and the pm has written the cross-component retro.",
+      "end": true
+     },
+     "blocked": {
+      "x": 310,
+      "y": 205,
+      "meaning": "An agent escalated. A person resolves the escalation and the initiative returns to drafting.",
+      "side": true
+     },
+     "abandoned": {
+      "x": 820,
+      "y": 300,
+      "meaning": "Stopped by a person, or by the pm cascading an abandonment.",
+      "end": true,
+      "side": true
+     }
+    },
+    "edges": [
+     {
+      "id": "r-intake",
+      "from": "start",
+      "to": "drafting",
+      "by": "initiative-intake",
+      "cond": "Mint first: intake mints the INIT-, writes the registry entry and emits initiative_created.",
+      "writes": "features/INIT-YYYY-NNNN.md in the orchestration repo"
+     },
+     {
+      "id": "r-manifest",
+      "from": "start",
+      "to": "planning",
+      "by": "initiative-intake",
+      "label": "from a manifest",
+      "bend": -58,
+      "cond": "Spec-before-mint: the specs were authored and validated under gates before the mint, so drafting and validating are skipped. The registry records specs_source.",
+      "writes": "features/INIT-YYYY-NNNN.md with specs_source"
+     },
+     {
+      "id": "r-validate",
+      "from": "drafting",
+      "to": "validating",
+      "by": "spec-validation",
+      "label": "validate",
+      "cond": "You ask for validation. The transition is emitted before the validator runs, so the log records the attempt even if it crashes.",
+      "writes": "Registry state and an event"
+     },
+     {
+      "id": "r-fail",
+      "from": "validating",
+      "to": "validating",
+      "by": "spec-validation",
+      "label": "fails",
+      "self": true,
+      "cond": "Errors found: no transition is emitted. Fix the specs and run validation again from here. Three failures in a row raise a spinning_detected escalation.",
+      "writes": "Nothing in the registry state"
+     },
+     {
+      "id": "r-pass",
+      "from": "validating",
+      "to": "planning",
+      "by": "spec-validation",
+      "label": "clean pass",
+      "cond": "Zero errors. This is the plane handoff from the specs agent to the pm.",
+      "writes": "Registry state and events"
+     },
+     {
+      "id": "r-plan",
+      "from": "planning",
+      "to": "plan_review",
+      "by": null,
+      "label": "pm plans",
+      "agent": "pm",
+      "cond": "The pm decomposes the initiative into a feature graph and writes a plan-review file.",
+      "writes": "Feature graph INIT-…/FNN, plan-review file"
+     },
+     {
+      "id": "r-reject",
+      "from": "plan_review",
+      "to": "planning",
+      "by": null,
+      "label": "rejected",
+      "bend": 34,
+      "cond": "A person rejects the plan; the pm plans again.",
+      "writes": "Registry state"
+     },
+     {
+      "id": "r-approve",
+      "from": "plan_review",
+      "to": "generating",
+      "by": null,
+      "label": "approved",
+      "cond": "The approval gate. A person approves; the pm never self-approves.",
+      "writes": "Registry state"
+     },
+     {
+      "id": "r-dispatch",
+      "from": "generating",
+      "to": "in_progress",
+      "by": null,
+      "label": "dispatched",
+      "agent": "pm",
+      "cond": "The first task issue is opened in a component repo.",
+      "writes": "specfuse:feature issues"
+     },
+     {
+      "id": "r-done",
+      "from": "in_progress",
+      "to": "done",
+      "by": null,
+      "label": "all merged",
+      "agent": "merge watcher, then pm",
+      "cond": "The last feature is done and the pm writes the retro.",
+      "writes": "Root LEARNINGS.md"
+     },
+     {
+      "id": "r-abandon",
+      "from": "in_progress",
+      "to": "abandoned",
+      "by": null,
+      "cond": "A person stops the initiative, or the pm cascades an abandonment.",
+      "writes": "Registry state"
+     },
+     {
+      "id": "r-block-d",
+      "from": "drafting",
+      "to": "blocked",
+      "by": null,
+      "agent": "any agent",
+      "cond": "Escalation. Any agent can block an initiative from drafting, validating, planning, generating or in_progress.",
+      "writes": "Registry state"
+     },
+     {
+      "id": "r-block-v",
+      "from": "validating",
+      "to": "blocked",
+      "by": null,
+      "agent": "any agent",
+      "cond": "Escalation, for example spinning_detected after three failed validations.",
+      "writes": "Registry state",
+      "bend": -52
+     },
+     {
+      "id": "r-block-p",
+      "from": "planning",
+      "to": "blocked",
+      "by": null,
+      "agent": "any agent",
+      "cond": "Escalation.",
+      "writes": "Registry state"
+     },
+     {
+      "id": "r-block-g",
+      "from": "generating",
+      "to": "blocked",
+      "by": null,
+      "agent": "any agent",
+      "cond": "Escalation.",
+      "writes": "Registry state"
+     },
+     {
+      "id": "r-block-i",
+      "from": "in_progress",
+      "to": "blocked",
+      "by": null,
+      "agent": "any agent",
+      "bend": -40,
+      "cond": "Escalation.",
+      "writes": "Registry state"
+     },
+     {
+      "id": "r-unblock",
+      "from": "blocked",
+      "to": "drafting",
+      "by": null,
+      "label": "resolved",
+      "bend": -30,
+      "cond": "A person resolves the escalation; the initiative returns to drafting.",
+      "writes": "Registry state"
+     }
+    ]
+   }
+  },
+
+  "standalone": [
+    ["ideation-capture", "works", "Writes only to this repo."],
+    ["ideation-shape", "degrades", "Shapes from the backlog alone; overlap with minted work is not checked and the report says so."],
+    ["ideation-publish", "works", "Needs github.ideas.repo in config.yml, not the orchestrator."],
+    ["ideation-groom", "degrades", "Every class is graded except overtaken, reported as not assessed. It keeps listing ready ideas as ready to mint."],
+    ["initiative-intake", "unavailable", "Writes the registry entry in the orchestration repo and mints the INIT- from it."],
+    ["spec-drafting", "unavailable", "Works inside a minted INIT- and updates its registry entry. Use the design skills and the handbooks instead."],
+    ["spec-validation", "unavailable", "Owns the registry's drafting → validating → planning transitions. Use validate, validate-async and validate-scenarios instead."],
+    ["prepare-handoff", "unavailable", "Reads the handoff contract from the orchestration repo and stops at its first step without it."],
+    ["spec-issue-triage", "idle", "Spec issues are filed from the orchestrator side, so nothing arrives to triage."],
+    ["design-scenario", "works", ""],
+    ["update-scenario", "works", ""],
+    ["deprecate-scenario", "works", ""],
+    ["design-recipe", "works", ""],
+    ["design-flow", "works", ""],
+    ["design-async", "works", ""],
+    ["create-job", "works", ""],
+    ["create-worker", "works", ""],
+    ["list-scenarios", "works", ""],
+    ["review-scenario", "works", ""],
+    ["impact-scenarios", "works", ""],
+    ["validate", "works", ""],
+    ["validate-async", "works", ""],
+    ["validate-scenarios", "works", ""],
+    ["preview", "works", ""],
+    ["preview-async", "works", ""],
+    ["bundle", "works", ""],
+    ["generate", "works", "Needs generator access, not the orchestrator."],
+    ["file-generator-issue", "works", "Files against the generator repo on GitHub."]
+  ],
+
+  "projectFile": {
+   "sample": {
+    "name": "hello-orders",
+    "description": "Orders backend, mobile app and AI services.",
+    "openApiSpecifications": "./output/openapi-bundled.yaml",
+    "asyncSpecifications": "./output/asyncapi-bundled.yaml",
+    "arazzoSpecifications": "./api/specs/v1",
+    "asyncSourceRoot": "./api/specs/v1",
+    "dbContextClassname": "HelloOrdersDbContext",
+    "stateDir": "./.specfuse/state",
+    "tenancy": {
+     "tenant": {
+      "entity": "Tenant",
+      "foreignKey": "TenantId",
+      "marker": "ITenantOwned"
+     }
+    },
+    "broker": {
+     "type": "azureServiceBus"
+    },
+    "groups": [
+     {
+      "name": "Domain",
+      "language": "C#",
+      "basePackage": "HelloOrders.Domain",
+      "destination": "../Backend/",
+      "cleanGenerated": true,
+      "artifacts": [
+       "entity",
+       "valueObject",
+       "enum",
+       "apiController",
+       "apiModel"
+      ]
+     },
+     {
+      "name": "AppCore",
+      "language": "dart",
+      "basePackage": "hello_orders_core",
+      "destination": "../hello_orders_app/packages/",
+      "cleanGenerated": true,
+      "cleanScope": [
+       "hello_orders_core/lib/domain",
+       "hello_orders_core/lib/data"
+      ],
+      "artifacts": [
+       "entity",
+       "enum",
+       "dto",
+       "dartApiClient",
+       "dartRepositoryInterface",
+       "dartRepositoryImpl"
+      ]
+     },
+     {
+      "name": "Contracts",
+      "language": "python",
+      "basePackage": "hello_orders_contracts",
+      "destination": "../hello-orders-ai/libs/contracts/src",
+      "cleanGenerated": true,
+      "artifacts": [
+       "entity",
+       "enum",
+       "event",
+       "asyncEventHandler"
+      ]
+     },
+     {
+      "name": "Documentation - Technical References",
+      "language": "markdown",
+      "destination": "./docs/generated",
+      "artifacts": [
+       "recipeDocumentation",
+       "entityDiagram",
+       "eventCatalog",
+       "channelTopology",
+       "docsIndex"
+      ]
+     }
+    ]
+   },
+   "keys": {
+    "name": {
+     "sec": "21-name",
+     "kind": "identity",
+     "t": "Project name. Templates receive it and the generator derives defaults from it, such as the DbContext name.",
+     "req": "recommended"
+    },
+    "description": {
+     "sec": "22-description",
+     "kind": "identity",
+     "t": "Free text. The generator does not read it.",
+     "req": "optional"
+    },
+    "openApiSpecifications": {
+     "sec": "11-openapispecifications",
+     "kind": "specs",
+     "t": "The bundled OpenAPI file, not api/specs/v1/openapi.yaml. bundle-spec.sh (or the bundle skill) writes it to output/, so bundle before you generate or validate.",
+     "req": "required to generate"
+    },
+    "asyncSpecifications": {
+     "sec": "12-asyncspecifications",
+     "kind": "specs",
+     "t": "The bundled AsyncAPI file, written by bundle-async-spec.sh. Leave it out if the project has no async specs.",
+     "req": "optional"
+    },
+    "arazzoSpecifications": {
+     "sec": "13-arazzospecifications",
+     "kind": "specs",
+     "t": "A directory, read unbundled: every .arazzo.yaml and .recipe.yaml under it.",
+     "req": "optional"
+    },
+    "asyncSourceRoot": {
+     "sec": "14-asyncsourceroot",
+     "kind": "specs",
+     "t": "The unbundled spec tree. Bundling erases file paths, so the generator reads this to find entity snapshots and check where they sit.",
+     "req": "optional"
+    },
+    "dbContextClassname": {
+     "sec": "23-dbcontextclassname-c-only",
+     "kind": "identity",
+     "t": "Overrides the EF Core DbContext class name. C# only; other languages ignore it.",
+     "req": "optional · C#"
+    },
+    "stateDir": {
+     "sec": "24-statedir",
+     "kind": "identity",
+     "t": "Where the generator keeps one baseline per group (<group>.json). Each regen's CHANGELOG.md is diffed against it, so it must describe code that shipped on the component's main. Set it explicitly: when unset, its default depends on how the generator was invoked.",
+     "req": "optional, set it",
+     "warn": true
+    },
+    "tenancy": {
+     "sec": "41-tenancy-c-only-today",
+     "kind": "runtime",
+     "t": "The tenant (and optional sub-tenant) entity, its foreign key and a marker interface. Drives C# marker-interface generation today.",
+     "req": "optional · C#"
+    },
+    "tenancy.tenant": {"sec": "41-tenancy-c-only-today", "kind": "runtime", "t": "The tenant entity. A sub-tenant, tenancy.subTenant, takes the same three fields.", "req": "with tenancy"},
+   "tenancy.tenant.entity": {
+     "sec": "41-tenancy-c-only-today",
+     "kind": "runtime",
+     "t": "PascalCase tenant entity name.",
+     "req": "with tenancy"
+    },
+    "tenancy.tenant.foreignKey": {
+     "sec": "41-tenancy-c-only-today",
+     "kind": "runtime",
+     "t": "PascalCase foreign-key column, ending in Id.",
+     "req": "with tenancy"
+    },
+    "tenancy.tenant.marker": {
+     "sec": "41-tenancy-c-only-today",
+     "kind": "runtime",
+     "t": "Marker interface name: I plus PascalCase.",
+     "req": "with tenancy"
+    },
+    "broker": {
+     "sec": "51-broker",
+     "kind": "runtime",
+     "t": "Messaging-broker settings for the C# event runtime.",
+     "req": "optional · C#"
+    },
+    "broker.type": {
+     "sec": "51-broker",
+     "kind": "runtime",
+     "t": "azureServiceBus is the only working value.",
+     "req": "optional"
+    },
+    "groups": {
+     "sec": "71-groups",
+     "kind": "groups",
+     "t": "One entry per output tree. You generate one group at a time by name; generate.sh loops over several.",
+     "req": "required to generate"
+    },
+    "groups[].name": {
+     "sec": "81-name",
+     "kind": "groups",
+     "t": "The label you pass to --group (and to generate.sh) and see in diagnostics.",
+     "req": "recommended"
+    },
+    "groups[].language": {
+     "sec": "83-language",
+     "kind": "groups",
+     "t": "csharp / c#, python, dart / flutter, or markdown. Picks the template family and which artifacts are allowed.",
+     "req": "required"
+    },
+    "groups[].basePackage": {
+     "sec": "85-basepackage",
+     "kind": "groups",
+     "t": "Namespace, package or library root for the generated code.",
+     "req": "required for code"
+    },
+    "groups[].destination": {
+     "sec": "86-destination",
+     "kind": "groups",
+     "t": "Where the tree is written, resolved from the directory you run the generator in. ../Backend/ writes into a sibling repo, which is how components receive code: run from the spec repo root, with every repo checked out side by side.",
+     "req": "required for code",
+     "warn": true
+    },
+    "groups[].cleanGenerated": {
+     "sec": "89-cleangenerated",
+     "kind": "groups",
+     "t": "Deletes the group's generated subtree before writing it again. Files outside that subtree are never touched, so keep hand-written code outside it.",
+     "req": "optional, default false",
+     "warn": true
+    },
+    "groups[].cleanScope": {
+     "sec": "810-cleanscope",
+     "kind": "groups",
+     "t": "Exactly which folders to wipe, relative to destination, instead of the language default. List generated folders one by one; patterns are not supported and silently clean nothing.",
+     "req": "optional",
+     "warn": true
+    },
+    "groups[].artifacts": {
+     "sec": "87-artifacts",
+     "kind": "groups",
+     "t": "Which artifact types to emit. An artifact not listed is not produced, and nothing warns. The allowed ids depend on the language.",
+     "req": "required for code"
+    }
+   },
+   "more": [
+    [
+     "namingOverrides",
+     "31-namingoverrides",
+     "Identifier casing per role, project-wide."
+    ],
+    [
+     "encryption",
+     "15-encryption",
+     "Compliance floors and key scope for x-protection. Absent means no floors apply and nothing warns."
+    ],
+    [
+     "authorization",
+     "16-authorization",
+     "Roles or scopes mode and the claims the generated C# runtime reads."
+    ],
+    [
+     "functionalTests",
+     "16-authorization",
+     "xUnit collection assignment for generated API functional tests."
+    ],
+    [
+     "groups[].domains",
+     "8131-domains",
+     "Generate only some domains: exactly one of include or exclude."
+    ],
+    [
+     "groups[].pillar",
+     "8132-pillar",
+     "Scope a group to the domains a pillar owns."
+    ],
+    [
+     "groups[].filter",
+     "811-filter-asyncapi-workers-only-v1",
+     "Predicate tree for AsyncAPI workers only."
+    ],
+    [
+     "persistence",
+     "6-persistence",
+     "Multi-backend persistence. Read by nothing today: declaring it changes nothing."
+    ]
+   ],
+   "footguns": [
+    [
+     "Unknown fields are silently ignored",
+     "A typo such as cleanScopes or tenancyConfig is dropped with no warning, and generation runs misconfigured. Copy field names from a known-good file and diff the output after every edit.",
+     "project-file"
+    ],
+    [
+     "Paths resolve from where you run it",
+     "Run the generator from the spec repo root. From anywhere else, every relative path, destination included, points somewhere else.",
+     "working-directory-and-path-resolution"
+    ],
+    [
+     "A regen writes into other repos, and deletes",
+     "With cleanGenerated, each group's generated tree is wiped first. Make sure every destination repo is on a branch you can throw away; generate.sh refuses dirty ones.",
+     "89-cleangenerated"
+    ],
+    [
+     "Some blocks are inert",
+     "persistence is read by nothing yet, and an absent encryption block means no compliance floors, silently.",
+     "6-persistence"
+    ]
+   ],
+   "lifecycle": [
+    [
+     "Load",
+     "The JSON is read; unknown fields are dropped."
+    ],
+    [
+     "Resolve paths",
+     "Relative paths against the working directory (CLI)."
+    ],
+    [
+     "Validate",
+     "OpenAPI, AsyncAPI and Arazzo, through the spec paths, unless --skip-validation."
+    ],
+    [
+     "Emit each group",
+     "Clean if asked, then write the group's artifacts to its destination."
+    ],
+    [
+     "Record",
+     "Each group's surface goes to <stateDir>/<group>.json, and CHANGELOG.md is written."
+    ],
+    [
+     "AI access manifest",
+     "ai-access-manifest.json, once, beside the bundled OpenAPI file."
+    ]
+   ]
+  },
+
+  "components": {
+   "targets": [
+    {
+     "group": "Domain",
+     "lang": "C#",
+     "repo": "Backend/",
+     "kind": "auto",
+     "gen": "gen-src/ folders inside each project; *.g.cs files with an <auto-generated/> header",
+     "ext": "partial classes in src/, generated *Base classes you derive from, mapper hook partials",
+     "build": "gen-src/ belongs to existing projects; Directory.Build.props compiles gen-src/ and src/ together. Exclude gen-src/ from coverage.",
+     "post": "None."
+    },
+    {
+     "group": "AppCore",
+     "lang": "Dart / Flutter",
+     "repo": "hello_orders_app/",
+     "kind": "auto",
+     "gen": "A package owned entirely by the generator, e.g. packages/hello_orders_core",
+     "ext": "extension methods in the app's lib/; screens, view models and navigation stay in the app",
+     "build": "A path dependency in the app's pubspec.yaml.",
+     "post": "dart pub get, then dart run build_runner build --delete-conflicting-outputs inside the package. Put it in scripts/post-generate.sh so it runs after each regen."
+    },
+    {
+     "group": "Contracts",
+     "lang": "Python",
+     "repo": "hello-orders-ai/",
+     "kind": "auto",
+     "gen": "_generated/ packages (the default wipe target)",
+     "ext": "your handler.py / composition.py beside the generated handler_base.py: subclass, don't patch",
+     "build": "Members of a uv workspace.",
+     "post": "None."
+    },
+    {
+     "group": "Documentation - Technical References",
+     "lang": "Markdown",
+     "repo": "this spec repo",
+     "kind": "gen",
+     "gen": "docs/generated/ in the spec repo",
+     "ext": "nothing: regenerate instead of editing",
+     "build": "None.",
+     "post": "Prefer generate-scenario-docs.sh, which adds the scenario pages and cross-links."
+    }
+   ],
+   "regen": [
+    {
+     "t": "Spec change merges",
+     "who": "human",
+     "body": "The spec PR merges in the spec repo first. A component PR generated from a spec that is not on main yet makes the component depend on a spec that does not exist."
+    },
+    {
+     "t": "Regenerate on a branch",
+     "who": "auto",
+     "body": "From the spec repo root, with each destination repo on a fresh branch. generate.sh bundles once, then generates each named group, lists every destination with its repo and branch, and stops if one has uncommitted changes.",
+     "cmd": "./scripts/specfuse/generate.sh --list\n./scripts/specfuse/generate.sh Domain AppCore"
+    },
+    {
+     "t": "One PR per component",
+     "who": "human",
+     "body": "Each component PR holds only the regen and the changes it requires. Review it beyond a green build: diff changed models by file name, enum values, operation parameters, and every hand-written type that mirrors a generated one."
+    },
+    {
+     "t": "Component PRs merge",
+     "who": "human",
+     "body": "Commit generated code in the component, so every regen is a reviewable diff and CI builds without Java or generator access."
+    },
+    {
+     "t": "Advance the baseline",
+     "who": "auto",
+     "body": "Only now, from a clean spec repo: advance-state.sh re-captures each group's stateDir baseline from the merged component code, and keeps it only for repos that are clean, on their default branch and level with origin. Commit the state files in a spec-repo PR of their own.",
+     "cmd": "./scripts/specfuse/advance-state.sh --dry-run\n./scripts/specfuse/advance-state.sh"
+    }
+   ],
+   "rules": [
+    "Component repos never run the generator, fetch the jar or check out the specs.",
+    "Never hand-edit generated code. Fix the spec or report the generator, then regenerate.",
+    "Check the generated package before writing a model, DTO, repository or client by hand.",
+    "Never commit .specfuse/state from a spec branch or a local regen; it adds phantom Breaking entries to later changelogs."
+   ]
+  },
+
+  "loop": {
+   "frontends": [
+    [
+     "authored",
+     "The spec tree is the deliverable: work units author spec files. Used in the specs repo for spec-before-mint."
+    ],
+    [
+     "consumed",
+     "Specs were authored upstream; the loop implements against a handoff manifest. Used in component repos."
+    ],
+    [
+     "none",
+     "No specs: the task graph is authored directly. The short path for single-repo work."
+    ]
+   ],
+   "choices": [
+    {
+     "q": "Author the specs for a shaped idea, more than one sitting of work",
+     "where": "Specs repo",
+     "front": "authored",
+     "steps": [
+      "/specfuse:roadmap-add",
+      "/specfuse:pick-feature",
+      "/specfuse:draft-feature",
+      "specfuse run",
+      "/specfuse:arm-gate",
+      "/specfuse:wrap-feature",
+      "/specfuse-authoring:prepare-handoff"
+     ],
+     "body": "A loop feature gives spec authoring what a session does not: gated human review at /arm-gate, verification as the exit oracle, and a record per work unit. Record the feature in the dossier's graduated_to and the start date in started.",
+     "notes": [
+      "Every work unit must leave the whole spec tree validating; one dangling $ref breaks the bundle and fails every layer.",
+      "A structural assertion block stands in for the red test, since a spec has no test to fail first.",
+      "Point the verification gates at ./scripts/specfuse/validate-specs.sh; /specfuse:derive-verification drafts them from what the repo runs."
+     ]
+    },
+    {
+     "q": "Make a small or exploratory spec change",
+     "where": "Specs repo, no loop",
+     "front": null,
+     "steps": [
+      "/specfuse-authoring:design-scenario",
+      "/specfuse-authoring:validate",
+      "commit and PR"
+     ],
+     "body": "A session with the design skills and the validators is enough when the change fits in one sitting. A gate cycle around a one-file change is ceremony without a checkpoint.",
+     "notes": [
+      "The design skills ask, generate and validate in one flow; review-scenario gives a cold second opinion."
+     ]
+    },
+    {
+     "q": "Implement a feature the orchestrator dispatched",
+     "where": "Component repo",
+     "front": "consumed",
+     "steps": [
+      "/specfuse:adopt-feature",
+      "/specfuse:draft-feature",
+      "specfuse lint",
+      "specfuse run",
+      "/specfuse:arm-gate",
+      "/specfuse:wrap-feature"
+     ],
+     "body": "adopt-feature lists the repo's open specfuse:feature issues and scaffolds the one you pick, with its first work unit seeded from the issue body.",
+     "notes": [
+      "Run adopt-feature interactively: it needs your pick.",
+      "One driver per working tree; concurrent features need separate git worktrees."
+     ]
+    },
+    {
+     "q": "Implement against the specs without an orchestrator",
+     "where": "Component repo",
+     "front": "none",
+     "steps": [
+      "regen PR merged",
+      "/specfuse:roadmap-add",
+      "/specfuse:pick-feature",
+      "/specfuse:draft-feature",
+      "specfuse run",
+      "/specfuse:arm-gate",
+      "/specfuse:wrap-feature"
+     ],
+     "body": "Regenerate first and merge that PR, so the feature builds on generated code that is already on main. The feature is then ordinary loop work in that repo, extending the generated code by hand.",
+     "notes": [
+      "Keep the regen and the feature in separate PRs: the regen is reviewed as generated output, the feature as code."
+     ]
+    },
+    {
+     "q": "Fix a bug",
+     "where": "Any repo, no feature",
+     "front": null,
+     "steps": [
+      "/specfuse:fix-bug"
+     ],
+     "body": "One bug, one branch, one PR, test first. The skill refuses and proposes a feature if the work turns out to be large.",
+     "notes": [
+      "A bug in generated code is a spec fix or a generator issue, not a hand edit: /specfuse-authoring:file-generator-issue."
+     ]
+    }
+   ],
+   "surfaces": [
+    [
+     "State lives in",
+     "WU and GATE file frontmatter",
+     "GitHub issue labels and the registry"
+    ],
+    [
+     "Dispatch",
+     "the driver runs claude -p per work unit",
+     "inbox files and a polling loop"
+    ],
+    [
+     "Branch and merge",
+     "one branch, one squashed commit per WU",
+     "a branch and PR per task, merge watcher"
+    ],
+    [
+     "Spec front-end",
+     "authored, consumed or none",
+     "spec-first, from a dossier or a manifest"
+    ]
+   ]
+  },
+
+  "tree": [
+    {"p": "CLAUDE.md", "d": 0, "o": "yours", "what": "Project instructions for Claude Code. Seeded once by init from the kit template.", "up": "Never touched by upgrade."},
+    {"p": "<project>-project.json", "d": 0, "o": "yours", "what": "The generator's project file: where the bundles are, which artifact groups to generate, encryption profiles.", "up": "Never touched by upgrade.", "link": ["Project file handbook", "../handbooks/Project_File.md"]},
+    {"p": ".gitignore", "d": 0, "o": "yours", "what": "Seeded once. Ignores /output/ among others.", "up": "Never touched by upgrade."},
+    {"p": ".claude/settings.json", "d": 0, "o": "yours", "what": "init enables the specfuse-authoring plugin and the specfuse marketplace here.", "up": "Never touched by upgrade. Skills update through /plugin update."},
+    {"p": ".specfuse/authoring/", "d": 0, "o": "kit", "what": "The authoring contract the skills read. Most of it is the kit's; two files in it are yours.", "up": "Kit subfolders are replaced on upgrade."},
+    {"p": "handbooks/", "d": 1, "o": "kit", "what": "The rules: REST API, AsyncAPI, Arazzo, vendor extensions, AI access policy, project file, field encryption runtime.", "up": "Replaced on upgrade. Edits are overwritten with a warning; send changes upstream.", "link": ["Vendor extensions", "../handbooks/Vendor_Extensions.md"]},
+    {"p": "samples/", "d": 1, "o": "kit", "what": "Canonical YAML for endpoints, async messages, scenarios and recipes. Authored files should pattern-match these.", "up": "Replaced on upgrade.", "link": ["Endpoint samples", "../samples/endpoint-samples.yaml"]},
+    {"p": "schemas/", "d": 1, "o": "kit", "what": "Spectral rulesets and custom functions for OpenAPI, AsyncAPI and Arazzo, plus JSON Schemas for the Arazzo extensions.", "up": "Replaced on upgrade. Project-specific rules go in your own overlay ruleset.", "link": ["Schemas README", "../schemas/README.md"]},
+    {"p": "templates/", "d": 1, "o": "kit", "what": "The AI access policy template, the backlog index template and the idea dossier template.", "up": "Replaced on upgrade.", "link": ["Dossier template", "../templates/initiative-idea-dossier.template.md"]},
+    {"p": "docs/flows.html", "d": 1, "o": "kit", "what": "This page.", "up": "Replaced on upgrade, so it matches the installed kit."},
+    {"p": "config.yml", "d": 1, "o": "yours", "what": "Authoring-plane settings: where the orchestration repo is checked out, which GitHub repo receives backlog issues. An unknown key is an error.", "up": "Seeded once; upgrade neither overwrites nor prunes it."},
+    {"p": "vocabulary-exceptions.yaml", "d": 1, "o": "yours", "what": "Exceptions to the extension-vocabulary check for your project.", "up": "Seeded once; upgrade neither overwrites nor prunes it."},
+    {"p": ".scaffold-manifest", "d": 1, "o": "record", "what": "The sha256 of every file the last init or upgrade wrote. It is how upgrade tells a kit file you edited from one you created.", "up": "Rewritten by every upgrade. Do not edit it."},
+    {"p": "VERSION", "d": 1, "o": "record", "what": "The kit version that last wrote the overlay. Upgrade refuses to run with an older kit.", "up": "Rewritten by every upgrade."},
+    {"p": "scripts/", "d": 0, "o": "yours", "what": "Yours. Also holds tooling from other contracts, such as the shared substrate's validate-event.py.", "up": "Upgrade never looks outside scripts/specfuse/."},
+    {"p": "specfuse/", "d": 1, "o": "kit", "what": "The kit's tooling: bundle, validate (one script per layer, plus validate-specs.sh that runs them all), preview servers, scenario doc and prompt-index builders.", "up": "Replaced on upgrade; kit scripts it stops shipping are removed."},
+    {"p": "api/specs/v1/", "d": 0, "o": "yours", "what": "Your specs. openapi.yaml and asyncapi.yaml are roots that only $ref into the folders below.", "up": "Never touched by upgrade.", "link": ["API handbook", "../handbooks/API_Handbook.md"]},
+    {"p": "openapi.yaml · asyncapi.yaml", "d": 1, "o": "yours", "what": "Root documents. Inline schemas or operations here fail the structure layer: everything is a $ref.", "up": "Yours."},
+    {"p": "common/ · async-common/", "d": 1, "o": "yours", "what": "Shared components: error responses, pagination and path parameters, headers, security schemes, enums; for async, the application-events channel and message and operation traits.", "up": "Yours."},
+    {"p": "domains/{domain}/", "d": 1, "o": "yours", "what": "One folder per bounded context, kebab-case.", "up": "Yours."},
+    {"p": "models/ · operations/", "d": 2, "o": "yours", "what": "OpenAPI schemas and REST operations. Models are shared with AsyncAPI; never duplicate them.", "up": "Yours.", "link": ["API handbook", "../handbooks/API_Handbook.md"]},
+    {"p": "channels/ · async-operations/ · messages/", "d": 2, "o": "yours", "what": "AsyncAPI channels, run-* jobs and on-* workers, and messages.", "up": "Yours.", "link": ["AsyncAPI handbook", "../handbooks/AsyncAPI_Handbook.md"]},
+    {"p": "events/", "d": 2, "o": "yours", "what": "Event-shaped resources: one {Entity}Snapshot.yaml per event-emitting entity, and {Entity}{Action}Context.yaml where a transition needs transient data. Placement is checked by the generator's source-tree rules.", "up": "Yours.", "link": ["AsyncAPI handbook", "../handbooks/AsyncAPI_Handbook.md"]},
+    {"p": "scenarios/", "d": 2, "o": "yours", "what": "This domain's Arazzo scenarios, *.arazzo.yaml.", "up": "Yours.", "link": ["Arazzo handbook", "../handbooks/Arazzo_Handbook.md"]},
+    {"p": "scenarios/", "d": 1, "o": "yours", "what": "Cross-cutting Arazzo: cross-domain/ scenarios, and setup-recipes/ (foundational/ and domain-specific/{domain}/) that provision test fixtures through real operations.", "up": "Yours.", "link": ["Recipe samples", "../samples/recipe-samples.yaml"]},
+    {"p": "api/docs/", "d": 0, "o": "gen", "what": "Documentation produced from the specs.", "up": "Never touched by upgrade."},
+    {"p": "flows/", "d": 1, "o": "gen", "what": "One Markdown page per scenario, regenerated by generate-scenario-docs.sh.", "up": "Regenerate rather than edit."},
+    {"p": "handoffs/", "d": 1, "o": "gen", "what": "Handoff manifests written by prepare-handoff, read by the orchestration repo at intake.", "up": "Yours to commit."},
+    {"p": "implementation-prompts/", "d": 1, "o": "yours", "what": "Optional prompts for implementers; build-prompt-index.sh indexes their front matter for the handoff.", "up": "Yours."},
+    {"p": "docs/product/", "d": 0, "o": "yours", "what": "Product ideation, upstream of any INIT-.", "up": "Never touched by upgrade.", "link": ["Backlog template", "../templates/initiative-backlog.template.md"]},
+    {"p": "INITIATIVE_BACKLOG.md", "d": 1, "o": "yours", "what": "The thin index: one row per idea with its state and a pointer. The row owns state; the dossier owns content.", "up": "Written by the ideation skills."},
+    {"p": "backlog/IDEA-NNN-<slug>.md", "d": 1, "o": "yours", "what": "One dossier per idea: considerations, readiness checklist, bundling, graduated_to, started, handoff.", "up": "Written by the ideation skills."},
+    {"p": "docs/generated/", "d": 0, "o": "gen", "what": "Technical references: recipe documentation, entity diagram, event catalog, channel topology, index.", "up": "Regenerated by generate-scenario-docs.sh."},
+    {"p": "output/", "d": 0, "o": "gen", "what": "Bundled specs the generator reads. Git-ignored.", "up": "Rebuilt by every bundle."}
+  ],
+
+  "skills": {
+    "ideation-capture": "Capture an idea: an index row and a stub dossier at idea.",
+    "ideation-shape": "Shape an idea through the readiness checklist to ready; record bundling.",
+    "ideation-publish": "Open a GitHub issue for a shaped idea, opt-in per idea.",
+    "ideation-groom": "Triage the whole backlog: ready to mint, stale, duplicates, drift.",
+    "initiative-intake": "Mint the INIT- id and write the registry entry in the orchestration repo.",
+    "spec-drafting": "Draft an initiative's specs in conversation, in three phases.",
+    "spec-validation": "Validate an initiative's specs and own drafting → validating → planning.",
+    "design-scenario": "Design a new Arazzo scenario in an 11-step guided flow.",
+    "update-scenario": "Make surgical edits to an existing scenario and re-validate.",
+    "deprecate-scenario": "Retire a scenario or recipe in favor of a successor.",
+    "design-recipe": "Design a setup recipe that provisions test fixtures.",
+    "design-flow": "Old name: redirects to design-scenario.",
+    "design-async": "Design events, jobs and handlers for a domain.",
+    "create-job": "Add a cron-triggered run-* fan-out job.",
+    "create-worker": "Add an on-* event-handler worker.",
+    "list-scenarios": "Browse scenarios and recipes by domain, actor, tag or status.",
+    "review-scenario": "Get a cold, independent review of a scenario before merge.",
+    "impact-scenarios": "Find the scenarios and recipes a change affects.",
+    "validate": "Run the OpenAPI suite, plus AsyncAPI if present.",
+    "validate-async": "Run the AsyncAPI suite: bundle, structure, Spectral.",
+    "validate-scenarios": "Run the Arazzo suite: Spectral plus cross-spec checks.",
+    "preview": "Serve the OpenAPI docs with live reload on port 8081.",
+    "preview-async": "Serve the AsyncAPI docs on port 8082.",
+    "bundle": "Bundle OpenAPI and AsyncAPI into single files.",
+    "generate": "Generate backend, frontend, workers and docs.",
+    "prepare-handoff": "Package finished specs as a handoff manifest.",
+    "file-generator-issue": "Report wrong generated code to the generator repo and watch for the fix.",
+    "spec-issue-triage": "Route a spec issue from a downstream agent: fix the spec or report the generator."
+  },
+
+  "agents": {
+    "scenario-architect": {"by": ["design-scenario"], "does": "Turns structured intent into Arazzo YAML. Refuses to invent operationIds or events the inventory does not declare."},
+    "scenario-validator": {"by": ["design-scenario", "validate-scenarios"], "does": "Runs Spectral plus the structural and cross-spec checks on scenarios and recipes and classifies the results. Never edits files."},
+    "scenario-reviewer": {"by": ["review-scenario"], "does": "Reviews a scenario cold, without the original intent, across seven categories. Returns APPROVE, REQUEST CHANGES or NEEDS DISCUSSION."},
+    "impact-analyzer": {"by": ["impact-scenarios"], "does": "Maps changed operationIds, events and schemas to the scenarios and recipes they touch, following recipe extends chains."},
+    "handoff-composer": {"by": ["prepare-handoff"], "does": "Writes the handoff manifest from the inventories under the contract's hard constraints. Refuses to invent identifiers."},
+    "specs": {"by": [], "does": "The specs agent role: partners with you through drafting, validation, intake and spec-issue triage. It owns the backlog and registry entries and never writes code."}
+  },
+
+  "intents": [
+    {"group": "Ideas and initiatives", "items": [
+      ["I have an idea I don't want to lose", "ideation-capture"],
+      ["An idea needs thinking through before anyone writes specs", "ideation-shape"],
+      ["I want a shaped idea on a GitHub board", "ideation-publish"],
+      ["I want to review the whole backlog", "ideation-groom"],
+      ["Specs are done and we're implementing, or it's a small initiative to start now", "initiative-intake"],
+      ["I'm drafting a minted initiative's specs with the specs agent", "spec-drafting"],
+      ["A minted initiative's specs need validating before planning", "spec-validation"]
+    ]},
+    {"group": "Writing specs", "items": [
+      ["Describe a user journey or behavior end to end", "design-scenario"],
+      ["Someone asked me to design a flow", "design-flow"],
+      ["Change an existing scenario: rename, add a step, new actor", "update-scenario"],
+      ["Retire a scenario or recipe", "deprecate-scenario"],
+      ["A scenario needs data to exist before it starts", "design-recipe"],
+      ["Model an event-driven flow for a domain", "design-async"],
+      ["Run something on a schedule", "create-job"],
+      ["React to an event in the background", "create-worker"],
+      ["Add an entity or a REST endpoint", null]
+    ]},
+    {"group": "Checking my work", "items": [
+      ["Validate the REST specs", "validate"],
+      ["Validate the async specs", "validate-async"],
+      ["Validate scenarios and recipes", "validate-scenarios"],
+      ["Get a second opinion on a scenario", "review-scenario"],
+      ["See which scenarios a rename or removal breaks", "impact-scenarios"],
+      ["See what scenarios already exist", "list-scenarios"],
+      ["Read the REST docs in a browser", "preview"],
+      ["Read the async docs in a browser", "preview-async"]
+    ]},
+    {"group": "Producing output", "items": [
+      ["Get single-file specs for a tool", "bundle"],
+      ["Generate code and docs", "generate"],
+      ["Hand finished specs over for implementation", "prepare-handoff"]
+    ]},
+    {"group": "Something went wrong downstream", "items": [
+      ["The generated code is wrong", "file-generator-issue"],
+      ["An implementing agent says a spec is wrong", "spec-issue-triage"]
+    ]}
+  ],
+
+  "layers": [
+    {"label": "OpenAPI structure", "script": "validate-structure.sh", "what": "The root openapi.yaml only $refs into domain files: no inline schemas or operations."},
+    {"label": "OpenAPI generator compat", "script": "validate-openapi-generator.sh", "what": "Schema structure, reference integrity and compatibility with OpenAPI Generator."},
+    {"label": "OpenAPI Spectral lint", "script": "validate-spectral.sh", "what": "The kit's OpenAPI ruleset plus your overlay: naming, status codes, errors, security, pagination."},
+    {"label": "OpenAPI Redocly", "script": "validate-redocly.sh", "what": "OpenAPI 3.0 compliance as Redocly reads it."},
+    {"label": "AsyncAPI structure", "script": "validate-async-structure.sh", "what": "The root asyncapi.yaml only $refs channels and operations; async-common and domain async folders are laid out as required."},
+    {"label": "AsyncAPI Spectral lint", "script": "validate-async-spectral.sh", "what": "Channel, message and operation shape: domains, addresses, names, categories, snapshot guardrails."},
+    {"label": "Arazzo structure", "script": "validate-arazzo.sh", "what": "14 checks: file placement and naming, operationId and event resolution, recipe chains (depth, cycles), step overlap, unique MCP tool names."},
+    {"label": "Arazzo Spectral lint", "script": "validate-arazzo-spectral.sh", "what": "Extension shapes: x-version, x-domain, x-actors, x-as, x-async, x-recipe, x-mcp."},
+    {"label": "Generator validation (OpenAPI DDD + async cross-spec + source-tree)", "script": "validate-generator.sh", "what": "Bundles, checks source-tree rules the bundle erases, then validates the project file: the DDD ruleset and the ASYNC_* cross-spec rules. Runs last, as the cross-spec gate."}
+  ],
+
+  "mistakes": [
+    {"t": "A $ref points at a file that does not exist", "hit": [1], "cascade": [8], "why": "Reference integrity fails in the generator-compat layer. The bundle cannot be built, so the generator layer, which reads the bundle, fails too. One broken $ref is why a spec work unit must leave the whole tree validating."},
+    {"t": "A schema is defined inline in openapi.yaml", "hit": [0], "why": "The root document must only $ref into domains/{domain}/models/ and operations/."},
+    {"t": "A path segment uses hyphens or underscores", "hit": [2], "rule": "specfuse-path-casing", "why": "Path segments are camelCase; custom actions use :operation and parameters use {braces}."},
+    {"t": "A create (POST) returns 200 without a Location header", "hit": [2], "rule": "specfuse-post-201-location", "why": "A resource-creating POST returns 201 with a Location header."},
+    {"t": "A description names a rule as the error code", "hit": [2], "rule": "specfuse-error-rule-name-in-code", "why": "Error.code is the HTTP status; a rule name belongs in error.reason. This rule warns, it does not fail the run. See the API handbook, section 11."},
+    {"t": "An async message name is not PascalCase", "hit": [5], "rule": "specfuse-async-message-name-pascal", "why": "Message names are PascalCase."},
+    {"t": "A scenario calls an operationId no spec declares", "hit": [6], "why": "Cross-spec resolution (checks B6–B7). The scenario-architect agent refuses to invent ids for the same reason."},
+    {"t": "A recipe's extends chain loops back on itself", "hit": [6], "why": "Recipe reference resolution (checks D9–D12) catches cycles and excessive depth."},
+    {"t": "Two scenarios in a domain repeat almost the same steps", "hit": [6], "why": "Step overlap detection (check E13). Scenarios should differ in behavior, not in wording; see the Arazzo handbook's granularity rule."},
+    {"t": "A step's x-as names an actor the scenario never declared", "hit": [7], "rule": "specfuse-arazzo-as-actor-exists", "why": "Every x-as must reference an actor in x-actors."},
+    {"t": "An entity snapshot sits in the wrong folder", "hit": [8], "why": "Snapshot placement under domains/{domain}/events/ is a source-tree rule. Bundling erases paths, so only the generator's validate-source step sees it."},
+    {"t": "An entity crosses an aggregate boundary", "hit": [8], "why": "The generator's DDD ruleset: aggregate boundaries, x-entity metadata, value objects."},
+    {"t": "Spectral crashes on a null and prints nothing", "hit": [], "crash": true, "why": "No layer reports a finding, which looks exactly like a clean spec. The kit's wrappers treat exit 2 or above, or an empty report, as a failure. Do the same in any wrapper you write."}
+  ],
+
+  "overlay": [
+    ".specfuse/authoring/handbooks",
+    ".specfuse/authoring/samples",
+    ".specfuse/authoring/schemas",
+    ".specfuse/authoring/templates/ai-access-policy-template.md",
+    ".specfuse/authoring/templates/initiative-backlog.template.md",
+    ".specfuse/authoring/templates/initiative-idea-dossier.template.md",
+    ".specfuse/authoring/docs/flows.html",
+    "scripts/specfuse"
+  ],
+
+  "warnings": {
+    "edited": "WARNING — overwriting locally-modified",
+    "unowned": "not written by a prior init/upgrade (project-authored?)",
+    "kept": "not shipped by this kit and not written by a prior init/upgrade",
+    "downgrade": "refusing downgrade"
+  }
+}
+</script>
+
+<script>
+(() => {
+  const D = JSON.parse(document.getElementById("kit-data").textContent);
+  const $ = (s, r = document) => r.querySelector(s);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const slash = n => `/specfuse-authoring:${n}`;
+  const link = ([text, href]) => `<a href="${esc(href)}">${esc(text)}</a>`;
+  const nav = $("#nav"), main = $("#main");
+  const ui = { pfkey: "groups[].destination", tgt: 0, regen: 1, choice: 0, mode: "orchestrated", sel: { kind: "state", m: "backlog", id: "ready" }, view: "picture", plane: "kit", life: "spec-first", stage: 0, node: 0, intent: null, query: "", mistake: 0,
+               sim: { area: "kit", ships: true, disk: "asWritten", manifest: true, version: "older" } };
+
+  function readHash() {
+    const h = location.hash.slice(1);
+    if (D.views.some(v => v.id === h)) ui.view = h;
+  }
+
+  function renderNav() {
+    nav.innerHTML = D.views.map(v => `<button role="tab" id="tab-${v.id}" aria-controls="main" aria-selected="${v.id === ui.view}" data-view="${v.id}"><span class="n">${esc(v.name)}</span><span class="s">${esc(v.sub)}</span></button>`).join("");
+  }
+  nav.addEventListener("click", e => {
+    const b = e.target.closest("button[data-view]");
+    if (!b) return;
+    ui.view = b.dataset.view;
+    try { history.replaceState(null, "", "#" + ui.view); } catch (_) {}
+    render();
+  });
+
+  /* ---------- Big picture ---------- */
+  function planeCard(p) {
+    return `<button class="node ${p.kind}" data-plane="${p.id}" aria-current="${p.id === ui.plane}"><span class="t">${esc(p.title)}</span><span class="s">${esc(p.sub)}</span><span class="p">${esc(p.path)}</span></button>`;
+  }
+  function viewPicture() {
+    const fwd = D.planes.filter(p => p.row === "forward"), down = D.planes.filter(p => p.row === "down");
+    const p = D.planes.find(x => x.id === ui.plane);
+    const kindLabel = { auto: "kit or skill", yours: "you own it", gen: "generated or downstream", human: "a person decides" }[p.kind];
+    return `<h2>Big picture</h2>
+      <p class="summary">The kit gives you the rules and the tools; you write the specs; the generator turns them into code; a handoff carries finished specs to the teams that implement them. <b>Select a box</b> for what it holds and how you reach it.</p>
+      <div class="chain">${fwd.map(planeCard).join("")}</div>
+      <p class="planes-caption">From authoring to code. Below, from finished specs to implementation, and back when a spec is wrong.</p>
+      <div class="chain">${down.map(planeCard).join("")}</div>
+      <div class="detail">
+        <span class="who ${p.kind === "yours" ? "yours" : p.kind}">${esc(kindLabel)}</span>
+        <h3>${esc(p.title)}</h3>
+        <p>${esc(p.body)}</p>
+        <dl>${p.facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("")}<dt>Read</dt><dd>${p.links.map(link).join(" · ")}</dd></dl>
+      </div>
+      <div class="own">${D.owners.map(([w, t]) => `<div><b>${esc(w)}</b>${esc(t)}</div>`).join("")}</div>`;
+  }
+
+  /* ---------- Lifecycle ---------- */
+  function viewLifecycle() {
+    const L = D.lifecycles.find(l => l.id === ui.life);
+    const s = L.stages[Math.min(ui.stage, L.stages.length - 1)];
+    const states = D.backlogStates.map(st => `<span class="state${st === s.state ? " on" : ""}${D.backlogSide.includes(st) ? " side" : ""}">${st}</span>`).join("");
+    const who = { auto: ["a skill does this", "auto"], human: ["you decide", "human"], end: ["hands off here", "end"] }[s.kind];
+    const skills = s.skill ? [s.skill, ...(s.also || [])] : [];
+    return `<h2>Idea to specs</h2>
+      <div class="controlrow"><span class="lbl">Path</span><div class="seg">${D.lifecycles.map(l => `<button class="chip" data-life="${l.id}" aria-pressed="${l.id === ui.life}">${esc(l.name)} <small>· ${esc(l.tag)}</small></button>`).join("")}</div></div>
+      <p class="summary">${esc(L.summary)}</p>
+      <div class="states" aria-label="Backlog state at this stage">${states}</div>
+      <div class="board">
+        <ol class="track">${L.stages.map((st, i) => `<li><button class="stage ${st.kind}" data-stage="${i}" aria-current="${st === s}"><span class="k">${i + 1}</span><span><span class="t">${esc(st.t)}${st.optional ? " <small>(optional)</small>" : ""}</span><span class="c">${st.skill ? esc(st.skill) : "your call"}</span></span></button></li>`).join("")}</ol>
+        <div class="detail">
+          <span class="who ${who[1]}">${who[0]}</span>
+          <h3>${esc(s.t)}</h3>
+          <p>${s.body}</p>
+          ${s.readiness ? `<p><b>Readiness checklist</b></p><ul>${D.readiness.map(r => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
+          <dl>
+            ${skills.length ? `<dt>Run</dt><dd>${skills.map(n => `<code>${slash(n)}</code>`).join("<br>")}</dd>` : ""}
+            ${s.cmd ? `<dt>Or</dt><dd><code>${esc(s.cmd)}</code></dd>` : ""}
+            ${s.writes ? `<dt>Writes</dt><dd>${s.writes}</dd>` : ""}
+            <dt>Backlog</dt><dd><code>${s.state}</code></dd>
+          </dl>
+          ${s.stops ? `<div class="stops"><h4>Where you step in</h4><ul>${s.stops.map(x => `<li>${x}</li>`).join("")}</ul></div>` : ""}
+        </div>
+      </div>
+      <section class="panel"><p>${L.aside}</p><p>States: <code>idea → shaping → ready → specified → minted</code>, with <code>delivered</code>, <code>parked</code> and <code>dropped</code> on the side. Read the <a href="../templates/initiative-backlog.template.md">backlog template</a> for what each one means.</p></section>`;
+  }
+
+
+  /* ---------- State machine ---------- */
+  const NW = 116, NH = 38;
+  function clipTo(c, toward) {
+    const dx = toward.x - c.x, dy = toward.y - c.y;
+    if (!dx && !dy) return { x: c.x, y: c.y };
+    const t = Math.min(dx ? (NW / 2 + 3) / Math.abs(dx) : Infinity, dy ? (NH / 2 + 3) / Math.abs(dy) : Infinity);
+    return { x: c.x + dx * t, y: c.y + dy * t };
+  }
+  function edgeGeom(M, e) {
+    const a = e.from === "start" ? M.start : M.states[e.from], b = M.states[e.to];
+    if (e.self) {
+      const x = b.x, y = b.y + NH / 2;
+      return { d: `M ${x - 22} ${y} C ${x - 40} ${y + 58}, ${x + 40} ${y + 58}, ${x + 22} ${y}`, lx: x, ly: y + 58 };
+    }
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const bend = e.bend || 0;
+    const c = { x: mx - (b.y - a.y) / len * bend, y: my + (b.x - a.x) / len * bend };
+    const p0 = e.from === "start" ? { x: a.x + 7, y: a.y } : clipTo(a, bend ? c : b);
+    const p1 = clipTo(b, bend ? c : a);
+    const lx = (p0.x + 2 * c.x + p1.x) / 4, ly = (p0.y + 2 * c.y + p1.y) / 4;
+    return { d: bend ? `M ${p0.x} ${p0.y} Q ${c.x} ${c.y} ${p1.x} ${p1.y}` : `M ${p0.x} ${p0.y} L ${p1.x} ${p1.y}`, lx: lx + (e.ldx || 0), ly: ly - 7 + (e.ldy || 0) };
+  }
+  const standalone = () => ui.mode === "standalone";
+  const edgeShown = e => !e.only || (e.only === "standalone") === standalone();
+  const edgeOff = (m, e) => standalone() && (m === "registry" || e.needs === "orchestrator");
+  const stateOff = (m, id) => standalone() && (m === "registry" || id === "specified" || id === "minted");
+  function machineSvg(key) {
+    const M = D.machine[key];
+    const edges = M.edges.filter(edgeShown).map(e => {
+      const g = edgeGeom(M, e);
+      const off = edgeOff(key, e);
+      const cls = ["ed", e.dashed ? "dashed" : "", e.gap ? "gap" : "", off ? "off" : "", ui.sel.kind === "edge" && ui.sel.id === e.id ? "sel" : ""].join(" ");
+      const mk = e.gap ? "gap" : off ? "off" : "on";
+      return `<g class="${cls}" data-edge="${esc(e.id)}" data-m="${key}" tabindex="0" role="button" aria-label="${esc(edgeName(e) + (e.by ? ", " + e.by : ""))}"><path class="hit" d="${g.d}"></path><path class="line" d="${g.d}" marker-end="url(#arr-${key}-${mk})"></path>${e.label ? `<text x="${g.lx.toFixed(1)}" y="${g.ly.toFixed(1)}">${esc(e.label)}</text>` : ""}</g>`;
+    }).join("");
+    const nodes = Object.entries(M.states).map(([id, st]) => {
+      const cls = ["st", st.end ? "end" : "", st.side ? "side" : "", stateOff(key, id) ? "off" : "", ui.sel.kind === "state" && ui.sel.m === key && ui.sel.id === id ? "sel" : ""].join(" ");
+      return `<g class="${cls}" data-state="${esc(id)}" data-m="${key}" tabindex="0" role="button" aria-label="${esc("State " + id)}"><rect x="${st.x - NW / 2}" y="${st.y - NH / 2}" width="${NW}" height="${NH}" rx="19"></rect><text x="${st.x}" y="${st.y}">${esc(id)}</text></g>`;
+    }).join("");
+    const [, , w, h] = M.viewBox.split(" ").map(Number);
+    const veil = key === "registry" && standalone() ? `<rect class="veil" x="0" y="0" width="${w}" height="${h}"></rect><text class="veiltext" x="${w / 2}" y="${h / 2 + 5}">No orchestration repo, so no registry: none of these states exist.</text>` : "";
+    const markers = [["on", "var(--muted)"], ["off", "var(--line)"], ["gap", "var(--stop)"]].map(([id, c]) => `<marker id="arr-${key}-${id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" style="fill:${c}"></path></marker>`).join("");
+    return `<div class="machine"><svg viewBox="${M.viewBox}" role="group" aria-label="${key === "backlog" ? "Backlog state machine" : "Initiative registry state machine"}"><defs>${markers}</defs><circle class="start" cx="${M.start.x}" cy="${M.start.y}" r="7"></circle>${edges}${nodes}${veil}</svg></div>`;
+  }
+  function edgeName(e) { return `${e.from === "start" ? "(new)" : e.from} → ${e.to}`; }
+  function edgeBy(e) { return e.by ? `<code>${slash(e.by)}</code>` : e.agent ? esc(`The ${e.agent}`) : "A person"; }
+  function machineDetail() {
+    const M = D.machine[ui.sel.m];
+    if (ui.sel.kind === "state") {
+      const st = M.states[ui.sel.id];
+      const ins = M.edges.filter(e => e.to === ui.sel.id && e.from !== ui.sel.id && edgeShown(e));
+      const outs = M.edges.filter(e => e.from === ui.sel.id && edgeShown(e));
+      const li = e => `<li><button data-edge="${esc(e.id)}" data-m="${ui.sel.m}">${esc(edgeName(e))}</button> <span class="empty">${e.by ? esc(e.by) : e.agent ? esc(e.agent) : "a person"}${edgeOff(ui.sel.m, e) ? " · unavailable" : ""}</span></li>`;
+      const off = stateOff(ui.sel.m, ui.sel.id);
+      return `<span class="who ${off ? "stop" : st.end ? "end" : ""}">${off ? "unreachable without an orchestrator" : ui.sel.m === "backlog" ? "backlog state" : "initiative state"}</span>
+        <h3><code>${esc(ui.sel.id)}</code></h3><p>${esc(st.meaning)}</p>
+        ${st.sets ? `<dl><dt>Dossier fields</dt><dd><code>${esc(st.sets)}</code></dd></dl>` : ""}
+        ${ins.length ? `<p style="margin:12px 0 0"><b>Reached by</b></p><ul class="trans">${ins.map(li).join("")}</ul>` : ""}
+        ${outs.length ? `<p style="margin:12px 0 0"><b>Leaves by</b></p><ul class="trans">${outs.map(li).join("")}</ul>` : ""}`;
+    }
+    const e = M.edges.find(x => x.id === ui.sel.id);
+    const off = edgeOff(ui.sel.m, e);
+    const [whoCls, whoTxt] = e.gap ? ["stop", "not documented yet"] : off ? ["stop", "unavailable without an orchestrator"] : e.by ? ["", "a skill does this"] : e.agent ? ["gen", "an agent does this"] : ["human", "a person decides"];
+    return `<span class="who ${whoCls}">${whoTxt}</span>
+      <h3>${esc(edgeName(e))}</h3><p>${esc(e.cond)}</p>
+      <dl>
+        <dt>By</dt><dd>${edgeBy(e)}</dd>
+        ${e.writes ? `<dt>Writes</dt><dd>${esc(e.writes)}</dd>` : ""}
+        ${e.needs ? `<dt>Needs</dt><dd>The orchestration repo (<code>repos.orchestrator</code> in <code>config.yml</code>)</dd>` : ""}
+        ${(off || e.gap) && e.why ? `<dt>Why</dt><dd>${esc(e.why)}</dd>` : ""}
+        ${standalone() && e.degrades ? `<dt>Without it</dt><dd>${esc(e.degrades)}</dd>` : ""}
+      </dl>`;
+  }
+  function viewStates() {
+    const mode = [["orchestrated", "With an orchestration repo"], ["standalone", "Without one"]];
+    const order = ["unavailable", "idle", "degrades", "works"];
+    const cap = standalone() ? `<section class="panel"><h3>What still works without an orchestrator</h3><p>Each skill when <code>repos.orchestrator</code> does not resolve. Skills that only read the orchestration repo degrade and say so; skills that write to it, or need a file it holds, cannot run.</p><div class="tablewrap"><table class="cap"><tbody>${order.flatMap(k => D.standalone.filter(r => r[1] === k)).map(([n, k, why]) => `<tr><td>${esc(n)}</td><td><span class="badge ${k}">${k}</span></td><td>${esc(why)}</td></tr>`).join("")}</tbody></table></div></section>` : "";
+    return `<h2>State machine</h2>
+      <p class="summary">Two state machines meet at the mint. The <b>backlog</b> lives in your repo, in each dossier's <code>state:</code> and its index row. The <b>initiative</b> lives in the orchestration repo's registry and starts when an INIT- is minted. <b>Select a state or an arrow</b> for what it means, who moves it and what it writes.</p>
+      <div class="controlrow"><span class="lbl">Project</span><div class="seg">${mode.map(([v, t]) => `<button class="chip" data-mode="${v}" aria-pressed="${ui.mode === v}">${t}</button>`).join("")}</div></div>
+      <div class="mach-board">
+        <div style="min-width:0">
+          <div class="mach-head" style="margin-top:0"><h3>Idea</h3><span><code>docs/product/backlog/IDEA-NNN-&lt;slug&gt;.md</code></span></div>
+          ${machineSvg("backlog")}
+          <div class="mach-head"><h3>Initiative</h3><span><code>features/INIT-YYYY-NNNN.md</code> in the orchestration repo</span></div>
+          ${machineSvg("registry")}
+        </div>
+        <div class="detail">${machineDetail()}</div>
+      </div>
+      ${cap}
+      <section class="panel"><p>Green boxes end a machine; dashed boxes are side states. ${standalone() ? "Grey arrows need the orchestration repo. The red arrow is the gap: an ending the kit does not document yet." : "Switch to <b>Without one</b> to see what changes when no orchestration repo is configured."} These diagrams mirror ${link(["Unit lifecycles", D.machine.source])}, which also covers features, gates and work units; the rules for each backlog state are in the ${link(["backlog template", "../templates/initiative-backlog.template.md"])}.</p></section>`;
+  }
+
+
+  /* ---------- Project file ---------- */
+  function jsonHtml(v, path, ind) {
+    const pad = "  ".repeat(ind);
+    if (Array.isArray(v)) {
+      if (v.every(x => typeof x !== "object")) return `<span class="jp">[</span>${v.map(x => `<span class="js">${esc(JSON.stringify(x))}</span>`).join('<span class="jp">, </span>')}<span class="jp">]</span>`;
+      return `<span class="jp">[</span>\n${v.map(x => pad + "  " + jsonHtml(x, path + "[]", ind + 1)).join('<span class="jp">,</span>\n')}\n${pad}<span class="jp">]</span>`;
+    }
+    if (v && typeof v === "object") {
+      const rows = Object.entries(v).map(([k, x]) => {
+        const kp = path ? `${path}.${k}` : k;
+        const info = D.projectFile.keys[kp];
+        const key = info ? `<button class="jk${info.warn ? " warn" : ""}" data-pfkey="${esc(kp)}" aria-current="${kp === ui.pfkey}">"${esc(k)}"</button>` : `<span class="jp">"${esc(k)}"</span>`;
+        return `${pad}  ${key}<span class="jp">: </span>${jsonHtml(x, kp, ind + 1)}`;
+      });
+      return `<span class="jp">{</span>\n${rows.join('<span class="jp">,</span>\n')}\n${pad}<span class="jp">}</span>`;
+    }
+    return `<span class="${typeof v === "string" ? "js" : "jn"}">${esc(JSON.stringify(v))}</span>`;
+  }
+  const PF = "../handbooks/Project_File.md";
+  function viewProjectFile() {
+    const P = D.projectFile, k = P.keys[ui.pfkey];
+    const kindLabel = { specs: "where the specs are", identity: "project", runtime: "generated runtime", groups: "output groups" }[k.kind];
+    return `<h2>Project file</h2>
+      <p class="summary"><code>&lt;project&gt;-project.json</code> is the generator's only input besides the specs: <b>where the bundled specs are, and which code to generate into which folder</b>. <code>init</code> seeds it with an empty <code>groups</code> list, and upgrade never touches it. The example generates into three component repos plus the spec repo's own docs. <b>Select a key</b> for what it does; orange keys are the ones that bite.</p>
+      <div class="board" style="grid-template-columns:minmax(0,1fr) minmax(0,340px)">
+        <div class="json" role="group" aria-label="Example project file">${jsonHtml(P.sample, "", 0)}</div>
+        <div class="detail">
+          <span class="who ${k.warn ? "human" : ""}">${esc(kindLabel)}</span>
+          <h3><code>${esc(ui.pfkey)}</code></h3>
+          <p>${esc(k.t)}</p>
+          <dl><dt>Required</dt><dd>${esc(k.req)}</dd><dt>Read</dt><dd>${link(["Project_File.md", PF + "#" + k.sec])}</dd></dl>
+        </div>
+      </div>
+      <section class="panel"><h3>Four things to know before editing it</h3><div class="cards warn">${P.footguns.map(([t, b, a]) => `<div><b>${esc(t)}</b>${esc(b)} ${link(["More", PF + "#" + a])}</div>`).join("")}</div></section>
+      <section class="panel"><h3>Not in the example</h3><div class="cards">${P.more.map(([n, a, t]) => `<div><b><code>${esc(n)}</code></b>${esc(t)} ${link(["§", PF + "#" + a])}</div>`).join("")}</div>
+        <p style="margin-top:10px">The generator version is not set here: <code>specfuse authoring generate</code> resolves it from the kit's pin. See ${link(["generator access", "https://github.com/specfuse/authoring/blob/main/docs/generator-access.md"])}.</p></section>
+      <section class="panel"><h3>What the generator does with it</h3><ol class="steps">${P.lifecycle.map(([t, b]) => `<li><b>${esc(t)}</b><br>${esc(b)}</li>`).join("")}</ol></section>`;
+  }
+
+  /* ---------- Specs and components ---------- */
+  function viewComponents() {
+    const C = D.components, t = C.targets[ui.tgt], r = C.regen[ui.regen];
+    return `<h2>Specs and components</h2>
+      <p class="summary">One <b>spec repo</b> holds the specs, the project file and the generator's baselines. The <b>component repos</b> (a backend, an app, services) receive generated code through each group's <code>destination</code>, and build on it by hand. Generation always runs from the spec repo. <b>Select a component</b>, then walk the regen flow.</p>
+      <div class="fan">
+        <div class="src"><b>Spec repo</b><span>api/specs/v1/</span><span>&lt;project&gt;-project.json</span><span>.specfuse/state/&lt;group&gt;.json</span><span>scripts/specfuse/generate.sh</span></div>
+        <div class="arrows" aria-hidden="true">→</div>
+        <div class="targets">${C.targets.map((x, i) => `<button class="tgt ${x.kind}" data-tgt="${i}" aria-current="${i === ui.tgt}"><span class="g">${esc(x.group)}</span><span class="l">${esc(x.lang)}</span><span class="d">→ ${esc(x.repo)}</span></button>`).join("")}</div>
+      </div>
+      <div class="detail" style="margin-top:14px">
+        <span class="who ${t.kind === "gen" ? "gen" : ""}">${esc(t.lang)}</span>
+        <h3>${esc(t.group)} <small style="font-weight:400;color:var(--muted)">→ ${esc(t.repo)}</small></h3>
+        <dl><dt>Generated code</dt><dd>${esc(t.gen)}</dd><dt>Hand-written code</dt><dd>${esc(t.ext)}</dd><dt>Build</dt><dd>${esc(t.build)}</dd><dt>After generating</dt><dd>${esc(t.post)}</dd></dl>
+      </div>
+      <h3 style="font-family:var(--display);font-size:19px;margin:26px 0 6px">The regen flow</h3>
+      <p class="summary">The order matters: spec first, then components, then the baseline.</p>
+      <div class="board">
+        <ol class="track">${C.regen.map((x, i) => `<li><button class="stage ${x.who}" data-regen="${i}" aria-current="${i === ui.regen}"><span class="k">${i + 1}</span><span><span class="t">${esc(x.t)}</span></span></button></li>`).join("")}</ol>
+        <div class="detail"><span class="who ${r.who === "human" ? "human" : ""}">${r.who === "human" ? "you" : "a script does this"}</span><h3>${esc(r.t)}</h3><p>${esc(r.body)}</p>${r.cmd ? `<code class="cmd">${esc(r.cmd)}</code>` : ""}</div>
+      </div>
+      <section class="panel"><h3>House rules</h3><ul class="rules">${C.rules.map(x => `<li>${esc(x)}</li>`).join("")}</ul>
+        <p style="margin-top:10px">The full guide, with build wiring per language and the review checklist: ${link(["Setting up component repos", "https://github.com/specfuse/authoring/blob/main/docs/component-repos.md"])}.</p></section>`;
+  }
+
+  /* ---------- The loop ---------- */
+  function viewLoop() {
+    const Lp = D.loop, c = Lp.choices[ui.choice];
+    return `<h2>The loop</h2>
+      <p class="summary">The Specfuse loop runs a feature as gates of small work units: a driver dispatches each unit to a fresh session and accepts it only when verification passes, and you review at each gate. The kit authors and validates specs; <b>the loop is how larger pieces of work get done under that discipline</b>, in the spec repo or in a component. It comes with the same <code>pipx install specfuse</code>; <code>specfuse init &lt;repo&gt;</code> sets it up in a repo, and its own flows page lands at <code>.specfuse/docs/flows.html</code>.</p>
+      <div class="fronts">${Lp.frontends.map(([n, t]) => `<div class="${c.front === n ? "on" : ""}"><code>spec front-end: ${esc(n)}</code>${esc(t)}</div>`).join("")}</div>
+      <div class="controlrow"><span class="lbl">I want to</span></div>
+      <div class="board">
+        <ul class="intents" style="list-style:none;margin:0;padding:0;display:grid;gap:2px">${Lp.choices.map((x, i) => `<li><button class="intent" data-choice="${i}" aria-current="${i === ui.choice}"><span>${esc(x.q)}</span><span class="sk">${esc(x.where)}</span></button></li>`).join("")}</ul>
+        <div class="detail">
+          <span class="who ${c.front ? "" : "human"}">${c.front ? "loop · " + esc(c.front) : "no loop feature"}</span>
+          <h3>${esc(c.where)}</h3>
+          <p>${esc(c.body)}</p>
+          <div class="cmdchain">${c.steps.map(x => `<code>${esc(x)}</code>`).join("<i>→</i>")}</div>
+          ${c.notes.length ? `<div class="stops"><h4>Keep in mind</h4><ul>${c.notes.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}
+        </div>
+      </div>
+      <section class="panel"><h3>Loop or orchestrator</h3><p>Both run the same gate cycle and work-unit contract. They differ in reach: the loop works inside one repo; the orchestrator spans repos and dispatches loop features into them.</p>
+        <div class="tablewrap"><table class="surf"><thead><tr><th></th><th>Loop · one repo</th><th>Orchestrator · many repos</th></tr></thead><tbody>${Lp.surfaces.map(([a, b, c2]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td><td>${esc(c2)}</td></tr>`).join("")}</tbody></table></div>
+        <p style="margin-top:10px">${link(["Loop methodology", "https://github.com/specfuse/loop/blob/main/docs/methodology.md"])} · ${link(["Product lifecycle", "https://github.com/specfuse/specfuse/blob/main/docs/product-lifecycle.md"])}</p></section>`;
+  }
+
+  /* ---------- Structure ---------- */
+  function viewStructure() {
+    const n = D.tree[ui.node];
+    const ownLabel = { kit: ["kit-owned", ""], yours: ["yours", "yours"], gen: ["generated", "gen"], record: ["upgrade's record", "stop"] }[n.o];
+    return `<h2>Your project</h2>
+      <p class="summary">What <code>specfuse authoring init</code> lays down and what your work adds. <b>Color says who owns it:</b> <span class="who">kit</span> is replaced by upgrade, <span class="who yours">yours</span> is never touched, <span class="who gen">generated</span> is rebuilt from the specs.</p>
+      <div class="board">
+        <div class="tree" role="list">${D.tree.map((t, i) => `<button role="listitem" class="tnode ${t.o}" data-node="${i}" aria-current="${i === ui.node}" style="padding-left:${8 + t.d * 20}px"><i class="bar"></i><span>${esc(t.p)}</span></button>`).join("")}</div>
+        <div class="detail">
+          <span class="who ${ownLabel[1]}">${ownLabel[0]}</span>
+          <h3>${esc(n.p)}</h3>
+          <p>${esc(n.what)}</p>
+          <dl><dt>On upgrade</dt><dd>${esc(n.up)}</dd>${n.link ? `<dt>Read</dt><dd>${link(n.link)}</dd>` : ""}</dl>
+        </div>
+      </div>`;
+  }
+
+  /* ---------- Skills ---------- */
+  function agentsFor(skill) { return Object.entries(D.agents).filter(([, a]) => a.by.includes(skill)).map(([n]) => n); }
+  function viewSkills() {
+    const q = ui.query.trim().toLowerCase();
+    const groups = D.intents.map(g => ({ g: g.group, items: g.items.filter(([t, s]) => !q || t.toLowerCase().includes(q) || (s || "").includes(q) || (s && D.skills[s].toLowerCase().includes(q))) })).filter(g => g.items.length);
+    let card;
+    if (ui.intent == null) {
+      card = `<p class="empty">Pick what you are trying to do. The skill, what it delegates to and where to read more appear here.</p>`;
+    } else {
+      const [t, s] = ui.intent;
+      if (!s) {
+        card = `<span class="who human">no skill yet</span><h3>${esc(t)}</h3><p>There is no kit command for entities and REST endpoints yet. Author them by hand against the handbook and the canonical samples, then run <code>${slash("validate")}</code>.</p><dl><dt>Read</dt><dd>${link(["API handbook", "../handbooks/API_Handbook.md"])} · ${link(["Endpoint samples", "../samples/endpoint-samples.yaml"])}</dd></dl>`;
+      } else {
+        const ag = agentsFor(s);
+        card = `<span class="who">skill</span><h3><code>${slash(s)}</code></h3><p>${esc(D.skills[s])}</p><dl><dt>For</dt><dd>${esc(t)}</dd>${ag.length ? `<dt>Delegates to</dt><dd>${ag.map(a => `<b>${esc(a)}</b>: ${esc(D.agents[a].does)}`).join("<br>")}</dd>` : ""}</dl>`;
+      }
+    }
+    const agentsList = Object.entries(D.agents).map(([n, a]) => `<li><b>${esc(n)}</b>${a.by.length ? ` <span class="sk">via ${a.by.map(esc).join(", ")}</span>` : ""}<br><span class="empty">${esc(a.does)}</span></li>`).join("");
+    return `<h2>Which skill?</h2>
+      <p class="summary">${Object.keys(D.skills).length} skills and ${Object.keys(D.agents).length} agents ship in the <code>specfuse-authoring</code> plugin. You run skills; skills call agents.</p>
+      <div class="finder">
+        <div>
+          <label for="skill-q" class="lbl" style="font-size:13px;font-weight:600">Filter</label>
+          <input id="skill-q" class="search" type="search" placeholder="scenario, event, mint, docs…" value="${esc(ui.query)}">
+          <div class="intents">${groups.length ? groups.map(g => `<div><h4>${esc(g.g)}</h4><ul>${g.items.map(([t, s]) => `<li><button class="intent" data-intent="${esc(JSON.stringify([t, s]))}" aria-current="${ui.intent && ui.intent[0] === t}"><span>${esc(t)}</span><span class="sk">${s ? esc(s) : "by hand"}</span></button></li>`).join("")}</ul></div>`).join("") : `<p class="empty">Nothing matches “${esc(ui.query)}”.</p>`}</div>
+        </div>
+        <div style="display:grid;gap:16px;align-content:start;min-width:0">
+          <div class="detail" id="skill-card">${card}</div>
+          <section class="panel" style="margin:0"><h3>The agents</h3><ul style="padding-left:18px;margin:0;display:grid;gap:8px;font-size:14px">${agentsList}</ul></section>
+        </div>
+      </div>`;
+  }
+
+  /* ---------- Validation ---------- */
+  function viewValidation() {
+    const m = D.mistakes[ui.mistake];
+    const rows = D.layers.map((l, i) => {
+      const [cls, v] = m.crash ? ["pass", "looks clean"]
+        : m.hit.includes(i) ? ["hit", "fails"]
+        : (m.cascade || []).includes(i) ? ["cascade", "fails too"]
+        : ["pass", "passes"];
+      return `<li class="${cls}"><span class="n">${i + 1}</span><span class="l">${esc(l.label)}<span class="sc">${esc(l.script)}: ${esc(l.what)}</span></span><span class="v">${v}</span></li>`;
+    }).join("");
+    return `<h2>Validation</h2>
+      <p class="summary"><code>./scripts/specfuse/validate-specs.sh</code> runs nine layers in dependency order and reports each one; the generator's cross-spec gate runs last. The skills <code>validate</code>, <code>validate-async</code> and <code>validate-scenarios</code> each run their spec's share. <b>Pick a mistake</b> to see which layer stops it.</p>
+      <div class="controlrow"><div class="seg">${D.mistakes.map((x, i) => `<button class="chip" data-mistake="${i}" aria-pressed="${i === ui.mistake}">${esc(x.t)}</button>`).join("")}</div></div>
+      <div class="board">
+        <ol class="layers">${rows}</ol>
+        <div class="detail">
+          <span class="who stop">${m.crash ? "silent failure" : "caught"}</span>
+          <h3>${esc(m.t)}</h3>
+          <p>${esc(m.why)}</p>
+          ${m.rule ? `<dl><dt>Rule</dt><dd><code>${esc(m.rule)}</code></dd></dl>` : ""}
+          ${m.crash ? `<div class="tablewrap"><table class="exit"><thead><tr><th>Spectral exit</th><th>Verdict</th></tr></thead><tbody>
+            <tr><td><code>0</code></td><td>Pass: findings below the fail severity</td></tr>
+            <tr><td><code>1</code></td><td>Fail: real findings</td></tr>
+            <tr><td><code>2</code> or more</td><td>Fail: Spectral crashed. Not a clean spec.</td></tr>
+            <tr><td>any, empty report</td><td>Fail: Spectral produced nothing</td></tr></tbody></table></div>
+            <p style="margin-top:10px">${link(["Running Spectral so a crash cannot pass as clean", "../schemas/README.md"])}</p>` : ""}
+        </div>
+      </div>
+      <section class="panel"><h3>Adding the rulesets to specs that predate them</h3><p>Turning the kit's rulesets on against an existing spec tree can produce hundreds of findings at once. The schemas README describes a ratchet: record a baseline of today's findings, then fail CI only on new ones. Project-specific rules go in your own overlay ruleset, never in the kit's files, which upgrade replaces.</p><p>${link(["Schemas README", "../schemas/README.md"])}</p></section>`;
+  }
+
+  /* ---------- Upgrade simulator ---------- */
+  function simulate(s) {
+    const lines = [];
+    const path = s.area === "kit" ? ".specfuse/authoring/handbooks/API_Handbook.md" : "api/specs/v1/openapi.yaml";
+    if (s.version === "newer") {
+      return { cls: "stop", head: "Upgrade refuses to run", body: "The project was scaffolded by a newer kit than the one installed. Nothing is written. Upgrade the CLI first.",
+        term: [["err", `Error: ${D.warnings.downgrade}: <project> was scaffolded by kit X.Y.Z, but the installed kit is A.B.C. Upgrade the CLI first: pipx upgrade specfuse`]] };
+    }
+    if (s.area === "yours") {
+      return { cls: "ok", head: "Not touched", body: "Upgrade only writes inside the kit's folders under .specfuse/authoring/ and scripts/specfuse/. Your specs, CLAUDE.md, the project file, config.yml and the rest of scripts/ are never read or written.",
+        term: [["", "Upgraded <project>"], ["dim", `  (${path} is outside the overlay)`]] };
+    }
+    const legacy = !s.manifest;
+    if (s.ships) {
+      if (s.disk === "missing") return { cls: "ok", head: "Written", body: "A file the kit ships and the project lacks is created.", term: [["", "Upgraded <project>"], ["", "  1 file(s) written, 0 removed"]] };
+      if (s.disk === "same") return { cls: "quiet", head: "Left as is", body: "The file already matches this release byte for byte, so it is skipped. An upgrade on a current project writes nothing.", term: [["", "Upgraded <project>"], ["", "  0 file(s) written, 0 removed"]] };
+      if (legacy) return { cls: "human", head: "Overwritten without a warning", body: "With no .scaffold-manifest there is no record of what the kit wrote, so every kit path is overwritten and no warning is printed, since every file would warn. This upgrade then writes a manifest, and later upgrades can tell your edits apart.", term: [["", "Upgraded <project>"], ["", "  kit unversioned -> A.B.C"], ["", "  1 file(s) written, 0 removed"]] };
+      if (s.disk === "edited") return { cls: "human", head: "Overwritten, with a warning", body: "Your edit is replaced by the kit's copy. Kit files are not a place for local changes: put project rules in your own overlay, or send the change upstream.", term: [["err", `specfuse authoring upgrade: ${D.warnings.edited} ${path}. Kit files are replaced on upgrade; send changes upstream rather than editing in place.`], ["", "  1 file(s) written, 0 removed"], ["", "  1 locally-modified or unowned file(s) overwritten (see warnings above)"]] };
+      if (s.disk === "yours") return { cls: "human", head: "Overwritten, with a warning", body: "A file at a kit path that no earlier init or upgrade wrote is assumed to be yours, and is still replaced. Keep your own files outside the kit's folders.", term: [["err", `specfuse authoring upgrade: WARNING — overwriting ${path}: ${D.warnings.unowned}.`], ["", "  1 file(s) written, 0 removed"], ["", "  1 locally-modified or unowned file(s) overwritten (see warnings above)"]] };
+      return { cls: "ok", head: "Updated silently", body: "The kit wrote this file, nobody changed it, and this release has a new version. It is replaced with no warning.", term: [["", "Upgraded <project>"], ["", "  1 file(s) written, 0 removed"]] };
+    }
+    if (s.disk === "missing") return { cls: "quiet", head: "Nothing to do", body: "The release no longer ships the file and it is not on disk.", term: [["", "Upgraded <project>"]] };
+    if (!legacy && s.disk !== "yours") return { cls: s.disk === "edited" ? "human" : "ok", head: "Removed", body: s.disk === "edited"
+        ? "The manifest proves the kit wrote this file, so it is removed even though you edited it. Prune does not check for edits. Keep a copy elsewhere first if you need your changes."
+        : "The kit wrote this file once and has stopped shipping it. The manifest proves ownership, so it is deleted.", term: [["", "Upgraded <project>"], ["", "  0 file(s) written, 1 removed"]] };
+    return { cls: "quiet", head: "Kept, with a note", body: legacy
+        ? "Without a manifest nothing can be proven to be the kit's, so nothing is deleted. Remove stale files yourself."
+        : "Upgrade never deletes a file it did not write. It tells you so, and leaves the decision to you.",
+      term: [["", "Upgraded <project>"], ["err", `  kept ${path}: ${D.warnings.kept} — delete it manually if it is stale.`]] };
+  }
+  function viewUpgrade() {
+    const s = ui.sim;
+    const r = simulate(s);
+    const q = (label, key, opts, hint) => `<div class="q"><span>${label}${hint ? ` <small>${hint}</small>` : ""}</span><div class="seg">${opts.map(([v, t]) => `<button class="chip" data-sim="${key}" data-val="${v}" aria-pressed="${String(s[key]) === String(v)}">${t}</button>`).join("")}</div></div>`;
+    const kitOnly = s.area === "kit" && s.version !== "newer";
+    return `<h2>Upgrades</h2>
+      <p class="summary"><code>specfuse authoring upgrade &lt;project&gt;</code> brings the kit's files to the installed version. It keeps a manifest of what it wrote, which is how it tells a kit file you edited from a file you made. <b>Describe a file</b> to see what happens to it. Preview any real upgrade with <code>--dry-run</code>.</p>
+      <div class="sim">
+        <div class="controls">
+          ${q("Installed kit vs. the project's VERSION", "version", [["older", "same or older"], ["newer", "project is newer"]])}
+          ${s.version === "newer" ? "" : q("Where is the file?", "area", [["kit", "in a kit folder"], ["yours", "anywhere else"]], s.area === "kit" ? "handbooks, samples, schemas, templates, docs, scripts/specfuse" : "api/, CLAUDE.md, config.yml…")}
+          ${kitOnly ? q("Does the new release ship it?", "ships", [["true", "yes"], ["false", "no, dropped"]]) : ""}
+          ${kitOnly ? q("The file on disk", "disk", [["asWritten", "as the kit wrote it"], ["edited", "edited by you"], ["yours", "you created it"], ...(s.ships ? [["same", "already current"]] : []), ["missing", "not there"]]) : ""}
+          ${kitOnly ? q("Is there a .scaffold-manifest?", "manifest", [["true", "yes"], ["false", "no (pre-manifest project)"]]) : ""}
+        </div>
+        <div>
+          <div class="outcome ${r.cls}">${esc(r.head)}<small>${esc(r.body)}</small></div>
+          <div class="term" aria-label="Command output">${r.term.map(([c, t]) => `<span class="${c}">${esc(t)}</span>`).join("\n")}</div>
+        </div>
+      </div>
+      <section class="panel"><h3>Skills update separately</h3><p>Upgrade carries the contract the skills read. The skills and agents themselves come from the plugin: <code>/plugin update specfuse-authoring@specfuse</code>. Upgrade also refuses a downgrade, so install the newer CLI before upgrading a project someone else already moved forward.</p><p>${link(["Keep assets current", "https://github.com/specfuse/authoring/blob/main/docs/getting-started.md#7-keep-assets-current"])}</p></section>`;
+  }
+
+  const VIEWS = { picture: viewPicture, lifecycle: viewLifecycle, states: viewStates, projectfile: viewProjectFile, components: viewComponents, loop: viewLoop, structure: viewStructure, skills: viewSkills, validation: viewValidation, upgrade: viewUpgrade };
+  function render() {
+    renderNav();
+    main.setAttribute("aria-labelledby", "tab-" + ui.view);
+    main.innerHTML = VIEWS[ui.view]();
+  }
+
+  main.addEventListener("click", e => {
+    const t = e.target.closest("[data-plane],[data-life],[data-stage],[data-node],[data-intent],[data-mistake],[data-sim],[data-state],[data-edge],[data-mode],[data-pfkey],[data-tgt],[data-regen],[data-choice]");
+    if (!t) return;
+    const d = t.dataset;
+    if (d.pfkey) ui.pfkey = d.pfkey;
+    else if (d.tgt) ui.tgt = +d.tgt;
+    else if (d.regen) ui.regen = +d.regen;
+    else if (d.choice) ui.choice = +d.choice;
+    else if (d.mode) {
+      ui.mode = d.mode;
+      const cur = D.machine[ui.sel.m];
+      if (ui.sel.kind === "edge" && !cur.edges.some(x => x.id === ui.sel.id && edgeShown(x))) ui.sel = { kind: "state", m: "backlog", id: "ready" };
+    }
+    else if (d.state) ui.sel = { kind: "state", m: d.m, id: d.state };
+    else if (d.edge) ui.sel = { kind: "edge", m: d.m, id: d.edge };
+    else if (d.plane) ui.plane = d.plane;
+    else if (d.life) { ui.life = d.life; ui.stage = 0; }
+    else if (d.stage) ui.stage = +d.stage;
+    else if (d.node) ui.node = +d.node;
+    else if (d.intent) ui.intent = JSON.parse(d.intent);
+    else if (d.mistake) ui.mistake = +d.mistake;
+    else if (d.sim) {
+      const v = d.val === "true" ? true : d.val === "false" ? false : d.val;
+      ui.sim[d.sim] = v;
+      if (!ui.sim.ships && ui.sim.disk === "same") ui.sim.disk = "asWritten";
+    }
+    const key = ["stage", "node", "plane", "state", "edge", "pfkey", "tgt", "regen", "choice"].find(k => t.dataset[k] != null);
+    const inSvg = !!t.closest("svg");
+    render();
+    if (key && (inSvg || (key !== "state" && key !== "edge"))) {
+      const again = main.querySelector(`${inSvg ? "svg " : ""}[data-${key}="${t.dataset[key].replace(/"/g, '\\"')}"]`);
+      if (again) again.focus({ preventScroll: true });
+    }
+  });
+  main.addEventListener("keydown", e => {
+    const g = e.target.closest && e.target.closest("svg [data-state], svg [data-edge]");
+    if (g && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); g.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
+  });
+  main.addEventListener("input", e => {
+    if (e.target.id !== "skill-q") return;
+    ui.query = e.target.value;
+    const pos = e.target.selectionStart;
+    render();
+    const box = $("#skill-q");
+    box.focus();
+    try { box.setSelectionRange(pos, pos); } catch (_) {}
+  });
+  window.addEventListener("hashchange", () => { readHash(); render(); });
+
+  readHash();
+  render();
+})();
+</script>
+</body>
+</html>
