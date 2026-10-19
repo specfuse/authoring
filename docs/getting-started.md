@@ -112,6 +112,8 @@ specfuse authoring generate <args>
 
 On first run the CLI resolves the generator pinned for your kit version (see [`generator.lock`](../generator.lock)), downloads it, **verifies its SHA-256**, caches it under `~/.specfuse/jars/`, and runs it. Subsequent runs use the cache.
 
+Generated code lands in the component repos named by each group's `destination`. See [Setting up component repos](component-repos.md) for the layout, commit policy, and regen flow.
+
 ## 6. Generator access (token setup)
 
 The generator is distributed as a private release asset. To pull it, the CLI needs **one** of:
@@ -166,6 +168,7 @@ To pull newer skills themselves, run `/plugin update specfuse-authoring@specfuse
 
 - [`README.md`](../README.md) — kit overview and asset map
 - [`handbooks/`](../handbooks/) — the full authoring contract
+- [`component-repos.md`](component-repos.md) — setting up the repos that receive generated code
 - [`examples/hello-orders/`](../examples/hello-orders/) — a complete worked project
 - [`compatibility.md`](../compatibility.md) — kit ↔ generator version matrix
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md) — contributing back to the kit
