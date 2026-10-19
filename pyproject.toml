@@ -42,6 +42,7 @@ packages = ["specfuse"]
 "templates" = "specfuse/authoring/_kit/templates"
 "schemas" = "specfuse/authoring/_kit/schemas"
 "generator.lock" = "specfuse/authoring/_kit/generator.lock"
+"docs/flows.html" = "specfuse/authoring/_kit/docs/flows.html"
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -51,6 +52,7 @@ include = [
   "templates",
   "schemas",
   "generator.lock",
+  "docs/flows.html",
   "README.md",
   "LICENSE",
 ]

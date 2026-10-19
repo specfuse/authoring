@@ -23,8 +23,8 @@ otherwise identical-looking files:
 Without the manifest all three look the same on disk, and the only safe
 behaviours are "clobber everything" or "touch nothing".
 
-What the overlay owns is kit content only: the handbooks, samples and schemas
-under `.specfuse/authoring/`, plus the tooling at `scripts/specfuse/`. Note the
+What the overlay owns is kit content only: the handbooks, samples, schemas and
+flows page under `.specfuse/authoring/`, plus the tooling at `scripts/specfuse/`. Note the
 subdirectory — `scripts/` itself is the project's, and hosts tooling from other
 contracts (the shared substrate's `validate-event.py`, authoring #26). Prune is
 scoped to `scripts/specfuse/`, so a kit upgrade cannot reach them.
@@ -83,6 +83,9 @@ OVERLAY: tuple[tuple[str, str], ...] = (
         "templates/initiative-idea-dossier.template.md",
         ".specfuse/authoring/templates/initiative-idea-dossier.template.md",
     ),
+    # The interactive flows page. Only this one file from docs/ ships: the rest
+    # of docs/ is kit-repo documentation, and the page links to it on GitHub.
+    ("docs/flows.html", ".specfuse/authoring/docs/flows.html"),
     ("templates/project-init/scripts/specfuse", "scripts/specfuse"),
 )
 

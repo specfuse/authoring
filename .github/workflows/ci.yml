@@ -31,6 +31,12 @@ jobs:
           python -m pip install --upgrade pip build
           python -m build --wheel --outdir dist
 
+      # docs/flows.html ships into every project; a kit change that would make
+      # it describe skills, states, layers or upgrade rules that no longer
+      # exist must fail here, not in a user's browser.
+      - name: Flows page matches the kit
+        run: python scripts/check-flows-page.py
+
       - name: Clean-install and bootstrap from the built wheel
         run: |
           python -m venv /tmp/ci
@@ -57,6 +63,7 @@ jobs:
           test -f /tmp/smoke/.specfuse/authoring/VERSION
           test -f /tmp/smoke/.specfuse/authoring/.scaffold-manifest
           test -f /tmp/smoke/.specfuse/authoring/schemas/spectral/specfuse-openapi.yaml
+          cmp docs/flows.html /tmp/smoke/.specfuse/authoring/docs/flows.html
 
       # The overlay's whole job is reaching projects that already exist. Each
       # case below is one the manifest was added to make possible — without it
