@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="{{Prefix}}.Domain/{{Prefix}}.Domain.csproj" />
+  <Project Path="{{Prefix}}.Infrastructure/{{Prefix}}.Infrastructure.csproj" />
+  <Project Path="{{Prefix}}.Api/{{Prefix}}.Api.csproj" />
+</Solution>

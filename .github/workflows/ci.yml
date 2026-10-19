@@ -674,6 +674,62 @@ jobs:
       # fixed there could survive in the template it came from — and did: every
       # new project started with 4 Spectral errors and an invalid AsyncAPI root
       # `tags` key, because nothing ever linted the scaffold.
+      - name: add-component seeds once and refuses what it cannot seed (offline, #177)
+        run: |
+          set -uo pipefail
+          CLI=/tmp/ci/bin/specfuse-authoring
+          fail() { echo "::error::$1" >&2; exit 1; }
+          R=$(mktemp -d) || fail "mktemp failed"
+          cp -R /tmp/smoke "$R/specs"
+          cd "$R/specs"
+          PF=$(ls *-project.json)
+
+          # A kebab-case name gives the generator an invalid Python root (clabonte/generator#2882).
+          out=$("$CLI" add-component python ai 2>&1) && fail "python seeded under a kebab-case project name"
+          grep -q "not a valid Python identifier" <<<"$out" || fail "unexpected message: $out"
+          # C# needs tenancy at this generator (clabonte/generator#2883).
+          out=$("$CLI" add-component csharp Backend 2>&1) && fail "csharp seeded without a tenancy block"
+          grep -q "needs a project-level \`tenancy\` block" <<<"$out" || fail "unexpected message: $out"
+          test ! -e "$R/Backend" || fail "a refused seed left a directory behind"
+
+          python3 - <<'EOF'
+          import json, pathlib
+          p = next(pathlib.Path(".").glob("*-project.json"))
+          d = json.loads(p.read_text())
+          d["name"] = "SmokeApp"
+          d["tenancy"] = {"tenant": {"entity": "Org", "foreignKey": "OrgId", "marker": "IOrgOwned"}}
+          p.write_text(json.dumps(d, indent=2))
+          EOF
+          cp "$PF" before.json
+          "$CLI" add-component csharp Backend -n >/dev/null || fail "dry run failed"
+          cmp -s "$PF" before.json || fail "a dry run changed the project file"
+          test ! -e "$R/Backend" || fail "a dry run wrote files"
+
+          "$CLI" add-component csharp Backend --no-generate || fail "csharp seed failed"
+          for f in SmokeApp.slnx Directory.Build.props .gitignore README.md CLAUDE.md \
+                   SmokeApp.Domain/SmokeApp.Domain.csproj SmokeApp.Infrastructure/SmokeApp.Infrastructure.csproj \
+                   SmokeApp.Api/SmokeApp.Api.csproj SmokeApp.Api/src/Program.cs \
+                   SmokeApp.Api/src/Utils/UserHelper.cs SmokeApp.Api/src/Filters/ExceptionFilter.cs; do
+            test -f "$R/Backend/$f" || fail "seed is missing $f"
+          done
+          test -d "$R/Backend/.git" || fail "the seeded repo was not git-initialised"
+          ! grep -rq "{{" "$R/Backend" --exclude-dir=.git || fail "an unrendered template token reached the seed"
+          python3 -c "import json,sys; g=[x['name'] for x in json.load(open(sys.argv[1]))['groups']]; sys.exit(0 if {'Domain','Infrastructure','Api'} <= set(g) else 1)" "$PF" \
+            || fail "the C# groups were not added to the project file"
+
+          # Seeding never overwrites, and a second seed's group names would clash.
+          out=$("$CLI" add-component csharp Backend 2>&1) && fail "seeded over an existing directory"
+          grep -q "already exists and is not empty" <<<"$out" || fail "unexpected message: $out"
+          out=$("$CLI" add-component csharp Backend2 2>&1) && fail "added clashing group names"
+          grep -q -- "--group-prefix" <<<"$out" || fail "unexpected message: $out"
+
+          "$CLI" add-component python smoke-ai --no-generate || fail "python seed failed"
+          grep -q '^name = "sa-contracts"' "$R/smoke-ai/libs/contracts/pyproject.toml" || fail "python dist name is not derived like the generator's root"
+          ! grep -rq "{{" "$R/smoke-ai" --exclude-dir=.git || fail "an unrendered template token reached the seed"
+          # The kit never adopts seeded files: they are not in the scaffold manifest.
+          ! grep -q "Backend\|smoke-ai" .specfuse/authoring/.scaffold-manifest || fail "seeded files entered the scaffold manifest"
+          echo "==> add-component seeds once, and refuses what it cannot seed."
+
       - name: Script ownership boundary — scripts/ is the project's, scripts/specfuse/ is ours
         run: |
           set -euo pipefail

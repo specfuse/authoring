@@ -74,6 +74,18 @@ def main(argv: list[str] | None = None) -> int:
     p_refresh.add_argument("target", type=Path, help="Existing project directory.")
     p_refresh.add_argument("-n", "--dry-run", action="store_true", help=argparse.SUPPRESS)
 
+    p_comp = sub.add_parser(
+        "add-component",
+        help="Seed a component repo (C# backend or Python services) beside the spec repo, once.",
+    )
+    p_comp.add_argument("language", choices=("csharp", "python"), help="Component language.")
+    p_comp.add_argument("directory", help="Directory to create beside the spec repo, e.g. Backend.")
+    p_comp.add_argument("--project", type=Path, help="Project file (default: the one *-project.json here).")
+    p_comp.add_argument("--namespace", help="C# root namespace (default: the project name in PascalCase).")
+    p_comp.add_argument("--group-prefix", default="", help="Prefix for the new group names, to avoid clashes.")
+    p_comp.add_argument("--no-generate", action="store_true", help="Seed only; don't run generate.sh.")
+    p_comp.add_argument("-n", "--dry-run", action="store_true", help="Report what would be created.")
+
     p_gen = sub.add_parser(
         "generate",
         help="Run the pinned generator (downloads/verifies the jar on demand).",
@@ -95,6 +107,12 @@ def main(argv: list[str] | None = None) -> int:
             )
         from . import bootstrap
         return bootstrap.upgrade(ns.target, dry_run=ns.dry_run)
+    if ns.command == "add-component":
+        from . import component
+        return component.add_component(
+            ns.language, ns.directory, project_file=ns.project, namespace=ns.namespace,
+            group_prefix=ns.group_prefix, generate=not ns.no_generate, dry_run=ns.dry_run,
+        )
     if ns.command == "generate":
         from . import generator
         return generator.generate(ns.args)
