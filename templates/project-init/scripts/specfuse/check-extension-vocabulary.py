@@ -133,14 +133,28 @@ def find_jar() -> Path | None:
 
     `specfuse authoring generate` verifies each jar's SHA-256 against
     generator.lock before caching it under $SPECFUSE_HOME/jars, so a cached jar
-    is a jar this project's pinned kit vouched for. SPECFUSE_GENERATOR_JAR
-    overrides for CI, where the cache may be primed from a different path.
+    is a jar this project's pinned kit vouched for. When the project pins its
+    own generator in `.specfuse/generator.lock`, that version's jar is the one
+    examined, never a newer one cached for another project.
+    SPECFUSE_GENERATOR_JAR overrides for CI, where the cache may be primed from
+    a different path.
     """
     override = os.environ.get("SPECFUSE_GENERATOR_JAR")
     if override:
         p = Path(override).expanduser()
         return p if p.is_file() else None
     home = Path(os.environ.get("SPECFUSE_HOME", Path.home() / ".specfuse"))
+    project_lock = ROOT / ".specfuse" / "generator.lock"
+    if project_lock.is_file():
+        try:
+            gen = json.loads(project_lock.read_text()).get("generator", {})
+        except json.JSONDecodeError:
+            return None
+        version = gen.get("version")
+        if not version:
+            return None
+        p = home / "jars" / gen.get("asset", f"specfuse-generator-{version}.jar")
+        return p if p.is_file() else None
     jars = sorted((home / "jars").glob("specfuse-generator-*.jar"))
     if not jars:
         return None
