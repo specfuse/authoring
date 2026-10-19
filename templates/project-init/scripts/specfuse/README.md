@@ -105,7 +105,9 @@ yet exits 0.
 
 `generate-scenario-docs.sh` drives the generator through
 `specfuse authoring generate`, which resolves and checksum-verifies the version
-pinned in the kit's `generator.lock`. There is no jar to keep in this directory.
+pinned in the kit's `generator.lock`, or in the project's own
+`.specfuse/generator.lock` when it has one. There is no jar to keep in this
+directory.
 (The script falls back to the deprecated flat `specfuse-authoring` command when
 the suite CLI is not installed, and `SPECFUSE_AUTHORING` overrides both.)
 
