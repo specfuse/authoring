@@ -84,8 +84,10 @@ Create a fine-grained PAT as described in Option C above, then:
 
 ```bash
 export SPECFUSE_TOKEN=github_pat_xxx
-specfuse authoring generate <args>
+specfuse authoring generate generate --group "<group name>" <project>-project.json
 ```
+
+Everything after `specfuse authoring generate` goes to the generator unchanged, so name the generator's own command (`generate`, `validate`, `baseline`, …) first. Its `--group` takes one group per run.
 
 In CI, store it as a secret and export it for the generate step only.
 

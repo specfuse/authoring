@@ -107,8 +107,10 @@ Inside Claude Code, the kit's skills validate your specs against the handbook ru
 The generator turns your validated specs into backend, frontend, and worker artifacts:
 
 ```bash
-specfuse authoring generate <args>
+specfuse authoring generate generate --group "<group name>" <project>-project.json
 ```
+
+Everything after `specfuse authoring generate` goes to the generator unchanged, so name the generator's own command (`generate`, `validate`, `baseline`, …) first. Its `--group` takes one group per run.
 
 On first run the CLI resolves the generator pinned for your kit version (see [`generator.lock`](../generator.lock)), downloads it, **verifies its SHA-256**, caches it under `~/.specfuse/jars/`, and runs it. Subsequent runs use the cache.
 
