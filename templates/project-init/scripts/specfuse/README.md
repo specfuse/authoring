@@ -100,6 +100,8 @@ yet exits 0.
 | `serve-docs.sh` | Redocly preview server for the OpenAPI docs (default port 8081). |
 | `serve-async-docs.sh` | Preview server for the AsyncAPI docs. |
 | `generate-scenario-docs.sh` | Bundle, then generate scenario + technical-reference docs. |
+| `generate.sh` | Bundle once, then generate the project file's groups one at a time: by name, `--lang`, or `all`; `--list`, `--dry-run`. Refuses destination repos with uncommitted changes. |
+| `advance-state.sh` | After a regen PR merges in a destination repo, advance that group's `stateDir` baseline from the merged code. |
 | `generate-scenario-index.sh` | Build the scenario index — called by the above. |
 | `build-prompt-index.sh` | Reverse index of `api/docs/implementation-prompts/`, for `/prepare-handoff`. |
 
@@ -108,6 +110,35 @@ yet exits 0.
 pinned in the kit's `generator.lock`. There is no jar to keep in this directory.
 (The script falls back to the deprecated flat `specfuse-authoring` command when
 the suite CLI is not installed, and `SPECFUSE_AUTHORING` overrides both.)
+
+## Generating code into other repos
+
+`generate.sh` drives `specfuse authoring generate` for each selected group. A
+group whose `destination` points outside this repo (`../Backend/`) writes into
+that repo, and `cleanGenerated` deletes its generated tree first, so the script
+lists every destination with its repo and branch, and stops if one has
+uncommitted changes (`--allow-dirty` overrides).
+
+Language steps the generator does not run go in a project-owned hook,
+`scripts/post-generate.sh` (outside `scripts/specfuse/`, so upgrades leave it
+alone). When it exists and is executable, it runs after each group with
+`<group> <language> <destination> <basePackage>`. For Dart:
+
+```bash
+#!/bin/bash
+set -euo pipefail
+[ "$2" = "dart" ] || exit 0
+cd "$3/$4"
+dart pub get
+dart run build_runner build --delete-conflicting-outputs
+```
+
+A regen also rewrites the group's `stateDir` baseline (`.specfuse/state/<group>.json`).
+Don't commit that. Once the destination repo merges the regen, run
+`advance-state.sh` from a clean spec repo. It wraps the generator's `baseline`
+command, keeps the new baseline only for groups whose repo is clean, on its
+default branch and level with origin, and restores the rest. Commit what it
+leaves in a PR of its own.
 
 ## External dependencies
 
