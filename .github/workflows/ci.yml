@@ -783,6 +783,47 @@ jobs:
 
           echo "==> config.yml survives upgrade and the reader separates unset / default / unknown."
 
+      - name: generate.sh and advance-state.sh run offline in a scaffold (#170)
+        run: |
+          set -uo pipefail
+          P=/tmp/smoke
+          export SPECFUSE_AUTHORING=/tmp/ci/bin/specfuse-authoring
+          fail() { echo "::error::$1" >&2; exit 1; }
+          test -x "$P/scripts/specfuse/generate.sh" || fail "generate.sh not shipped executable"
+          test -x "$P/scripts/specfuse/advance-state.sh" || fail "advance-state.sh not shipped executable"
+
+          # The scaffold's project file declares no groups yet.
+          out=$("$P/scripts/specfuse/generate.sh" --list 2>&1) || fail "--list failed: $out"
+          out=$("$P/scripts/specfuse/generate.sh" all --dry-run 2>&1) && fail "an empty selection was accepted"
+          grep -q "No groups selected" <<<"$out" || fail "unexpected message: $out"
+          out=$("$P/scripts/specfuse/generate.sh" Nope 2>&1) && fail "an unknown group was accepted"
+          grep -q "Unknown group: 'Nope'" <<<"$out" || fail "unexpected message: $out"
+
+          # One group writing into a sibling repo with uncommitted work: the
+          # dry run names the repo and flags it, and a real run refuses before
+          # touching the generator.
+          S=$(mktemp -d) || fail "mktemp failed"
+          cp -R "$P" "$S/specs" && git -C "$S/specs" init -q
+          git init -q "$S/Backend" && echo wip > "$S/Backend/wip.txt"
+          python3 - "$S/specs" <<'PY'
+          import json, pathlib, sys
+          p = next(pathlib.Path(sys.argv[1]).glob("*-project.json"))
+          c = json.loads(p.read_text())
+          c["groups"] = [{"name": "Domain", "language": "C#", "basePackage": "Smoke.Domain",
+                          "destination": "../Backend/", "artifacts": ["entity"], "cleanGenerated": True}]
+          p.write_text(json.dumps(c, indent=2))
+          PY
+          out=$(cd "$S/specs" && scripts/specfuse/generate.sh --lang cs --dry-run 2>&1) || fail "dry run failed: $out"
+          grep -q "writes into Backend" <<<"$out" || fail "dry run did not name the destination repo: $out"
+          grep -q "HAS UNCOMMITTED CHANGES" <<<"$out" || fail "dry run did not flag the dirty repo: $out"
+          out=$(cd "$S/specs" && scripts/specfuse/generate.sh Domain 2>&1) && fail "generated into a dirty repo"
+          grep -q "have uncommitted changes" <<<"$out" || fail "unexpected message: $out"
+
+          # advance-state: no destination repo is level with an origin, so it stops before `baseline`.
+          out=$(cd "$S/specs" && scripts/specfuse/advance-state.sh --no-fetch 2>&1) && fail "advance-state advanced without a passing repo"
+          grep -q "nothing to advance" <<<"$out" || fail "unexpected message: $out"
+          echo "==> generate.sh / advance-state.sh guards behave."
+
       - name: Scaffolded project validates with its own scripts
         run: |
           set -euo pipefail
