@@ -91,13 +91,45 @@ In CI, store it as a secret and export it for the generate step only.
 
 ### What happens on first run
 
-1. The CLI reads the generator pinned for your kit version
+1. The CLI reads the generator pin: the project's own `.specfuse/generator.lock`
+   if it has one (see below), otherwise the one pinned for your kit version
    ([`generator.lock`](../generator.lock)).
 2. Downloads `specfuse-generator-<version>.jar` from the `Specfuse/generator-dist`
    release tagged `v<version>` (via `gh` or `SPECFUSE_TOKEN`).
 3. **Verifies the SHA-256** against the pin and aborts on mismatch.
 4. Caches it under `~/.specfuse/jars/` (override the root with `$SPECFUSE_HOME`)
    and runs `java -jar`. Later runs reuse the cache.
+
+### Pinning a different generator for one project
+
+By default every project uses the generator its kit version was tested with. To
+move one project to a different release (adopting a fix early, or holding back
+while you absorb a breaking change) without changing the kit, commit a project
+pin at `.specfuse/generator.lock`:
+
+```json
+{ "generator": { "version": "0.19.0", "sha256": "<SHA-256 of specfuse-generator-0.19.0.jar>" } }
+```
+
+- `version` and `sha256` are required. `asset`, `release_tag` and `release_repo`
+  default to the dist repo's conventions (`specfuse-generator-<version>.jar`,
+  `v<version>`, `Specfuse/generator-dist`); `min_java` defaults to the kit's.
+  Take the SHA-256 from the generator release notes, or from
+  `shasum -a 256 <jar>` on a jar you have verified.
+- The CLI searches for the file upward from the working directory and stops at
+  the repo root, so it applies to every run inside the project.
+- The jar is downloaded, verified and cached exactly like the kit's pin. A wrong
+  checksum fails closed.
+- Each run says which pin it used. When the project pin differs from the kit's,
+  it also warns: a generator outside the kit's tested pair (see
+  [`compatibility.md`](../compatibility.md)) can accept or emit vocabulary the
+  handbooks and Spectral rules don't describe. Delete the file to return to the
+  kit's pin.
+- `specfuse authoring upgrade` never writes or removes it. It is project content.
+
+**Local jar, for generator development only.** `SPECFUSE_GENERATOR_JAR=/path/to.jar`
+runs that jar as-is: no pin and no checksum. Every run warns that it is
+unpinned. Don't set it in CI or commit it to a script; use a project pin instead.
 
 ### Troubleshooting
 
@@ -107,6 +139,8 @@ In CI, store it as a secret and export it for the generate step only.
 | `404` / `release not found` on download | no Read access, or wrong account | confirm the maintainer granted access to the authenticated user |
 | `no generator is pinned for this kit version yet` | kit release predates a published generator | `pipx upgrade specfuse` once a generator-bearing release ships |
 | `checksum mismatch on downloaded generator jar` | corrupted download or a tampered asset | delete `~/.specfuse/jars/` and retry; if it persists, report it — do not use the jar |
+| `.specfuse/generator.lock must set generator.version and generator.sha256` | incomplete project pin | add both fields, or delete the file to use the kit's pin |
+| `.specfuse/generator.lock pins generator X; this kit (...) is tested with Y` | warning, not an error: the project pins its own generator | intended? carry on. Otherwise delete the project pin |
 | `'java' not found` / wrong version | no JRE 21+ (every generator jar since `0.1.0` is class-file 65) | install a JRE that meets `min_java` in `generator.lock` |
 
 ---
@@ -116,7 +150,10 @@ In CI, store it as a secret and export it for the generate step only.
 - **Least privilege:** grant only `Read` on only `Specfuse/generator-dist`. The
   generator needs nothing else.
 - **Checksum pinning:** the kit verifies every jar against the SHA-256 committed
-  in its public `generator.lock`. A swapped or corrupted asset fails closed.
+  in its public `generator.lock`, or in the project's own
+  `.specfuse/generator.lock`. A swapped or corrupted asset fails closed.
+  `SPECFUSE_GENERATOR_JAR` is the one path that skips verification. Keep it
+  out of CI.
 - **Token hygiene:** prefer `gh` for humans; reserve `SPECFUSE_TOKEN` for CI,
   store it as a secret, scope it fine-grained, and rotate it on a schedule.
 - **Revocation is clean:** removing access stops generation without affecting the
