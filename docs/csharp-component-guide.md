@@ -101,7 +101,7 @@ Default globbing is **off** on purpose: with it on, a `.cs` file anywhere in a p
 
 ### 2.2 One `.csproj` per layer, with the layering in the references
 
-| Project | SDK | References | Packages the generated code needs (generator 0.19) |
+| Project | SDK | References | Packages the generated code needs (generator 0.21) |
 |---|---|---|---|
 | `HelloOrders.Domain` | `Microsoft.NET.Sdk` | none | `Riok.Mapperly`, `Microsoft.Extensions.Logging`, `Microsoft.AspNetCore.Http`, `Microsoft.Data.SqlClient`, `Newtonsoft.Json` |
 | `HelloOrders.Infrastructure` | `Microsoft.NET.Sdk` | Domain | `Microsoft.EntityFrameworkCore` (+ `.Relational`, `.SqlServer`, `.InMemory`), `Azure.Messaging.ServiceBus`, `Azure.Storage.Blobs`, `Microsoft.Extensions.Http`, `Microsoft.Extensions.Configuration.EnvironmentVariables` |
@@ -144,7 +144,7 @@ Add as the project grows:
 
 Three things the project file must get right for C#:
 
-- **`tenancy` is required** at the kit's pinned generator (0.19.0) whenever `service` is registered: generated services always use the event runtime, and the event runtime requires a tenancy block ([`Project_File.md` §4.1](../handbooks/Project_File.md#41-tenancy-c-only-today), [clabonte/generator#2883](https://github.com/clabonte/generator/issues/2883), fixed in generator 0.20.0; the requirement goes away at the pin bump that reaches it). `dbContextClassname` names the EF Core context (`HelloOrdersDbContext`); unset, it derives from `name`.
+- **`tenancy` only for a multi-tenant project.** Without it, `eventRuntime` emits a do-nothing `ITenantScoped` contract and `tenancyMarker` emits nothing, so a single-tenant project compiles the services that take an `IEventCollector` (from generator 0.20.0, [clabonte/generator#2883](https://github.com/clabonte/generator/issues/2883)). With it, the `Tenant` query filter asks a hand-written `IRecordVisibilityResolver` (§4.3; [`Project_File.md` §4.1](../handbooks/Project_File.md#41-tenancy-c-only-today)). `dbContextClassname` names the EF Core context (`HelloOrdersDbContext`); unset, it derives from `name`.
 - **`cleanGenerated: true` on every C# group.** The wipe is gated on a full-group regen; a run filtered with `--artifact` skips it, so partial output never deletes a sibling artifact's files ([§8.9](../handbooks/Project_File.md#89-cleangenerated)). `cleanScope` is not needed for C#: the default wipe target is `gen-src/` under the group's folder.
 - **`functionalTests`** decides which generated API functional tests run in parallel (`collectionNamePattern`, `collectionGroups`); unset, every generated test shares one xUnit collection and the suite is serial.
 
@@ -161,9 +161,15 @@ using HelloOrders.Domain;
 using HelloOrders.Infrastructure;
 using HelloOrders.Infrastructure.Concurrency;
 using HelloOrders.Infrastructure.Events;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers(options => options.Filters.Add<ExceptionFilter>());
+
+// Authentication: the generated [RoleRequired] filter challenges anonymous callers.
+// JWT claim names are kept; the generated reader looks for `sub` and `roles`.
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options => options.MapInboundClaims = false);
 
 // Generated registrations (gen-src/**/ConfigureServices.g.cs and friends).
 builder.Services.AddServices();                 // Domain: I{Entity}Service -> Default{Entity}Service
@@ -182,11 +188,15 @@ else
     builder.Services.AddSqlServerDatabase(connectionString);
 
 var app = builder.Build();
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapControllers();
 app.Run();
 ```
 
 With an Application group, add `builder.Services.Add{Domain}Workers()` per domain (or the aggregate `AddAllWorkers()`), which registers every concrete handler and job found by assembly scan. With field encryption declared in the spec, add `builder.Services.AddFieldEncryption()`; nothing generated calls it for you.
+
+**An authentication scheme is required.** Since generator 0.20.0, `AddSpecfuseAuthorization()` registers the role and scope filters itself. They challenge an anonymous caller, and with no authentication scheme the challenge throws, so every role-gated request answers 500 instead of 401. The seed uses JWT bearer with `MapInboundClaims = false`, because the generated `ClaimsPrincipalReader` reads the `sub` and `roles` claims by those names; point `Authentication:Schemes:Bearer` at your identity provider, and use `dotnet user-jwts create --claim roles=<Role>` for a local token (the seeded README has the commands).
 
 **Register your own implementations after the generated calls.** `AddServices()` and `AddRepositories()` register with a plain `AddScoped`, so the last registration wins: a custom `I{Entity}Service` goes right after `AddServices()`, a decorator after both. The placeholder contracts in §4.3 are the exception: they are registered with `TryAdd`, so for them order does not matter.
 
@@ -194,7 +204,7 @@ With an Application group, add `builder.Services.Add{Domain}Workers()` per domai
 
 | Type | Who calls it | What it must do |
 |---|---|---|
-| `HelloOrders.Api.Utils.UserHelper` | every generated controller: `new CallerContext(UserHelper.GetUser(User))` | A static `GetUser(ClaimsPrincipal)` returning the generated `AuthenticatedUser`: user id, roles, tenant memberships from your identity provider's claims. From generator 0.20.0 (newer than the kit's 0.19.0 pin), `"generateUserHelper": true` in the project file emits a default one instead; keep exactly one. |
+| `HelloOrders.Api.Utils.UserHelper` | every generated controller: `new CallerContext(UserHelper.GetUser(User))` | A static `GetUser(ClaimsPrincipal)` returning the generated `AuthenticatedUser`: user id, roles, tenant memberships from your identity provider's claims. Alternatively, `"generateUserHelper": true` in the project file (generator 0.20.0) makes `authorizationRuntime` emit a default one, taking the user id from `sub` and the roles from the default claims reader; delete a hand-written one first, since two fail the build with CS0101. |
 | `HelloOrders.Api.Filters.ExceptionFilter` | nothing generated; you add it to `AddControllers` | Maps the generated domain exceptions (`NotFoundException`, `ConflictException`, `PreconditionFailedException`, …) to their `StatusCode` and `Errors` list. Without it a `NotFoundException` is a 500. |
 
 ### 4.3 Contracts registered as throwing placeholders
@@ -204,7 +214,7 @@ Generated registrations install a placeholder for every contract that has no gen
 | Contract | Needed when | Placeholder behaviour |
 |---|---|---|
 | `ITenantResourceCheck` | the project declares `tenancy` | throws on the first role-gated request that reaches the tenant check; single-tenant projects get a generated `RoleSufficientTenantResourceCheck` instead |
-| `IRecordVisibilityResolver` | `tenancy` with the generated `Tenant` query filter | `AddSqlServerDatabase` registers a resolver that throws on the first tenant-filtered query; `AddInMemoryDatabase` defaults to seeing everything |
+| `IRecordVisibilityResolver` | the project declares `tenancy`: from generator 0.21.0 every entity whose `belongsTo` chain reaches the tenant root carries the generated `Tenant` query filter, which asks the resolver which tenants the caller may see | `AddSqlServerDatabase` registers a placeholder whose `ResolveAsync` throws, naming the interface, at the first query that reads a `Tenant`-filtered entity; `AddInMemoryDatabase` registers a default that sees everything (`RecordVisibility.All`). A hand-written background path sets the visibility with `RecordVisibilityAccessor.Use(...)`, and a hand-written argument-less `IgnoreQueryFilters()` now drops `Tenant` too: name the filters it drops, `IgnoreQueryFilters([QueryFilterNames.SoftDelete])` |
 | `IPrincipalKeyResolver` | optimistic concurrency with principal-keyed tokens | `AddPrincipalKeyResolver()` installs a factory that throws `PrincipalKeyResolverNotConfiguredException` |
 | `ICallerFieldResolver` | `x-populate-from` caller fields | `AddCallerFieldResolver()` placeholder throws, naming the method |
 | `IDataKeyProvider`, `IKeyWrapper`, the decryption-failure policy | field encryption declared in the spec | `AddFieldEncryption()` placeholders throw `FieldEncryptionNotConfiguredException` naming the contract |

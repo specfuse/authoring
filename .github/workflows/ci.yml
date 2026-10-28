@@ -660,7 +660,7 @@ jobs:
       # A bare `Label` in a Service Bus SQL filter is `user.` scope and matches
       # nothing; the label is `sys.Label`. The generator copies a filterOverride
       # verbatim and never checks it, so this warn rule is the only net
-      # (RestoManager handoff). Assert it fires on every bare form AND stays
+      # (consumer handoff). Assert it fires on every bare form AND stays
       # silent on qualified filters — a rule that flags `sys.Label` is noise.
       - name: filterOverride sys.Label scope (regression)
         run: |
@@ -696,7 +696,7 @@ jobs:
       # fixed there could survive in the template it came from — and did: every
       # new project started with 4 Spectral errors and an invalid AsyncAPI root
       # `tags` key, because nothing ever linted the scaffold.
-      - name: add-component seeds once and refuses what it cannot seed (offline, #177)
+      - name: add-component seeds once and refuses to overwrite (offline, #177)
         run: |
           set -uo pipefail
           CLI=/tmp/ci/bin/specfuse-authoring
@@ -706,20 +706,22 @@ jobs:
           cd "$R/specs"
           PF=$(ls *-project.json)
 
-          # A kebab-case name gives the generator an invalid Python root (clabonte/generator#2882).
-          out=$("$CLI" add-component python ai 2>&1) && fail "python seeded under a kebab-case project name"
-          grep -q "not a valid Python identifier" <<<"$out" || fail "unexpected message: $out"
-          # C# needs tenancy at this generator (clabonte/generator#2883).
-          out=$("$CLI" add-component csharp Backend 2>&1) && fail "csharp seeded without a tenancy block"
-          grep -q "needs a project-level \`tenancy\` block" <<<"$out" || fail "unexpected message: $out"
-          test ! -e "$R/Backend" || fail "a refused seed left a directory behind"
+          # A kebab-case project name (beta-shop) derives the root the generator
+          # derives from 0.20.0 (clabonte/generator#2882): beta_shop_contracts.
+          cp "$PF" pristine.json
+          "$CLI" add-component python ai --no-generate || fail "python seed under a kebab-case project name failed"
+          grep -q '^name = "beta-shop-contracts"' "$R/ai/libs/contracts/pyproject.toml" || fail "python dist name for a kebab-case project name"
+          python3 -c "import json,sys; b={g['name']: g['basePackage'] for g in json.load(open(sys.argv[1]))['groups']}; sys.exit(0 if b.get('PythonContracts') == 'beta_shop_contracts' and b.get('PythonCore') == 'beta_shop_core' else 1)" "$PF" \
+            || fail "python package roots for a kebab-case project name are not beta_shop_contracts / beta_shop_core"
+          # A project with no tenancy block seeds C# (single-tenant compiles from generator 0.20.0, clabonte/generator#2883).
+          "$CLI" add-component csharp Backend -n >/dev/null || fail "csharp dry run without a tenancy block failed"
+          rm -rf "$R/ai" && cp pristine.json "$PF"
 
           python3 - <<'EOF'
           import json, pathlib
           p = next(pathlib.Path(".").glob("*-project.json"))
           d = json.loads(p.read_text())
           d["name"] = "SmokeApp"
-          d["tenancy"] = {"tenant": {"entity": "Org", "foreignKey": "OrgId", "marker": "IOrgOwned"}}
           p.write_text(json.dumps(d, indent=2))
           EOF
           cp "$PF" before.json
@@ -731,7 +733,8 @@ jobs:
           for f in SmokeApp.slnx Directory.Build.props .gitignore README.md CLAUDE.md \
                    SmokeApp.Domain/SmokeApp.Domain.csproj SmokeApp.Infrastructure/SmokeApp.Infrastructure.csproj \
                    SmokeApp.Api/SmokeApp.Api.csproj SmokeApp.Api/src/Program.cs \
-                   SmokeApp.Api/src/Utils/UserHelper.cs SmokeApp.Api/src/Filters/ExceptionFilter.cs; do
+                   SmokeApp.Api/src/Utils/UserHelper.cs SmokeApp.Api/src/Filters/ExceptionFilter.cs \
+                   SmokeApp.Api/appsettings.Development.json; do
             test -f "$R/Backend/$f" || fail "seed is missing $f"
           done
           test -d "$R/Backend/.git" || fail "the seeded repo was not git-initialised"
@@ -750,7 +753,7 @@ jobs:
           ! grep -rq "{{" "$R/smoke-ai" --exclude-dir=.git || fail "an unrendered template token reached the seed"
           # The kit never adopts seeded files: they are not in the scaffold manifest.
           ! grep -q "Backend\|smoke-ai" .specfuse/authoring/.scaffold-manifest || fail "seeded files entered the scaffold manifest"
-          echo "==> add-component seeds once, and refuses what it cannot seed."
+          echo "==> add-component seeds once, and refuses to overwrite."
 
       - name: Script ownership boundary — scripts/ is the project's, scripts/specfuse/ is ours
         run: |

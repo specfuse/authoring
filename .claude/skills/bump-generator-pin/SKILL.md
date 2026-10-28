@@ -47,6 +47,13 @@ If any are missing, ask for them. Do not guess a SHA-256.
    contract (or "no contract change — generator bugfix only"). Match the existing
    row format.
 
+   Then add an entry at the top of `docs/generator-releases.md`, marked
+   **pending**: what breaks before a regen, what is new in the spec, what
+   component repos should know, the tracked generator issues it fixes, and the
+   kit changes. That page is the readable account for kit users who cannot read
+   the generator's own CHANGELOG; its "Adding an entry" section has the shape.
+   Flip the entry to the kit version once the release is published.
+
 5. **Check the extension vocabulary against the new jar — this is a gate, not a
    nicety.** The kit's Spectral rules close several vendor extensions with
    `additionalProperties: false`, over a vocabulary the generator owns. A pin

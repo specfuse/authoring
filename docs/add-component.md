@@ -35,8 +35,9 @@ Backend/
 ├── <Ns>.Domain/<Ns>.Domain.csproj
 ├── <Ns>.Infrastructure/…csproj      references Domain
 ├── <Ns>.Api/…csproj                 Web SDK; references Domain and Infrastructure
+│   ├── appsettings.Development.json   where `dotnet user-jwts` writes a local token's settings
 │   └── src/
-│       ├── Program.cs               wires the generated registrations
+│       ├── Program.cs               wires the generated registrations and JWT bearer authentication
 │       ├── Utils/UserHelper.cs      claims → the caller the generated controllers expect
 │       └── Filters/ExceptionFilter.cs   generated domain exceptions → HTTP status + Error list
 ├── README.md, CLAUDE.md, .gitignore
@@ -44,7 +45,7 @@ Backend/
 
 It adds three groups (`Domain`, `Infrastructure`, `Api`) whose artifact sets compile together. After generating, `dotnet build` passes and `dotnet run --project <Ns>.Api` serves on an in-memory database. Set `ConnectionStrings__Default` to use SQL Server.
 
-**Requires a `tenancy` block** in the project file (`handbooks/Project_File.md` §4.1). At the current generator, generated services always use the event runtime, and the event runtime requires tenancy ([clabonte/generator#2883](https://github.com/clabonte/generator/issues/2883)).
+A `tenancy` block (`handbooks/Project_File.md` §4.1) is optional. Without one, the generator emits a do-nothing tenancy contract for the event runtime, so a single-tenant project compiles its services (from generator 0.20.0, [clabonte/generator#2883](https://github.com/clabonte/generator/issues/2883)).
 
 ## Python
 
@@ -58,7 +59,7 @@ my-app-ai/
 
 It adds two groups (`PythonContracts`, `PythonCore`). After generating, `uv sync --all-packages && uv run pytest` passes.
 
-The package roots must be the ones the generator derives from the project name, because generated code imports across the two libraries by those names. The derivation takes the capitals of the name (`HelloOrders` → `ho`). **A kebab-case project name currently yields an invalid root**, so the command refuses it ([clabonte/generator#2882](https://github.com/clabonte/generator/issues/2882)). Until that's fixed, set the project file's `name` to PascalCase.
+The package roots must be the ones the generator derives from the project name, because generated code imports across the two libraries by those names. A name with capitals gives their lowercased initials (`HelloOrders` → `ho_contracts`). A name without capitals is snake-cased, with every run of other characters folded to one `_` (`hello-orders` → `hello_orders_contracts`); a leading digit gets a `_` prefix. The distribution names are the same roots with hyphens (`hello-orders-contracts`).
 
 ## Package versions and drift
 

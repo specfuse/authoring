@@ -36,10 +36,11 @@ from . import kit_root
 LANGUAGES = ("csharp", "python")
 
 # Artifact sets per C# layer: what the generated tree needs to compile together.
-# The event runtime is always registered: at generator 0.19.0 the `service`
-# artifact references IEventCollector whether or not the spec emits events
-# (clabonte/generator#2883), and the runtime in turn needs the project-level
-# `tenancy` block.
+# The event runtime is always registered: the `service` artifact references
+# IEventCollector whether or not the spec emits events. Without a project-level
+# `tenancy` block, `eventRuntime` emits a do-nothing `ITenantScoped` contract and
+# `tenancyMarker` emits nothing, so a single-tenant project compiles too
+# (generator 0.20.0, clabonte/generator#2883).
 _CSHARP_DOMAIN = [
     "domainProject", "domainValidation", "domainExceptions", "valueObject", "entity",
     "enum", "domainModel", "serviceInterface", "repositoryInterface", "service",
@@ -90,14 +91,35 @@ def python_abbreviation(project_name: str) -> str:
     """The package-root prefix the generator derives for Python (`PythonProfile.projectAbbreviation`).
 
     The generator imports across Python libraries by `<abbr>_contracts` /
-    `<abbr>_core`, so the seeded packages must use exactly its derivation:
-    the lowercased capitals of the project name (`RestoManager` → `rm`), else
-    the name itself, snake-cased.
+    `<abbr>_core`, so the seeded packages must use exactly its derivation
+    (generator 0.20.0, clabonte/generator#2882):
+
+    - a name with capitals keeps their lowercased initials: `HelloOrders` → `ho`;
+    - otherwise the name is snake-cased, every run of characters outside
+      `[a-z0-9_]` folds to one `_`, and leading and trailing `_` are dropped:
+      `hello-orders` → `hello_orders`;
+    - a result starting with a digit gets a `_` prefix: `9lives` → `_9lives`;
+    - an empty name, or one with nothing left, gives `app`.
+
+    The result is always an importable identifier.
     """
+    if not project_name:
+        return "app"
     caps = "".join(c.lower() for c in project_name if c.isupper())
     if caps:
         return caps
-    return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", project_name).lower()
+    # The generator's toSnakeCase on a name with no capitals: lowercase, collapse
+    # runs of `_`, drop one leading and one trailing `_`.
+    snake = re.sub(r"^_|_$", "", re.sub(r"_+", "_", project_name.lower()))
+    words = re.sub(r"^_+|_+$", "", re.sub(r"[^a-z0-9_]+", "_", snake))
+    if not words:
+        return "app"
+    return "_" + words if words[0].isdigit() else words
+
+
+def _dist_name(abbr: str, suffix: str) -> str:
+    """A PEP 508 distribution name for a package root: `hello_orders` → `hello-orders-contracts`."""
+    return "-".join(p for p in abbr.split("_") if p) + f"-{suffix}"
 
 
 def _find_project_file(spec_dir: Path, explicit: Path | None) -> Path:
@@ -192,31 +214,14 @@ def _values(lang: str, config: dict, spec_dir: Path, dir_name: str, namespace: s
             raise ComponentError(
                 f"cannot derive a C# namespace from project name {project_name!r}; pass --namespace"
             )
-        if not config.get("tenancy"):
-            raise ComponentError(
-                "a C# component needs a project-level `tenancy` block (handbooks/Project_File.md §4.1).\n"
-                "  At this generator, generated services always use the event runtime, and the event\n"
-                "  runtime requires tenancy, so a single-tenant project cannot compile them yet\n"
-                "  (clabonte/generator#2883). Add a `tenancy` block naming your tenant entity, then rerun."
-            )
         values.update(Prefix=prefix)
     else:
         abbr = python_abbreviation(project_name)
-        if not abbr.isidentifier():
-            raise ComponentError(
-                f"the generator derives the Python package root '{abbr}_contracts' from project "
-                f"name {project_name!r}, which is not a valid Python identifier.\n"
-                "  Generated Python imports across its libraries by that derived name, so the\n"
-                "  packages cannot be renamed here. Until the generator derives a valid root from\n"
-                "  kebab-case names (clabonte/generator#2882), set the project file's `name` to PascalCase (e.g. "
-                f"{pascal_case(project_name)!r}), which yields "
-                f"'{python_abbreviation(pascal_case(project_name))}_contracts'."
-            )
         values.update(
             ContractsPackage=f"{abbr}_contracts",
             CorePackage=f"{abbr}_core",
-            ContractsDist=f"{abbr.replace('_', '-')}-contracts",
-            CoreDist=f"{abbr.replace('_', '-')}-core",
+            ContractsDist=_dist_name(abbr, "contracts"),
+            CoreDist=_dist_name(abbr, "core"),
         )
     return values
 

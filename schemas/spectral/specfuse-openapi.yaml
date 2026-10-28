@@ -1310,6 +1310,45 @@ rules:
                                 uniqueItems: true
                                 maxItems: 2
                                 items: { type: string, enum: [year, month, day] }
+                          # generator 0.20.0 (FEAT-2026-0231): who may read the
+                          # masked field in the clear. `roles` (any listed role)
+                          # OR `holder` (the row's owner). Closed at both levels:
+                          # any other key, `scopes` included, is
+                          # UNKNOWN_PROTECTION_SUBKEY (ERROR).
+                          #
+                          # `roles` takes a single string as well as a list
+                          # (`VendorExtensionParser.parseStringList`), and the
+                          # jar neither dedupes nor requires a non-empty list
+                          # (an empty role name is at most UNMASK_ROLE_UNREACHABLE,
+                          # a WARNING), so none of that is required here.
+                          #
+                          # `holder` needs both members and a caller source
+                          # `caller.userId` or `caller.<identifier>`
+                          # (`PopulateFromSource`), or it is
+                          # UNMASK_HOLDER_INVALID (ERROR). Whether the holder
+                          # property exists and is a uuid or plain string, whether
+                          # the field is masked (UNMASK_WITHOUT_MASKING), and the
+                          # two WARNINGs (UNMASK_RULE_UNDECLARED,
+                          # UNMASK_ROLE_UNREACHABLE) need the schema and the
+                          # operations, so they are generator-only.
+                          unmask:
+                            type: object
+                            additionalProperties: false
+                            properties:
+                              roles:
+                                # Items are not typed: the jar `toString`s each
+                                # one, so a non-string role parses and is at most
+                                # UNMASK_ROLE_UNREACHABLE (WARNING).
+                                anyOf:
+                                  - { type: string }
+                                  - { type: array }
+                              holder:
+                                type: object
+                                additionalProperties: false
+                                required: [property, caller]
+                                properties:
+                                  property: { type: string, pattern: "\\S" }
+                                  caller: { type: string, pattern: "^\\s*caller\\.[A-Za-z][A-Za-z0-9]*\\s*$" }
                           unbounded: { type: boolean }
                           rationale: { type: string, minLength: 1 }
                           reviewedOn: { type: string, format: date }
@@ -1451,6 +1490,45 @@ rules:
             # new in 0.8.0, so no spec can already carry the shape this would
             # start rejecting, and a typo'd member on a constraint is otherwise
             # silent in both tools.
+            #
+            # Generator 0.20.0 (FEAT-2026-0217) adds two members, read in
+            # `EntityDefinition.loadUniqueBy` / `loadUniqueByWhere`:
+            #
+            #   nullsDistinct  boolean, default true. `false` drops the
+            #                  `[Col] IS NOT NULL` conjunct of each optional
+            #                  member, so NULL is one value of the tuple. A
+            #                  non-boolean (null included) is
+            #                  INVALID_EXTENSION_VALUE.
+            #   where          a non-empty list of `{property, is}` or
+            #                  `{property, equals}`, ANDed into the index
+            #                  filter. `is` is YAML null, the string "null" (the
+            #                  jar reads it as the same thing) or "notNull";
+            #                  `equals` is a non-null boolean, integer or string
+            #                  (a fraction is refused). Any other key, an empty
+            #                  list, both `is` and `equals` — each is
+            #                  INVALID_EXTENSION_VALUE (ERROR).
+            #
+            # Every check below mirrors an ERROR the jar raises at parse time,
+            # with one deliberate gap: "neither `is` nor `equals`" is NOT
+            # checked here. The kit's own `validate-spectral.sh` strips YAML
+            # nulls before linting (the nimma crash workaround), so a correct
+            # `{property: revokedAt, is: null}` reaches Spectral as a bare
+            # `{property: revokedAt}`. A oneOf requiring one of the two keys
+            # would fail every `is: null` condition on a consumer's spec. The
+            # jar still refuses a bare `{property}` written by hand.
+            #
+            # `uniqueItems` on `where` rejects only a condition repeated
+            # verbatim, which the jar also refuses
+            # (UNIQUE_BY_WHERE_DUPLICATE_PROPERTY, ERROR). Two conditions on
+            # one property with different operators are the jar's to report.
+            #
+            # NOT checked here, because one value does not show it: whether a
+            # `where` property exists and is a column (UNIQUE_BY_UNKNOWN_PROPERTY
+            # / UNIQUE_BY_NOT_A_COLUMN), `is: null` on a required property, the
+            # literal's kind against the property's type, an enum value, the
+            # forbidden characters `" \ :`, and `where` on an encrypted
+            # property. Those are generator `validate` and build-time checks;
+            # Vendor_Extensions.md lists them.
             uniqueBy:
               type: array
               uniqueItems: true
@@ -1465,6 +1543,74 @@ rules:
                     minItems: 1
                     uniqueItems: true
                     items: { type: string, pattern: "^[a-z][A-Za-z0-9]*$" }
+                  nullsDistinct: { type: boolean }
+                  where:
+                    type: array
+                    minItems: 1
+                    uniqueItems: true
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: ["property"]
+                      properties:
+                        property: { type: string, pattern: "^[a-z][A-Za-z0-9]*$" }
+                        is: { enum: [null, "null", "notNull"] }
+                        equals:
+                          anyOf:
+                            - { type: boolean }
+                            - { type: integer }
+                            - { type: string }
+                      not:
+                        required: ["is", "equals"]
+            # Which rows of a tenant a caller sees, generator 0.21.0
+            # (FEAT-2026-0238, `VisibilityPolicy`). Two forms: the scalar mode,
+            # or `{ mode, scope, unscopedRows }`. Vendor_Extensions.md §1.1,
+            # "`visibility`".
+            #
+            # Every check here mirrors a spec-level ERROR of the jar:
+            #   mode outside the set, or an object with no mode
+            #       VISIBILITY_UNKNOWN_MODE
+            #   grantFiltered with no scope (the scalar form always), or a
+            #   blank one
+            #       VISIBILITY_SCOPE_MISSING
+            #   unscopedRows outside the set
+            #       VISIBILITY_UNKNOWN_UNSCOPED_ROWS
+            #   any other key
+            #       INVALID_EXTENSION_VALUE
+            #
+            # Deliberately ACCEPTED, because the jar only warns
+            # (VISIBILITY_UNSCOPED_ROWS_UNUSED): `scope` on tenantWide or
+            # subTenant, and `unscopedRows` on grantFiltered. Rejecting them
+            # here would make lint stricter than the generator.
+            #
+            # The jar matches the object's keys case-insensitively (`Mode:`
+            # parses); the kit accepts the documented spelling only, as it does
+            # for `delete` and `concurrency`.
+            #
+            # Everything that needs the project's `tenancy` or the ownership
+            # graph (VISIBILITY_ON_GLOBAL_ENTITY, _SUBTENANT_NOT_SCOPED,
+            # _UNSCOPED_ROWS_UNDECLARED, _SCOPE_INVALID, _WIDER_THAN_ANCESTOR)
+            # is generator-only.
+            visibility:
+              oneOf:
+                - type: string
+                  enum: ["tenantWide", "subTenant"]
+                - type: object
+                  additionalProperties: false
+                  required: ["mode"]
+                  properties:
+                    mode: { type: string, enum: ["tenantWide", "subTenant", "grantFiltered"] }
+                    # Typed only under grantFiltered (the `then` below): on the
+                    # other modes the jar records any value and only warns.
+                    scope: {}
+                    unscopedRows: { type: string, enum: ["tenantWide", "restricted"] }
+                  if:
+                    required: ["mode"]
+                    properties: { mode: { const: "grantFiltered" } }
+                  then:
+                    required: ["scope"]
+                    properties:
+                      scope: { type: string, pattern: "\\S" }
             aiAccess:
               type: object
               additionalProperties: false
