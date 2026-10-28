@@ -67,7 +67,6 @@ EOF
 cat > .gitignore <<'EOF'
 bin/
 obj/
-*.generated-paths.json
 EOF
 
 header() {
@@ -140,4 +139,41 @@ if [ "$status" -ne 0 ] || ! grep -q ' 0 missed, 0 skipped' <<<"$out"; then
   echo "FAIL: a rule did not bite, or a case was skipped on the synthetic tree." >&2
   exit 1
 fi
+
+# ── Shapes the starter must accept, each committed on top of the seed and
+# rolled back: the engine reads tracked files only.
+echo "── variants that must stay green"
+variant_green() {
+  git add -A
+  git commit -q -m "variant: $1"
+  if ./scripts/check-gen-contract.sh --quiet; then
+    echo "  ok    $1"
+  else
+    echo "FAIL: the contract rejects a valid shape: $1" >&2
+    exit 1
+  fi
+  git reset -q --hard HEAD~1
+}
+
+cat > Directory.Build.props <<'EOF'
+<Project>
+  <PropertyGroup>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="src/**/*.cs" />
+    <Compile Include="gen-src/**/*.cs" />
+  </ItemGroup>
+</Project>
+EOF
+variant_green "forward-slash Compile globs"
+
+mkdir -p "$PREFIX.UnitTests/src"
+printf 'namespace %s.UnitTests;\n\npublic sealed class FakeOrderPlacedHandler : IOrderPlacedHandler { }\n' "$PREFIX" \
+  > "$PREFIX.UnitTests/src/FakeOrderPlacedHandler.cs"
+variant_green "a test double in a *UnitTests project"
+
+git rm -q .gitignore
+variant_green "no .gitignore at all"
+
 echo "OK: the C# starter contract is green on a fresh seed and every rule bites."

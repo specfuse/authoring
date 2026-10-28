@@ -31,14 +31,15 @@ Infrastructure only to wire it up in `Program.cs`. Enforced over generated
 
 `Directory.Build.props` turns default globbing off and compiles exactly
 `src/**/*.cs` and `gen-src/**/*.cs` in every project. The generator's
-`*.generated-paths.json` manifests are git-ignored. Enforced by `GEN-020`
-and `GEN-021`.
+`*.generated-paths.json` path manifests are committed, never git-ignored.
+Enforced by `GEN-020` and `GEN-021`.
 
 ## Extension points
 
-Hand-written code extends generated code three ways, all in `src/`:
+Hand-written code extends generated code four ways, all in `src/`:
 `partial` classes in the generated type's namespace, concrete classes derived
-from a generated `*Base`, and the `partial` mapper-hook methods. A generated
+from a generated `*Base`, the `partial` mapper-hook methods, and a custom
+service registered after `AddServices()` to replace a generated default. A generated
 file is never copied into `src/` and edited (`GEN-030`). A generated base is
 always adopted: a handler or job interface is never implemented directly, and
 a gated application service always derives from its

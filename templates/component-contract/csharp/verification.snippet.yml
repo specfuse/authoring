@@ -17,15 +17,19 @@ code:
 
   - name: build
     needs: [gen-contract]
-    command: "dotnet build --nologo -warnaserror"
+    # Add -warnaserror once the build is clean; that is a team choice, not
+    # something the generated code requires.
+    command: "dotnet build --nologo"
 
   - name: tests
     needs: [build]
-    command: "dotnet test --no-build --nologo --filter \"Category!=Integration\" --settings coverlet.runsettings --collect:\"XPlat Code Coverage\" --results-directory ./CoverageResults"
+    command: "dotnet test --no-build --nologo --filter \"Category!=Integration\""
 
-  # Optional: a coverage floor over hand-written src/ only. coverlet.runsettings
-  # excludes **/gen-src/** so generated tests and generated code count for
-  # nothing. See the guide, check CS-22.
+  # Optional: a coverage floor over hand-written src/ only. Needs a
+  # coverlet.runsettings you write, excluding **/gen-src/** so generated tests
+  # and generated code count for nothing, and the tests gate extended with
+  #   --settings coverlet.runsettings --collect:"XPlat Code Coverage" --results-directory ./CoverageResults
+  # See the guide, check CS-22.
   # - name: coverage
   #   needs: [tests]
   #   tier: broad

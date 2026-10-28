@@ -10,7 +10,7 @@ and `add-component` will seed them automatically once
 | File | Lands at | What it is |
 |---|---|---|
 | `gen-contract.yml` | repo root | 16 starter rules: markers, layering, host wiring, extension-point adoption. Every rule green on a fresh seed. |
-| `scripts/gen_contract_checks.py` | `scripts/` | The one project-specific check (`generated_base_adopted`) the generic engine cannot express. |
+| `scripts/gen_contract_checks.py` | `scripts/` | The two project-specific checks the generic engine cannot express: `generated_base_adopted` and `generated_handler_interface_implemented_directly`. |
 | `scripts/check-gen-contract.sh` | `scripts/` | Runs the contract through the shared engine (`specfuse.loop.gen_contract`, specfuse-loop 0.30+). |
 | `scripts/test-gen-contract.sh` | `scripts/` | Mutation test: breaks the tree one rule at a time and asserts the rule reports it. |
 | `docs/generated-code-expectations.md` | `docs/` | The prose half, with the five section names the generator's QA reviewer reads. |
@@ -23,7 +23,10 @@ From the component repo root, with `<Prefix>` the solution's root namespace
 (`HelloOrders` for `HelloOrders.Domain` / `.Infrastructure` / `.Api`):
 
 ```bash
-KIT=/path/to/authoring/templates/component-contract/csharp
+# This folder: templates/component-contract/csharp in an authoring checkout, or
+# specfuse/authoring/_kit/templates/component-contract/csharp inside the
+# installed package (with pipx, under ~/.local/pipx/venvs/specfuse/lib/python3.*/site-packages/).
+KIT=/path/to/component-contract/csharp
 cp "$KIT/gen-contract.yml" .
 mkdir -p scripts docs .github/workflows
 cp "$KIT/scripts/"* scripts/

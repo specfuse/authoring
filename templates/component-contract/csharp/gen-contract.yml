@@ -32,6 +32,11 @@
 # The engine reads this file with the loop's own strict YAML subset: block
 # style only, no anchors, no flow mappings. Prose goes in folded scalars (>),
 # regexes in single quotes.
+#
+# The filesets below assume project folders at the repo root named
+# __Prefix__.Domain, __Prefix__.Infrastructure and __Prefix__.Api, and test
+# projects ending in `.Test` or `Tests`. A different layout edits `filesets:`
+# once when seeding; a scope that matches nothing is an error, not a pass.
 
 version: 1
 builtins: scripts/gen_contract_checks.py
@@ -64,7 +69,7 @@ filesets:
       - "*/src/**/*.cs"
     exclude:
       - "*.Test/**"
-      - "*.Tests/**"
+      - "*Tests/**"
   domain_gen:
     include:
       - "__Prefix__.Domain/gen-src/**/*.cs"
@@ -246,22 +251,24 @@ rules:
     scope: build_props
     patterns:
       - '<EnableDefault(Compile)?Items>false</EnableDefault(Compile)?Items>'
-      - 'Compile Include="src\\\*\*\\\*\.cs"'
-      - 'Compile Include="gen-src\\\*\*\\\*\.cs"'
+      - 'Compile Include="src[\\/]\*\*[\\/]\*\.cs"'
+      - 'Compile Include="gen-src[\\/]\*\*[\\/]\*\.cs"'
 
   - id: GEN-021
-    title: The generator's bookkeeping manifests are git-ignored
+    title: The generator's path manifests are not git-ignored
     severity: error
     doc: docs/generated-code-expectations.md#build-wiring
     why: >
-      The generator writes a `<Group>.generated-paths.json` beside each
-      gen-src/ on every run, stamped with a timestamp. Tracked, it dirties
-      the tree on every regen and turns every component PR into a diff of
-      noise that hides the generated change.
-    check: require_pattern
+      `<Group>.generated-paths.json` beside each gen-src/ records every path
+      the group emitted and every file a regen moved: the old-to-new mapping
+      a layout-changing generator release hands over. Its capturedAt is read
+      from the spec repo's baseline, not the clock, so a regen that moved
+      nothing leaves it byte-identical. Ignored, the mapping never reaches
+      the repo and a layout move reads as an unexplained delete plus add.
+    check: forbid_pattern
     scope: gitignore
-    patterns:
-      - '^\*\.generated-paths\.json$'
+    pattern: 'generated-paths'
+    allow_empty: true
 
   # ── Hand-written code holds up its end ─────────────────────────────────
 

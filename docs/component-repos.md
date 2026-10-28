@@ -81,7 +81,7 @@ Run these from the spec repo's generate wrapper as soon as the group finishes, s
 
 Commit generated code in the component repo. Every regen then shows up as a reviewable diff in a component PR. CI and teammates build without Java or generator access. And a spec change and its effect on each component are visible side by side.
 
-Ignore the generator's volatile bookkeeping files, such as the per-group `*.generated-paths.json` manifests. The Dart package may need its own `.gitignore` exception if the app ignores `*.g.dart` at the root.
+Commit the generator's per-group `*.generated-paths.json` path manifests too: they record every emitted path and every file a regen moved, and their `capturedAt` comes from the spec repo's `<stateDir>/<group>.paths.json` baseline rather than the clock, so a regen that moved nothing leaves them byte-identical. The Dart package may need its own `.gitignore` exception if the app ignores `*.g.dart` at the root.
 
 **What a green build does not prove.** A regen can change a field's name or an enum's wire value while every hand-written type that mirrors it still compiles. When you review a regen PR:
 

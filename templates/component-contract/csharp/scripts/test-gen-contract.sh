@@ -128,7 +128,8 @@ expect_fail GEN-014 "$INFRA_CSPROJ" "s#</Project>#<ItemGroup><ProjectReference I
 
 # Host wiring
 expect_fail GEN-020 Directory.Build.props 's#gen-src\\\*\*\\\*\.cs#generated\\**\\*.cs#'
-expect_fail GEN-021 .gitignore '/^\*\.generated-paths\.json$/d'
+expect_fail GEN-021 .gitignore '$a\
+*.generated-paths.json'
 
 # Hand-written code
 expect_fail GEN-030 "$SRC_CS" '1i\
