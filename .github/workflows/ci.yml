@@ -188,7 +188,9 @@ jobs:
                       ConcurrencyDelegated ArchiveVisibilityOperational \
                       UniqueBySingleAndComposite UniqueByEmptyList \
                       ValueObjectProtectionScalar ValueObjectProtectionPerMember \
-                      DeprecatedSchemaKey; do
+                      DeprecatedSchemaKey \
+                      VisibilityShorthand VisibilityTenantWide \
+                      VisibilityLongForm VisibilityGrantWithScope; do
             if grep "specfuse-xentity-shape" "$REPORT" | grep -q "$good"; then
               echo "::error::$good uses only documented x-entity keys but was flagged." >&2
               echo "The allow-list has fallen behind the handbooks again." >&2
@@ -210,7 +212,11 @@ jobs:
                      UniqueByNoProperties UniqueByEmptyProperties \
                      ValueObjectProtectionUnknownSubKey \
                      ValueObjectProtectionMemberNotObject \
-                     UniqueByUnknownMember UniqueByBadPropertyName; do
+                     UniqueByUnknownMember UniqueByBadPropertyName \
+                     VisibilityUnknownMode VisibilityModeCase \
+                     VisibilityGrantFilteredScalar \
+                     VisibilityGrantFilteredNoScope VisibilityNoMode \
+                     VisibilityBadUnscopedRows VisibilityUnknownKey; do
             if ! grep "specfuse-xentity-shape" "$REPORT" | grep -q "$bad"; then
               echo "::error::specfuse-xentity-shape did not flag $bad." >&2
               fail=1

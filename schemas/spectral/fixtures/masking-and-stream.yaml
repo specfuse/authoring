@@ -16,6 +16,12 @@
 #   Profile.windowOnInteger    masking-target        MASKING_NON_STRING
 #   Profile.hashedMasked       masking-target        PROTECTION_HASHED_MASKING_MUTEX
 #
+#   Profile.unmaskScopes            xprotection-shape  UNKNOWN_PROTECTION_SUBKEY (`scopes`)
+#   Profile.unmaskHolderUnknownKey  xprotection-shape  UNKNOWN_PROTECTION_SUBKEY (holder member)
+#   Profile.unmaskBadCaller         xprotection-shape  UNMASK_HOLDER_INVALID (not a caller source)
+#   Profile.unmaskHolderNoCaller    xprotection-shape  UNMASK_HOLDER_INVALID (holder needs both)
+#   Profile.unmaskNotObject         xprotection-shape  INVALID_EXTENSION_VALUE
+#
 #   /wrongMedia                xstream-declaration   STREAM_UNKNOWN_MEDIA_TYPE
 #   /nonSuccess                xstream-declaration   STREAM_NON_SUCCESS_RESPONSE
 #   /mixed                     xstream-declaration   STREAM_MIXED_CONTENT
@@ -31,6 +37,11 @@
 #   Profile.windowOnString     first/last on a plain string
 #   Profile.encryptedDate      encrypted date, no masking (jar masks it as reveal: [])
 #   /jsonLines, /serverSent    one item schema each, sole content, 2xx
+#   Profile.unmaskByRole, unmaskByRoleScalar, unmaskByOwner, unmaskByRoleOrOwner
+#                              x-protection.unmask (generator 0.20.0): roles as a
+#                              list or one string, holder with caller.userId or
+#                              caller.<identifier>, and both together. The unmask
+#                              cases were measured on the 0.21.0 jar.
 #
 # Not covered here: STREAM_ITEM_SHARED_WITH_JSON_BODY needs every body in the
 # document and stays with the generator's `validate`.
@@ -195,3 +206,49 @@ components:
           type: string
           format: date
           x-protection: { atRest: encrypted }
+        # ---- x-protection.unmask, generator 0.20.0 (FEAT-2026-0231) ------
+        # Measured on the 0.21.0 jar: the four accepted shapes parse clean;
+        # each rejected one is one jar ERROR, named beside it.
+        ownerId: { type: string, format: uuid }
+        unmaskByRole:
+          type: string
+          x-protection: { atRest: encrypted, masking: { last: 4 }, unmask: { roles: [Admin] } }
+        unmaskByRoleScalar:
+          type: string
+          x-protection: { atRest: encrypted, masking: { last: 4 }, unmask: { roles: Admin } }
+        unmaskByOwner:
+          type: string
+          x-protection:
+            atRest: encrypted
+            masking: { last: 4 }
+            unmask: { holder: { property: ownerId, caller: caller.userId } }
+        unmaskByRoleOrOwner:
+          type: string
+          x-protection:
+            atRest: encrypted
+            masking: { last: 4 }
+            unmask: { roles: [Admin], holder: { property: ownerId, caller: caller.employeeId } }
+        unmaskScopes:
+          type: string
+          x-protection: { atRest: encrypted, masking: { last: 4 }, unmask: { scopes: [read] } }  # UNKNOWN_PROTECTION_SUBKEY
+        unmaskHolderUnknownKey:
+          type: string
+          x-protection:
+            atRest: encrypted
+            masking: { last: 4 }
+            unmask: { holder: { property: ownerId, caller: caller.userId, via: claims } }  # UNKNOWN_PROTECTION_SUBKEY
+        unmaskBadCaller:
+          type: string
+          x-protection:
+            atRest: encrypted
+            masking: { last: 4 }
+            unmask: { holder: { property: ownerId, caller: user.id } }  # UNMASK_HOLDER_INVALID
+        unmaskHolderNoCaller:
+          type: string
+          x-protection:
+            atRest: encrypted
+            masking: { last: 4 }
+            unmask: { holder: { property: ownerId } }  # UNMASK_HOLDER_INVALID
+        unmaskNotObject:
+          type: string
+          x-protection: { atRest: encrypted, masking: { last: 4 }, unmask: true }  # INVALID_EXTENSION_VALUE

@@ -1310,6 +1310,42 @@ rules:
                                 uniqueItems: true
                                 maxItems: 2
                                 items: { type: string, enum: [year, month, day] }
+                          # generator 0.20.0 (FEAT-2026-0231): who may read a
+                          # masked field in the clear when an `x-unmask`
+                          # parameter asks. `roles` and `holder` are OR-ed.
+                          # Measured against the 0.21.0 jar:
+                          #   - any other member, `scopes` included, and any
+                          #     member of `holder` but `property`/`caller`, is
+                          #     UNKNOWN_PROTECTION_SUBKEY;
+                          #   - a `holder` missing either member, or a `caller`
+                          #     that is not `caller.userId` / `caller.<identifier>`,
+                          #     is UNMASK_HOLDER_INVALID;
+                          #   - a non-object `unmask` is INVALID_EXTENSION_VALUE.
+                          # `roles` takes a list or a single string (the jar's
+                          # string-list parser reads both), and `unmask: {}`
+                          # parses clean, so neither is tightened here. Whether
+                          # the property is masked at all (UNMASK_WITHOUT_MASKING)
+                          # and whether the holder property exists and is a
+                          # uuid/string needs the schema, and stays with the
+                          # generator's `validate`.
+                          unmask:
+                            type: object
+                            additionalProperties: false
+                            properties:
+                              roles:
+                                oneOf:
+                                  - { type: string, minLength: 1 }
+                                  - type: array
+                                    items: { type: string, minLength: 1 }
+                              holder:
+                                type: object
+                                additionalProperties: false
+                                required: [property, caller]
+                                properties:
+                                  property: { type: string, minLength: 1 }
+                                  caller:
+                                    type: string
+                                    pattern: "^caller\\.[A-Za-z][A-Za-z0-9]*$"
                           unbounded: { type: boolean }
                           rationale: { type: string, minLength: 1 }
                           reviewedOn: { type: string, format: date }
@@ -1465,6 +1501,47 @@ rules:
                     minItems: 1
                     uniqueItems: true
                     items: { type: string, pattern: "^[a-z][A-Za-z0-9]*$" }
+            # Narrowing within the tenant, generator 0.21.0 (FEAT-2026-0238,
+            # Vendor_Extensions.md §1.1). Two forms, both measured against the
+            # 0.21.0 jar:
+            #
+            #   visibility: subTenant                                   # scalar
+            #   visibility: { mode: subTenant, unscopedRows: tenantWide }
+            #   visibility: { mode: grantFiltered, scope: departmentId }
+            #
+            # Each rejection below is a spec-level ERROR in the jar, so lint
+            # says it first rather than tightening past it:
+            #   - the scalar `grantFiltered` has nowhere to put `scope`
+            #     (VISIBILITY_SCOPE_MISSING), so the scalar arm omits it;
+            #   - the object form without `mode`, or with a mode outside the
+            #     set, is VISIBILITY_UNKNOWN_MODE (the mode is case-sensitive:
+            #     `SubTenant` is refused);
+            #   - `grantFiltered` without `scope` is VISIBILITY_SCOPE_MISSING;
+            #   - `unscopedRows` outside the set is VISIBILITY_UNKNOWN_UNSCOPED_ROWS;
+            #   - an unknown member is INVALID_EXTENSION_VALUE.
+            #
+            # Deliberately NOT rejected: `scope` on `tenantWide`/`subTenant` and
+            # `unscopedRows` on `grantFiltered`. The jar accepts both and warns
+            # (VISIBILITY_UNSCOPED_ROWS_UNUSED) — a guard must never reject what
+            # the generator accepts. Everything that needs the project's
+            # `tenancy` or the ownership graph (VISIBILITY_ON_GLOBAL_ENTITY,
+            # VISIBILITY_SCOPE_INVALID, VISIBILITY_WIDER_THAN_ANCESTOR, ...)
+            # stays with the generator's `validate`.
+            visibility:
+              oneOf:
+                - type: string
+                  enum: [tenantWide, subTenant]
+                - type: object
+                  additionalProperties: false
+                  required: [mode]
+                  properties:
+                    mode: { type: string, enum: [tenantWide, subTenant, grantFiltered] }
+                    scope: { type: string, pattern: "\\S" }
+                    unscopedRows: { type: string, enum: [tenantWide, restricted] }
+                  if:
+                    properties: { mode: { const: grantFiltered } }
+                  then:
+                    required: [scope]
             aiAccess:
               type: object
               additionalProperties: false

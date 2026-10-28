@@ -55,6 +55,7 @@ x-entity:
   concurrency: string | object   # Required, NO default: "optimistic" | "none", or { mode, reason } / { mode: delegated, to }
   delete: string | object        # Optional: "hard" | "soft", or { mode, retention, reason, archiveVisibility } (default: "hard")
   uniqueBy: object[]             # Optional: uniqueness constraints, each { name?, properties[] }
+  visibility: string | object    # Optional: "tenantWide" | "subTenant", or { mode, unscopedRows, scope } (generator 0.21.0, C# only)
   valueObjects: object           # Optional: Value object storage configuration
   aiAccess: object               # Optional: AI agent access policy (see 1.1.1). Absent = no AI access.
 ```
@@ -853,6 +854,65 @@ a repeated member within one tuple and an unknown member on a constraint — bot
 of which the jar takes silently. The key is new in `0.8.0`, so no spec predates
 that tightening.
 
+### `visibility` — narrowing within the tenant (generator 0.21.0)
+
+A project that declares `tenancy` (`Project_File.md` §4.1) keeps a caller inside
+their tenant with a generated `Tenant` query filter (generator `0.21.0`, C#).
+`visibility` narrows further, inside the tenant: to the caller's sub-tenant, or
+to the values of one property the caller is granted.
+
+```yaml
+x-entity:
+  visibility: subTenant                                   # shorthand
+  # or
+  visibility: { mode: subTenant, unscopedRows: tenantWide }
+  # or
+  visibility: { mode: grantFiltered, scope: departmentId }
+```
+
+| Member | Values | Meaning |
+|---|---|---|
+| `mode` | `tenantWide` \| `subTenant` \| `grantFiltered` | `tenantWide` is what an entity without the key already is; writing it records that the question was answered. `subTenant` narrows to the caller's sub-tenants. `grantFiltered` narrows to the values of `scope` the caller holds. Case-sensitive. |
+| `unscopedRows` | `tenantWide` \| `restricted` | Who sees a row whose sub-tenant is null (a nullable column, or an optional `belongsTo` hop whose key is null). `tenantWide`: every caller of the tenant. `restricted`: only an unrestricted or tenant-wide caller. |
+| `scope` | a property name | `grantFiltered` only, and required there. A `format: uuid` property of this entity carrying a local `x-references`, to an entity that is neither the tenant nor the sub-tenant (that is what `subTenant` is for). |
+
+The shorthand states no `unscopedRows`, so it is accepted only where no row can
+be unscoped. `grantFiltered` has no shorthand: the scalar form has nowhere to put
+`scope`.
+
+**C# only.** For an entity with an effective narrowing, the generated
+`AppDbContext` declares a second named query filter, `QueryFilterNames.Visibility`,
+beside `Tenant`. A child that declares nothing inherits the strictest narrowing
+among the nearest declaring ancestors on each `belongsTo` route; an entity that
+carries the sub-tenant column itself filters on its own column. A row hidden by
+the filter answers **404, not 403**, on get, update and delete. A `grantFiltered`
+row whose `scope` is null is seen only by an unrestricted caller. The host feeds
+the filter through `IRecordVisibilityResolver` (`docs/csharp-component-guide.md`).
+
+**Python enforces neither filter.** A Python group that reads a tenant-owned
+table through `repository` or `aiRepository` draws `VISIBILITY_NOT_ENFORCED`
+(WARNING), naming the group and the entity. Scope those queries by hand until
+Python enforcement ships.
+
+| Code | Severity | Fires when |
+|---|---|---|
+| `VISIBILITY_UNKNOWN_MODE` | **ERROR** | `mode` is absent or not one of the three. Spec-level: `validate <spec>` reports it with no project |
+| `VISIBILITY_SCOPE_MISSING` | **ERROR** | `grantFiltered` with no `scope`, the scalar form always. Spec-level |
+| `VISIBILITY_UNKNOWN_UNSCOPED_ROWS` | **ERROR** | `unscopedRows` outside `tenantWide` \| `restricted`. Spec-level |
+| `VISIBILITY_SCOPE_INVALID` | **ERROR** | `scope` names no property, a non-uuid property, a uuid with no local `x-references`, or the tenant or sub-tenant |
+| `VISIBILITY_ON_GLOBAL_ENTITY` | **ERROR** | no ownership path ties the entity to the tenant, or the project declares no `tenancy` |
+| `VISIBILITY_SUBTENANT_NOT_SCOPED` | **ERROR** | `subTenant` on an entity with neither the sub-tenant column nor a `belongsTo` chain to the sub-tenant |
+| `VISIBILITY_UNSCOPED_ROWS_UNDECLARED` | **ERROR** | `subTenant` reaches the sub-tenant through a nullable column or optional hop and states no `unscopedRows` (always the case for the shorthand) |
+| `VISIBILITY_WIDER_THAN_ANCESTOR` | **ERROR** | `tenantWide` under an ancestor that is `subTenant` or `grantFiltered` |
+| `VISIBILITY_UNSCOPED_ROWS_UNUSED` | WARNING | `unscopedRows` where no row can be unscoped, or on `grantFiltered`; `scope` on `tenantWide` or `subTenant` |
+| `VISIBILITY_NOT_ENFORCED` | WARNING | a Python group reads a tenant-owned table (see above) |
+
+An unknown member is `INVALID_EXTENSION_VALUE`. `specfuse-xentity-shape` catches
+the three spec-level ERRORs and the unknown member at lint. Everything that needs
+the project's `tenancy` or the ownership graph stays with the generator's
+`validate`. On `hello-orders`, which declares no `tenancy`, `visibility: subTenant`
+on `Order` is `VISIBILITY_ON_GLOBAL_ENTITY` (measured, `compatibility.md` §58).
+
 ### 1.1.1 aiAccess (within x-entity)
 
 **Purpose**: Declares the access policy that generated repositories and service layers must enforce for AI agents interacting with this entity. Consumed by the code generator to emit AI-scoped repository methods, field allow-lists, and audit hooks.
@@ -1381,6 +1441,7 @@ email:
 | `mode` | `randomized` \| `deterministic` | `deterministic` parses and is then refused: `PROTECTION_MODE_UNSUPPORTED` ("declared but unsupported in v1"). Only `randomized` is implemented. |
 | `blindIndex` | `{ equality, prefix, normalization[], scope }` | `scope` is `tenant` \| `global`. How an encrypted value stays searchable. |
 | `masking` | `{ first, last }` on a plain string, or `{ reveal: [...] }` on a `format: date` string (generator `0.19.0`) | `first` / `last`: how many leading and trailing characters survive masking. `reveal`: which of `year`, `month`, `day` stay visible on a date. **Applied on the wire from generator `0.14.0`** by a C# API group registering `apiMapper`; an `atRest: encrypted` string or date declaring none gets a default. Any other target is `MASKING_NON_STRING` (ERROR). See "Masking on the wire, and `x-unmask`" and "Masking a date" below. |
+| `unmask` | `{ roles: [...], holder: { property, caller } }` (generator `0.20.0`) | Who may read this masked field in the clear when an operation's `x-unmask` parameter asks for it. `roles` and `holder` are OR-ed. `caller` is `caller.userId` or `caller.<identifier>`. Any other member, `scopes` included, is `UNKNOWN_PROTECTION_SUBKEY`. See "Who may unmask: `x-protection.unmask`" below. |
 | `unbounded` | boolean | **The property has no `maxLength`, and that is deliberate.** It asserts that the value's length is genuinely unbounded, so no bounded ciphertext column can be sized for it and the storage falls back to the target's large-object form. Treat it as a review signal rather than a storage switch: at generator `0.12.0` its only consumer is the data-protection audit's protection matrix (`Project_File.md` §11.5, section 2), where `unbounded: true` on an encrypted property is the row an assessor is meant to question. Wherever the value does have a real bound, declare `maxLength` instead — and note that **a `pattern` is not a bound**: `pattern: '^[0-9]{5}$'` pins the length exactly and still leaves the property unbounded as far as any sizing is concerned. |
 | `rationale` | string | **Required when `atRest: none`.** |
 | `reviewedOn` / `reviewedBy` | date / string | Who signed the decision off, and when. From generator 0.9.0 a `reviewedOn` older than **18 months** is reported as a stale review in the data-protection audit — a finding, never a build failure. |
@@ -1528,7 +1589,7 @@ What the generated C# controller does, measured on a generated fixture:
 4. **If any requested field is denied, the whole request is a `403`** — there is no partial grant. The error's `type` is `unmaskForbidden` when the spec's `ErrorType` enum declares that value, otherwise the generic forbidden type (`insufficientPrivileges`).
 5. On a full grant, calls **`RecordUnmaskAsync`** with the granted fields, sets **`Cache-Control: no-store`**, and maps the response with only those fields in the clear.
 
-**Deny by default.** The policy is resolved from DI; a host that registers none gets the generated `DenyAllFieldUnmaskPolicy`, so every unmask request is refused until someone writes the policy. `RecordUnmaskAsync` is where the host writes its audit trail of who saw what. The parameter never reaches a service signature, and a create, update or list response never unmasks.
+**Deny by default.** The policy is resolved from DI; a host that registers none gets the generated `DenyAllFieldUnmaskPolicy`, so every unmask request is refused until someone writes the policy. From generator `0.20.0`, in a project where some property declares `x-protection.unmask`, a host that registers no `IFieldUnmaskPolicy` gets the spec's own rule instead (below); a field whose property declares no rule is still denied. `RecordUnmaskAsync` is where the host writes its audit trail of who saw what. The parameter never reaches a service signature, and a create, update or list response never unmasks.
 
 **Generated with every `apiMapper` group, `x-unmask` or not:** `FieldMask`, `IFieldUnmaskPolicy`, `DenyAllFieldUnmaskPolicy` (in `{apiPackage}.Mappers`). A hand-written type of any of those names collides. Registering a policy in a group whose GETs declare no `x-unmask` changes nothing — the controller is the only caller. Dart and TypeScript clients send the values comma-separated and omit the key when empty; TypeScript types it as a literal union of the enum.
 
@@ -1536,12 +1597,46 @@ What the generated C# controller does, measured on a generated fixture:
 
 | code | severity | fires on |
 |---|---|---|
-| `UNMASK_PARAMETER_ON_LIST` | **ERROR** | `x-unmask` on a non-GET operation, or on a GET whose response is a bare `type: array` or, from generator `0.15.0`, a `{Resource}List` wrapper |
+| `UNMASK_PARAMETER_ON_LIST` | **ERROR** | `x-unmask` on a non-GET operation, or on a GET whose response is a bare `type: array` or, from generator `0.15.0`, a `{Resource}List` wrapper. From generator `0.20.0` a PUT or PATCH whose success response is not a list is accepted (see "On a PUT or PATCH" below); a POST, a DELETE and a list-returning write still fire it |
 | `UNMASK_VALUE_NOT_MASKED` | **ERROR** | an enum value that is not a **top-level** masked field of the response entity — a field masked only inside a nested DTO counts as not masked |
 | `UNMASK_FORBIDDEN_TYPE_NOT_DECLARED` | WARNING | the spec declares `x-unmask`, its `Error.type` is typed by an `ErrorType` enum, and that enum lacks `unmaskForbidden` |
 | `UNMASK_UNDECLARED` | INFO (printed as `SUGGESTION`) | a single-resource GET returns masked fields and declares no `x-unmask` — legitimate when the fields must never be revealed there |
 
 The parameter is exempt from `OPERATION_NON_SEARCHABLE_QUERY_PARAM`.
+
+##### Who may unmask: `x-protection.unmask` (generator `0.20.0`)
+
+The rule lives on the masked property, beside its `masking`:
+
+```yaml
+taxId:
+  type: string
+  x-classification: [pii]
+  x-protection:
+    atRest: encrypted
+    masking: { last: 4 }
+    unmask:
+      roles: [CompanyAdmin]                              # any caller holding a listed role
+      holder: { property: customerId, caller: caller.userId }   # or the row's own holder
+```
+
+- **`roles`** grants a caller holding a listed role **on the row's own tenant**. A superuser role of `info.x-roles` grants when the caller claims it; any other role grants only when the generated controller verified it against the request's resource. A non-HTTP caller with no such answer is denied every non-superuser role rule.
+- **`holder`** grants the caller whose `caller.userId` (or `caller.<name>`, resolved through `ICallerFieldResolver`, as in `x-populate-from`, §1.11) equals the row's `property`. Both members are required. A null holder property is a deny.
+- **The two are OR-ed.** A masked field that an `x-unmask` enum lists and whose property declares no `unmask` is denied to everyone, as before.
+
+What the C# Domain group emits when a spec declares a rule: `IFieldUnmaskDecision`, `SpecFieldUnmaskDecision`, `UnmaskGrant`, `IUnmaskAuditSink` and `LoggingUnmaskAuditSink`, in `Models/` beside `CallerContext`. A spec that declares no rule gets none of them, and its output is unchanged. **Precedence on a GET:** a host-registered `IFieldUnmaskPolicy` wins; otherwise a host-registered `IFieldUnmaskDecision`; otherwise `SpecFieldUnmaskDecision`. A spec-decided grant writes one structured log line through `IUnmaskAuditSink` (principal, entity, field names, never a value). The data-protection audit reports each masked field's rule, or `denied`.
+
+**On a PUT or PATCH** the parameter means *the value I send for this field is real*, not *return it in the clear*. `UNMASK_PARAMETER_ON_LIST` no longer fires on a PUT or PATCH whose success response is not a list. The generated service checks the grant after loading the row and before changing anything, and answers `403` when a named field is not granted. A host `IFieldUnmaskPolicy` is **not** consulted on a write, so a field its policy grants on read but no spec rule grants is a `403` on write.
+
+| code | severity | fires on |
+|---|---|---|
+| `UNMASK_RULE_UNDECLARED` | WARNING | a field an `x-unmask` enum lists whose property declares no `unmask` (the silent deny-all) |
+| `UNMASK_ROLE_UNREACHABLE` | WARNING | a listed role in none of the `x-roles` of the operations that list the field, or missing from `info.x-roles` |
+| `UNMASK_HOLDER_INVALID` | **ERROR** | `holder` missing `property` or `caller`, a `property` that is not a uuid or plain string of the schema, or a `caller` that is not `caller.userId` / `caller.<identifier>` |
+| `UNMASK_WITHOUT_MASKING` | **ERROR** | `unmask` on a property that is not masked (a plain string, a `writeOnly` field, a non-string) |
+| `UNKNOWN_PROTECTION_SUBKEY` | **ERROR** | any member of `unmask` other than `roles` / `holder`, `scopes` included, or of `holder` other than `property` / `caller` |
+
+`specfuse-xprotection-shape` catches the unknown members, a `holder` missing a member, a malformed `caller` and a non-object `unmask` at lint. `UNMASK_HOLDER_INVALID` on the property itself and `UNMASK_WITHOUT_MASKING` need the schema and stay with `validate`.
 
 > **On a list GET returning `{Resource}List`, `0.14.0` reports the wrong code.** `x-unmask` on `GET /tenants/{tenantId}/customers` returning `CustomerList` is not `UNMASK_PARAMETER_ON_LIST` but `UNMASK_VALUE_NOT_MASKED` for every enum value (*"masked: []"*), because the validator sees the response with its `$ref` already resolved and cannot recognise the paginated wrapper. From generator `0.15.0` it is `UNMASK_PARAMETER_ON_LIST` (`clabonte/generator#2370`), measured on a build of generator main. Either way the spec is refused, and the fix is the same — move the parameter to the single-resource GET. See `compatibility.md` §42.
 
@@ -2975,6 +3070,8 @@ post:
 - Each event in `x-emits` generates a publish call at the end of the successful operation
 - The Label is set to `{Entity}.{Action}` per the AsyncAPI Label convention (two segments only — tenancy lives in envelope ApplicationProperties)
 
+**A generated write may only emit its own entity's events (generator `0.21.0`).** When the operation's service method is generated, every `x-emits` label must name the entity that method writes: the aggregate for a root create, update, replace or delete; the child for a related-entity write; the created aggregate for a related-aggregate create. A label naming another entity is `OPERATION_EMITS_FOREIGN_ENTITY` (ERROR) under `validate <project.json>` and every `generate` with AsyncAPI loaded, because the generated method builds each event from the entity it holds and cannot produce another entity's. `x-manual` operations and custom `x-operation`s are exempt: their method is consumer-written and may emit any event it holds. Fix: declare the event on an operation whose generated method writes that entity, or make this operation consumer-written and emit the event there. `hello-orders` draws none (measured, `compatibility.md` §58).
+
 **The first label also decides the response type of a child create.** When a write's request body is an `x-entity`'s `New*`, its **first** `x-emits` label names that body entity, and the URL's aggregate is a different entity, the generator treats the operation as acting on the body entity. Its domain service returns the child, and every generated surface — controller, mapper, every client — returns the child too, whatever the spec's 2xx says. `hello-orders`' `addOrderLine` is that shape: `POST /orders/{orderId}/lines`, body `NewOrderLine`, first label `OrderLine.Created`, `201` → `OrderLine`.
 
 From generator `0.15.0`, a 2xx that declares the **URL aggregate** instead is `OPERATION_RESPONSE_TYPE_OVERRIDDEN` (ERROR), on `validate <spec>`, `validate <project.json>` and `generate`. Measured on a `hello-orders` copy with `addOrderLine`'s `201` changed to `Order`: `0.14.0` validates it clean; the `0.15.0` candidate refuses it, at `validate` and at `generate` (*"declares its 201 response as 'Order', but every generated surface returns 'OrderLine'"*). With the first label changed to `Order.Updated`, the same `201: Order` is not reported, because the operation is no longer re-pointed. **Fix: declare the emitted type as the response schema.** Generated output does not change; only the spec stops contradicting it. A re-pointed operation whose 2xx declares no schema is not reported. `API_Handbook.md` §1.8 states the same rule from the endpoint side.
@@ -3847,7 +3944,7 @@ x-worker:
 
 **`name` (optional, kebab-case):** overrides the worker identity stem that the generator derives from the operation key. Affects the folder name, handler class name, worker class name, settings class name, and module/package name. Use when the operation key describes the triggering event but the worker's purpose is different — e.g., `on-customer-created` triggers the `customer-profile-setup` worker. When absent, the stem is derived by stripping the operation prefix (`on-`/`run-`/`emit-`) from the operation key.
 
-**`inboxDedup` (optional boolean, default `true`):** controls whether the generated handler base inserts an inbox-claim row keyed on `(eventId, handlerName)` before invoking the handler: the typed `Handle<Event>Async` method, or the deprecated `HandleCoreAsync` hook. Default `true` is the safe choice: at-least-once delivery + inbox dedup gives effectively-once *processing*. Set `false` only for handlers with no DB writes and no externally-visible side effects (cache invalidator, metrics emitter) where the cost of the inbox row outweighs the safety. Coherence with `idempotent` and the operation's delivery-trait `guarantee` is enforced by Spectral rule `specfuse-async-worker-inbox-dedup-coherence`.
+**`inboxDedup` (optional boolean, default `true`):** controls whether the generated handler base inserts an inbox-claim row keyed on `(eventId, handlerName)` before invoking the handler: the typed `Handle<Event>Async` method. Default `true` is the safe choice: at-least-once delivery + inbox dedup gives effectively-once *processing*. Set `false` only for handlers with no DB writes and no externally-visible side effects (cache invalidator, metrics emitter) where the cost of the inbox row outweighs the safety. Coherence with `idempotent` and the operation's delivery-trait `guarantee` is enforced by Spectral rule `specfuse-async-worker-inbox-dedup-coherence`.
 
 **`settingsPrefix` (optional, string):** overrides the auto-derived environment-variable prefix for the worker's generated settings class. By default, the generator takes the first letter of each kebab segment of `x-worker.name` (or the derived stem) and uppercases it (e.g., `order-enrichment` → `OE_`). Tunables are emitted as env vars under this prefix (e.g., `OE_ENRICHMENT_BATCH_SIZE=10`). Only set this when the auto-derived prefix would collide with another worker's prefix.
 

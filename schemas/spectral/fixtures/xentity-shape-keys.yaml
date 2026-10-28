@@ -62,6 +62,21 @@
 #   ValueObjectProtectionUnknownSubKey   flagged: typo'd sub-key matches neither shape
 #   ValueObjectProtectionMemberNotObject flagged: a member's value must be a declaration
 #
+# Generator 0.21.0 added `visibility` (narrowing within the tenant). Pinned in
+# both directions; each rejected case is one spec-level ERROR in the jar:
+#
+#   VisibilityShorthand            no finding — scalar `subTenant`
+#   VisibilityTenantWide           no finding — scalar `tenantWide`
+#   VisibilityLongForm             no finding — `{ mode, unscopedRows }`
+#   VisibilityGrantWithScope       no finding — `{ mode: grantFiltered, scope }`
+#   VisibilityUnknownMode          flagged: mode outside the closed set
+#   VisibilityModeCase             flagged: the mode is case-sensitive
+#   VisibilityGrantFilteredScalar  flagged: scalar `grantFiltered` carries no scope
+#   VisibilityGrantFilteredNoScope flagged: `grantFiltered` requires `scope`
+#   VisibilityNoMode               flagged: the object form requires `mode`
+#   VisibilityBadUnscopedRows      flagged: unscopedRows outside the closed set
+#   VisibilityUnknownKey           flagged: unknown member of the object form
+#
 # And, by `specfuse-xentity-concurrency-unprotected-needs-reason` only — these
 # two must NOT appear in any specfuse-xentity-shape finding:
 #
@@ -704,3 +719,107 @@ components:
       properties:
         id: { type: string, format: uuid }
         reference: { type: string }
+
+    # ---- `visibility`, generator 0.21.0. -----------------------------------
+    # Narrowing within the tenant. Every case was run through the 0.21.0 jar:
+    # each accepted shape draws no visibility finding from `validate <spec>`,
+    # and each rejected one is exactly one spec-level jar ERROR.
+    VisibilityShorthand:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        visibility: subTenant
+      properties:
+        id: { type: string, format: uuid }
+
+    VisibilityTenantWide:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        visibility: tenantWide          # records that the question was answered
+      properties:
+        id: { type: string, format: uuid }
+
+    VisibilityLongForm:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        visibility: { mode: subTenant, unscopedRows: tenantWide }
+      properties:
+        id: { type: string, format: uuid }
+
+    VisibilityGrantWithScope:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        visibility: { mode: grantFiltered, scope: departmentId }
+      properties:
+        id: { type: string, format: uuid }
+        departmentId: { type: string, format: uuid }
+
+    VisibilityUnknownMode:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        visibility: branch              # VISIBILITY_UNKNOWN_MODE
+      properties:
+        id: { type: string, format: uuid }
+
+    VisibilityModeCase:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        visibility: SubTenant           # the mode is case-sensitive
+      properties:
+        id: { type: string, format: uuid }
+
+    VisibilityGrantFilteredScalar:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        visibility: grantFiltered       # VISIBILITY_SCOPE_MISSING: nowhere to put scope
+      properties:
+        id: { type: string, format: uuid }
+
+    VisibilityGrantFilteredNoScope:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        visibility: { mode: grantFiltered }   # VISIBILITY_SCOPE_MISSING
+      properties:
+        id: { type: string, format: uuid }
+
+    VisibilityNoMode:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        visibility: { unscopedRows: restricted }   # VISIBILITY_UNKNOWN_MODE
+      properties:
+        id: { type: string, format: uuid }
+
+    VisibilityBadUnscopedRows:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        visibility: { mode: subTenant, unscopedRows: everyone }   # VISIBILITY_UNKNOWN_UNSCOPED_ROWS
+      properties:
+        id: { type: string, format: uuid }
+
+    VisibilityUnknownKey:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        visibility: { mode: subTenant, rows: restricted }   # INVALID_EXTENSION_VALUE
+      properties:
+        id: { type: string, format: uuid }

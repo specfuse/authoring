@@ -1376,6 +1376,15 @@ jobs:
               fail=1
             fi
           done
+          # x-protection.unmask, generator 0.20.0: each malformed rule is one
+          # jar ERROR (UNKNOWN_PROTECTION_SUBKEY, UNMASK_HOLDER_INVALID,
+          # INVALID_EXTENSION_VALUE), measured on 0.21.0.
+          for p in unmaskScopes unmaskHolderUnknownKey unmaskBadCaller unmaskHolderNoCaller unmaskNotObject; do
+            if ! fired specfuse-xprotection-shape "Profile.properties.${p}"; then
+              echo "::error::specfuse-xprotection-shape did not fire on Profile.${p}." >&2
+              fail=1
+            fi
+          done
           for op in /wrongMedia /nonSuccess /mixed /markerTrue /markerOption /notObject /entityItem; do
             if ! fired specfuse-xstream-declaration "GET ${op} "; then
               echo "::error::specfuse-xstream-declaration did not fire on ${op}." >&2
@@ -1383,7 +1392,8 @@ jobs:
             fi
           done
 
-          for p in revealNothing revealMonthDay windowOnString encryptedDate; do
+          for p in revealNothing revealMonthDay windowOnString encryptedDate \
+                   unmaskByRole unmaskByRoleScalar unmaskByOwner unmaskByRoleOrOwner; do
             if grep -E "specfuse-xprotection" "$REPORT" | grep -q "Profile.properties.${p}"; then
               echo "::error::An x-protection rule fired on Profile.${p}, which the generator accepts." >&2
               fail=1
@@ -1397,7 +1407,7 @@ jobs:
           done
 
           [[ $fail -eq 0 ]] || exit 1
-          echo "==> Masking and x-stream rules fire on all fourteen violations and stay silent on six accepted shapes."
+          echo "==> Masking, unmask and x-stream rules fire on all nineteen violations and stay silent on ten accepted shapes."
 
   generate:
     # The job authoring #97 asked for. `validate` and `spectral` above prove the
