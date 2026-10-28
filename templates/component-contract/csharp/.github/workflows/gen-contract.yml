@@ -1,0 +1,41 @@
+# Generated-code contract for a C# Specfuse component repo.
+#
+# Runs the structural contract (gen-contract.yml) on every pull request, before
+# any .NET toolchain is set up, so a marker, layering or extension-point breach
+# fails in under a minute instead of after the build. The mutation test runs
+# too: a rule that cannot fail is not a gate.
+#
+# Seeded from the Specfuse authoring kit and owned by this repo. Put the
+# `dotnet build` / `dotnet test` job beside it or in its own workflow; this one
+# deliberately needs no SDK.
+
+name: gen-contract
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  gen-contract:
+    name: gen-contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      # The engine ships in specfuse-loop (specfuse.loop.gen_contract).
+      - name: Install the engine
+        run: python -m pip install --quiet 'specfuse-loop>=0.30'
+
+      - name: Generated-code contract
+        run: ./scripts/check-gen-contract.sh
+
+      - name: Prove the rules bite
+        run: ./scripts/test-gen-contract.sh
+
+      - name: Temporary patches to generated code are applied and tracked
+        run: ./scripts/apply-gen-patches.sh --check

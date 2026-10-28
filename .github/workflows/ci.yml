@@ -37,6 +37,21 @@ jobs:
       - name: Flows page matches the kit
         run: python scripts/check-flows-page.py
 
+      # docs/csharp-component.html is the interactive form of the C# component
+      # guide; its embedded data must list the guide's checks and the starter
+      # contract's rules, not a stale copy of either.
+      - name: C# component page matches the guide and the starter contract
+        run: python scripts/check-csharp-page.py
+
+      # The starter contract must be green on a fresh seed and every rule must
+      # bite. The engine is specfuse-loop's, a test-time dependency here, in the
+      # same direction as the core package below: the kit depends on the loop,
+      # never the reverse.
+      - name: C# starter contract is green and every rule bites
+        run: |
+          python -m pip install --quiet 'specfuse-loop>=0.30'
+          ./scripts/test-csharp-contract-template.sh
+
       - name: Clean-install and bootstrap from the built wheel
         run: |
           python -m venv /tmp/ci

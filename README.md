@@ -54,7 +54,7 @@ See [`examples/hello-orders/`](examples/hello-orders/) for a complete worked exa
 | **Handbooks** ([`handbooks/`](handbooks/)) | 6 authoritative documents: REST API, AsyncAPI, Arazzo, vendor extensions, AI access policy framework, and the generator's project file. Together these define the full spec-authoring contract. |
 | **Samples** ([`samples/`](samples/)) | 4 canonical YAML templates — endpoints, async messages, scenarios, recipes — that every authored file should pattern-match against. |
 | **Schemas** ([`schemas/`](schemas/)) | Working Spectral rulesets and custom functions for validation under `schemas/spectral/`. CI lints the bundled example against them. [`schemas/README.md`](schemas/README.md) also covers how to run Spectral so a crash cannot pass as a clean spec, and how to turn the ruleset on against specs that predate it. |
-| **Templates** ([`templates/`](templates/)) | The `project-init/` skeleton, plus the AI Access Policy template. |
+| **Templates** ([`templates/`](templates/)) | The `project-init/` skeleton, the AI Access Policy template, and the starter generated-code contract for C# component repos (`component-contract/csharp/`: 16 rules, a mutation test, the expectations skeleton, the CI workflow, and the tooling that re-applies tracked temporary patches to generated code after every regen). |
 | **Claude assets** | 5 Claude Code sub-agents and 20 authoring skills (`/specfuse-authoring:design-scenario`, `/specfuse-authoring:design-async`, `/specfuse-authoring:design-recipe`, etc.) that automate spec design. Distributed as the `specfuse-authoring` plugin in the `specfuse/specfuse` marketplace; `init` wires the plugin and scaffolds the contract the skills read into `.specfuse/authoring/`. |
 | **Bundled example** ([`examples/hello-orders/`](examples/hello-orders/)) | A 61-file complete Specfuse project — 2 domains, 3 entities, 1 state-transition event, 1 cross-domain scenario, 2 setup recipes, filled AI access policy, CI workflow. Serves as the kit's regression net. |
 
@@ -71,6 +71,7 @@ See [`examples/hello-orders/`](examples/hello-orders/) for a complete worked exa
 | Look up a `x-*` extension | [`handbooks/Vendor_Extensions.md`](handbooks/Vendor_Extensions.md) | — |
 | Implement field encryption at runtime | [`handbooks/Field_Encryption_Runtime.md`](handbooks/Field_Encryption_Runtime.md) | — |
 | Configure the generator project file | [`handbooks/Project_File.md`](handbooks/Project_File.md) | — |
+| Set up or audit a C# backend repo that receives generated code | [`docs/csharp-component-guide.md`](docs/csharp-component-guide.md), with [`docs/csharp-component.html`](docs/csharp-component.html) as the interactive map | hand the guide to Claude (§"How to use this guide with Claude"); seed [`templates/component-contract/csharp/`](templates/component-contract/csharp/) |
 | See how it all fits together | [`docs/flows.html`](docs/flows.html), an interactive map of the lifecycle, project layout, skills, validation layers and upgrades. Every project gets a copy at `.specfuse/authoring/docs/flows.html`. | Open it in a browser |
 | See a complete worked example | [`examples/hello-orders/README.md`](examples/hello-orders/README.md) | — |
 

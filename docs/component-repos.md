@@ -81,7 +81,7 @@ Run these from the spec repo's generate wrapper as soon as the group finishes, s
 
 Commit generated code in the component repo. Every regen then shows up as a reviewable diff in a component PR. CI and teammates build without Java or generator access. And a spec change and its effect on each component are visible side by side.
 
-Ignore the generator's volatile bookkeeping files, such as the per-group `*.generated-paths.json` manifests. The Dart package may need its own `.gitignore` exception if the app ignores `*.g.dart` at the root.
+Commit the generator's per-group `*.generated-paths.json` path manifests too: they record every emitted path and every file a regen moved, and their `capturedAt` comes from the spec repo's `<stateDir>/<group>.paths.json` baseline rather than the clock, so a regen that moved nothing leaves them byte-identical. The Dart package may need its own `.gitignore` exception if the app ignores `*.g.dart` at the root.
 
 **What a green build does not prove.** A regen can change a field's name or an enum's wire value while every hand-written type that mirrors it still compiles. When you review a regen PR:
 
@@ -121,12 +121,17 @@ The generator keeps one file per group under `stateDir` (default `.specfuse/stat
 - `baseline` rewrites every group's state file, so restore the files for groups whose component was not on a clean, merged `main` (`git checkout -- .specfuse/state/<group>.json`). Commit the rest in a spec-repo PR on its own (no spec changes), citing the component PR and commit.
 - `baseline` rewrites only `<group>.json`. If `<group>.paths.json` has drifted too, it takes a real regen whose output matches the component's `main` byte for byte.
 
-## 7. Contract checks in the component (optional)
+## 7. Contract checks in the component
 
-A component can also guard its generated tree mechanically, with a CI check that fails when generated files are hand-edited or don't meet the shape the component depends on, plus a short doc describing that expected shape. Tooling for this is not shipped by the kit yet ([#171](https://github.com/specfuse/authoring/issues/171)). Until it is, keep any such check small and specific to the component.
+A component can guard its generated tree mechanically: a contract file (`gen-contract.yml`) whose rules fail when generated files are hand-edited or do not meet the shape the component depends on, run as a `code` gate in `.specfuse/verification.yml`, plus a short prose doc (`docs/generated-code-expectations.md`) saying what "acceptable" means beyond the rules. The ownership is settled ([#171](https://github.com/specfuse/authoring/issues/171)): the rules and the prose are the component's, the engine is `specfuse.loop.gen_contract` in specfuse-loop 0.30+, and what the generator's own QA harness reads from those two files is published as a stable interface ([`CONSUMER-CONTRACT.md`](https://github.com/clabonte/generator/blob/main/docs/CONSUMER-CONTRACT.md)).
+
+For C#, the kit ships a starter: [`templates/component-contract/csharp/`](../templates/component-contract/csharp/), 16 rules green on a fresh seed, each with a mutation case, and the full walkthrough is [`csharp-component-guide.md`](csharp-component-guide.md) §6. `add-component` will seed it once [#181](https://github.com/specfuse/authoring/issues/181) lands; until then its README has the copy-and-sed steps. Other languages keep any such check small and specific to the component.
+
+When generated code is wrong and the fix cannot wait for a generator release, the same guide's §9.1 covers the stop-gap: a workaround from hand-written code where one exists, otherwise a tracked patch that `post-generate.sh` re-applies after every regen until the fix ships. Its `apply-gen-patches.sh` is language-neutral.
 
 ## Where to go next
 
+- [`csharp-component-guide.md`](csharp-component-guide.md): the C# component in full, with an audit checklist for Claude
 - [`Project_File.md`](../handbooks/Project_File.md): `destination`, `cleanGenerated`, `cleanScope`, `stateDir`
 - [`Vendor_Extensions.md` §4.5](../handbooks/Vendor_Extensions.md): `x-manual`, the operations that stay hand-written
 - [`generator-access.md`](generator-access.md): generator access for whoever runs regens

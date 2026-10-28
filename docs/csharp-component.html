@@ -1,0 +1,691 @@
+<!doctype html>
+<!--
+Copyright 2026 Specfuse Contributors
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+Interactive companion to docs/csharp-component-guide.md: the layout, build
+wiring, seams, extension patterns, regen flow, temporary patches, starter
+contract and audit
+checklist of a C# component repo, as a map you click through. The Markdown
+guide is the source of truth; scripts/check-csharp-page.py keeps the embedded
+data (#guide-data) in step with the guide's check IDs, the starter contract's
+rule IDs and the links.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>C# Component Map</title>
+<meta name="description" content="How a C# repo receives Specfuse-generated code: layout, build wiring, seams, extension patterns, the regen flow, temporary patches to generated code, the contract, and an audit checklist.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Same family as the authoring flows page: a left rail of views, each view a map or track beside a detail card; one column on phones. */
+:root {
+  --bg: #f2f5f4;
+  --surface: #ffffff;
+  --ink: #16252a;
+  --muted: #586b70;
+  --line: #d3dedc;
+  --accent: #0f6b6e;        /* a script or the kit does this */
+  --accent-soft: #dcefee;
+  --human: #b45f06;         /* you write or decide this */
+  --human-soft: #fbeedd;
+  --ok: #2c7a3a;
+  --ok-soft: #e1f2e3;
+  --stop: #a3302a;
+  --stop-soft: #f8e2e0;
+  --gen: #5b4bb3;           /* generated */
+  --gen-soft: #ebe8fa;
+  --display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1719; --surface: #152226; --ink: #e2ecec; --muted: #93a8ab; --line: #27403f;
+    --accent: #5fc9c4; --accent-soft: #12332f; --human: #f0a24b; --human-soft: #3a2812;
+    --ok: #6fd17f; --ok-soft: #133019; --stop: #f08a83; --stop-soft: #3b1816;
+    --gen: #a99cf5; --gen-soft: #241f45; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1719; --surface: #152226; --ink: #e2ecec; --muted: #93a8ab; --line: #27403f;
+  --accent: #5fc9c4; --accent-soft: #12332f; --human: #f0a24b; --human-soft: #3a2812;
+  --ok: #6fd17f; --ok-soft: #133019; --stop: #f08a83; --stop-soft: #3b1816;
+  --gen: #a99cf5; --gen-soft: #241f45; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--body); margin: 0; }
+a { color: var(--accent); text-underline-offset: 2px; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 64px; }
+header.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; margin-bottom: 22px; }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(28px, 4vw, 40px); line-height: 1.05; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+.lede { margin: 6px 0 0; color: var(--muted); max-width: 64ch; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.dot.gen { background: var(--gen); }
+.dot.yours { background: var(--human); }
+.dot.auto { background: var(--accent); }
+.dot.stop { background: var(--stop); }
+
+.layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; }
+nav.views { display: flex; flex-direction: column; gap: 4px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); align-self: start; }
+nav.views button { all: unset; cursor: pointer; padding: 9px 12px; border-radius: 8px; display: grid; gap: 1px; }
+nav.views button .n { font-weight: 600; }
+nav.views button .s { font-size: 12.5px; color: var(--muted); }
+nav.views button:hover { background: var(--surface); }
+nav.views button[aria-selected="true"] { background: var(--surface); box-shadow: inset 3px 0 0 var(--accent); }
+button:focus-visible, .stage:focus-visible, .node:focus-visible, .tnode:focus-visible, .chip:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+h2 { font-family: var(--display); font-weight: 700; font-size: 26px; margin: 0 0 4px; text-wrap: balance; }
+h3.sub { font-family: var(--display); font-size: 19px; margin: 26px 0 6px; }
+.summary { max-width: 72ch; margin: 0 0 18px; color: var(--muted); }
+.summary b { color: var(--ink); }
+
+.board { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.detail { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; min-width: 0; }
+.who { display: inline-block; font: 600 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 3px 8px; border-radius: 5px; background: var(--accent-soft); color: var(--accent); }
+.who.yours { background: var(--human-soft); color: var(--human); }
+.who.gen { background: var(--gen-soft); color: var(--gen); }
+.who.once { background: var(--bg); color: var(--ink); border: 1px solid var(--line); }
+.who.stop { background: var(--stop-soft); color: var(--stop); }
+.who.ok { background: var(--ok-soft); color: var(--ok); }
+.detail h3 { font-family: var(--display); font-size: 21px; margin: 10px 0 6px; overflow-wrap: anywhere; }
+.detail p { margin: 0 0 10px; max-width: 68ch; }
+.detail dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; margin: 12px 0 0; font-size: 14px; }
+.detail dt { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; padding-top: 2px; }
+.detail dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+code, .cmd { font-family: var(--mono); font-size: 13px; }
+.cmd { display: block; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; overflow-x: auto; white-space: pre; margin: 8px 0; }
+.stops { margin-top: 14px; border-top: 1px dashed var(--line); padding-top: 12px; }
+.stops h4 { margin: 0 0 6px; font-size: 13px; color: var(--stop); text-transform: uppercase; letter-spacing: .05em; }
+.stops p { margin: 0; }
+
+/* tree */
+ul.tree, ul.tree ul { list-style: none; margin: 0; padding: 0; }
+ul.tree ul { margin-left: 18px; border-left: 1px solid var(--line); padding-left: 10px; }
+.tnode { all: unset; cursor: pointer; display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: 8px; align-items: center; padding: 4px 8px; border-radius: 6px; width: 100%; font: 13px var(--mono); }
+.tnode .d { width: 10px; height: 10px; border-radius: 3px; }
+.tnode .d.gen { background: var(--gen); } .tnode .d.yours { background: var(--human); } .tnode .d.once { background: var(--muted); } .tnode .d.auto { background: var(--accent); }
+.tnode:hover { background: var(--surface); }
+.tnode[aria-current="true"] { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.tnode .n { overflow-wrap: anywhere; }
+.tnode .n small { color: var(--muted); font-family: var(--body); font-size: 12px; margin-left: 6px; }
+
+/* project graph */
+svg.graph { width: 100%; height: auto; display: block; }
+.node { cursor: pointer; }
+.node rect { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; rx: 8; }
+.node[aria-current="true"] rect { stroke: var(--accent); stroke-width: 2.5; }
+.node text { font: 600 13px var(--body); fill: var(--ink); }
+.node text.s { font: 11.5px var(--mono); fill: var(--muted); }
+.edge { stroke: var(--muted); stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
+.edge.root { stroke-dasharray: 4 4; }
+.edge.bad { stroke: var(--stop); }
+.controlrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; }
+.controlrow .lbl { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.chip { all: unset; cursor: pointer; font-size: 13px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); }
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+/* lists of cards */
+.cards { display: grid; gap: 8px; }
+.card { all: unset; cursor: pointer; display: grid; gap: 2px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); }
+.card:hover { border-color: var(--accent); }
+.card[aria-current="true"] { box-shadow: inset 3px 0 0 var(--accent); border-color: var(--accent); }
+.card .t { font-weight: 600; }
+.card .c { font: 12.5px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.card .k { font-size: 12.5px; color: var(--muted); }
+
+/* track */
+ol.track { list-style: none; margin: 0; padding: 0; position: relative; }
+ol.track::before { content: ""; position: absolute; left: 15px; top: 14px; bottom: 14px; width: 2px; background: var(--line); }
+.stage { all: unset; cursor: pointer; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 10px; align-items: start; padding: 7px 8px 7px 0; border-radius: 8px; width: 100%; position: relative; }
+.stage .k { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font: 600 12px var(--mono); background: var(--surface); border: 2px solid var(--accent); color: var(--accent); z-index: 1; }
+.stage.yours .k { border-color: var(--human); color: var(--human); }
+.stage .t { font-weight: 600; padding-top: 5px; }
+.stage:hover .t { text-decoration: underline; text-underline-offset: 3px; }
+.stage[aria-current="true"] { background: var(--surface); }
+.stage[aria-current="true"] .k { background: var(--accent); color: var(--surface); }
+.stage.yours[aria-current="true"] .k { background: var(--human); }
+
+/* checklist */
+.checks { display: grid; gap: 6px; }
+.check { display: grid; grid-template-columns: 22px 64px minmax(0, 1fr); gap: 10px; align-items: start; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); }
+.check input { margin: 3px 0 0; width: 16px; height: 16px; accent-color: var(--ok); }
+.check .id { font: 600 12px var(--mono); color: var(--muted); padding-top: 3px; }
+.check .t { font-weight: 500; }
+.check .t button { all: unset; cursor: pointer; color: var(--accent); font-size: 13px; margin-left: 8px; text-decoration: underline; text-underline-offset: 2px; }
+.check.done .t { color: var(--muted); text-decoration: line-through; }
+.check .more { grid-column: 3; display: none; }
+.check.open .more { display: block; }
+.secttl { font: 600 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
+.progress { height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; margin: 8px 0 14px; }
+.progress div { height: 100%; background: var(--ok); width: 0; transition: width .2s; }
+.btnrow { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.btn { all: unset; cursor: pointer; font-size: 13px; font-weight: 600; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); }
+.btn.primary { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+textarea.out { width: 100%; min-height: 120px; font: 12.5px/1.45 var(--mono); background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 8px; resize: vertical; }
+
+section.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-top: 18px; }
+section.panel h3 { font-family: var(--display); font-size: 18px; margin: 0 0 8px; }
+ul.rules { margin: 0; padding-left: 18px; } ul.rules li { margin-bottom: 6px; }
+table.t { border-collapse: collapse; width: 100%; font-size: 14px; }
+table.t th, table.t td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.t th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+footer { margin-top: 36px; color: var(--muted); font-size: 13px; }
+
+@media (max-width: 860px) {
+  .layout { grid-template-columns: 1fr; }
+  nav.views { position: static; flex-direction: row; flex-wrap: wrap; gap: 6px; }
+  nav.views button { padding: 7px 10px; }
+  nav.views button .s { display: none; }
+  .board { grid-template-columns: 1fr; }
+  .wrap { padding-inline: 16px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <div>
+    <h1>C# Component Map</h1>
+    <p class="lede">How a C# repo receives Specfuse-generated code and stays sound across regens. The written guide is <a href="csharp-component-guide.md">csharp-component-guide.md</a>; this page is the same material as a map. Click anything.</p>
+  </div>
+  <div class="legend" aria-label="Legend">
+    <span><i class="dot gen"></i>generated, rewritten on every regen</span>
+    <span><i class="dot yours"></i>yours, in src/</span>
+    <span><i class="dot auto"></i>seeded once, then yours</span>
+    <span><i class="dot stop"></i>what breaks</span>
+  </div>
+</header>
+
+<div class="layout">
+<nav class="views" id="nav" role="tablist" aria-label="Views"></nav>
+<main id="main"></main>
+</div>
+
+<footer>Project names follow the kit's bundled example, <code>hello-orders</code>. Substitute your own root namespace. Checklist ticks stay in this browser only.</footer>
+</div>
+
+<script type="application/json" id="guide-data">
+{
+  "views": [
+    {"id": "layout", "name": "Layout", "sub": "What lives where"},
+    {"id": "wiring", "name": "Build wiring", "sub": "Projects and references"},
+    {"id": "seams", "name": "Seams", "sub": "What generated code needs from you"},
+    {"id": "extend", "name": "Extend", "sub": "Four patterns, one trap"},
+    {"id": "regen", "name": "Regen flow", "sub": "Spec, component, baseline"},
+    {"id": "patches", "name": "Patches", "sub": "Until the generator is fixed"},
+    {"id": "contract", "name": "Contract", "sub": "The 16 starter rules"},
+    {"id": "checklist", "name": "Checklist", "sub": "Audit this repo"}
+  ],
+
+  "tree": [
+    {"id": "specs", "name": "hello-orders-specs/", "kind": "auto", "depth": 0, "title": "The spec repo, beside this one",
+     "body": "Specs, the project file and the generator's baselines live here. Generation always runs from here and writes into this repo through each group's destination. The two repos must be sibling checkouts or the ../ destinations do not resolve.",
+     "facts": [["Writes", "<code>../Backend/&lt;basePackage&gt;/gen-src/</code> per C# group"], ["Regen", "<code>./scripts/specfuse/generate.sh Domain Infrastructure Api</code>"], ["Baseline", "<code>./scripts/specfuse/advance-state.sh --repo Backend</code>, after the component PR merges"]],
+     "guide": "#1-layout"},
+    {"id": "backend", "name": "Backend/", "kind": "auto", "depth": 0, "title": "This repo",
+     "body": "One solution, one project folder per C# group. The generator writes gen-src/ in each and nothing else; the host around it is seeded once by add-component (or written by hand) and owned here.",
+     "facts": [["Solution", "<code>HelloOrders.slnx</code>, <code>global.json</code>"], ["Build wiring", "<code>Directory.Build.props</code> compiles src/ and gen-src/ in every project"], ["Contract", "<code>gen-contract.yml</code>, <code>scripts/check-gen-contract.sh</code>"]],
+     "guide": "#1-layout"},
+    {"id": "props", "name": "Directory.Build.props", "kind": "once", "depth": 1, "title": "Compiles exactly two roots",
+     "body": "Default globbing is off, so a .cs file is either generated or yours by where it sits. Compile Include=\"src\\**\\*.cs\" and Compile Include=\"gen-src\\**\\*.cs\" are the whole story. With globbing on, a stale file parked beside gen-src/ compiles and shadows the generated one.",
+     "facts": [["Rule", "GEN-020 asserts the property and both globs"], ["Also here", "TargetFramework, Nullable, NoWarn for CS1591 / CS8618, TreatWarningsAsErrors once clean"]],
+     "guide": "#21-directorybuildprops-at-the-solution-root"},
+    {"id": "contractfile", "name": "gen-contract.yml", "kind": "once", "depth": 1, "title": "The mechanical contract",
+     "body": "16 starter rules with an ID, a file:line verdict and a why. Seeded from the kit, owned here, run by the shared engine in specfuse-loop. Green on a fresh seed; every rule has a mutation case proving it bites.",
+     "facts": [["Run", "<code>./scripts/check-gen-contract.sh</code>"], ["Prove", "<code>./scripts/test-gen-contract.sh</code>"], ["Prose half", "<code>docs/generated-code-expectations.md</code>"]],
+     "guide": "#6-the-generated-code-contract"},
+    {"id": "domain", "name": "HelloOrders.Domain/", "kind": "auto", "depth": 1, "title": "The Domain project",
+     "body": "Entities, value objects, enums, DTO models, domain services with their interfaces, repository interfaces, events, snapshots, Mapperly mappers, exceptions and validators. References nothing in the solution.",
+     "facts": [["Group", "<code>Domain</code>, basePackage <code>HelloOrders.Domain</code>"], ["Registration", "<code>AddServices()</code> in gen-src/ConfigureServices.g.cs"], ["Packages", "Riok.Mapperly, Microsoft.Extensions.Logging, Microsoft.AspNetCore.Http, Microsoft.Data.SqlClient, Newtonsoft.Json"]],
+     "guide": "#3-project-file-groups-for-c"},
+    {"id": "domain-gen", "name": "gen-src/", "kind": "gen", "depth": 2, "title": "Generated, wiped on every full-group regen",
+     "body": "Every file is a .g.cs, opens with #nullable enable and carries the <auto-generated> header with the line Generated by the Specfuse Generator. Nothing else is ever in here: a README, a .editorconfig or a .bak is lost on the next run.",
+     "facts": [["Rules", "GEN-001 to GEN-005"], ["Folders", "Entities/ ValueObjects/ Enums/ Models/ Events/ Snapshots/ Services/ Repositories/ Mappers/ Exceptions/ Validators/"]],
+     "guide": "#1-layout"},
+    {"id": "domain-src", "name": "src/", "kind": "yours", "depth": 2, "title": "Hand-written Domain code",
+     "body": "partial classes in the generated namespace, hand-written entities the spec does not model, custom services deriving from a generated Default{Entity}Service, and the partial mapper hooks.",
+     "facts": [["Patterns", "partial class · derive · OnAfterTo{Entity} hook"], ["Never", "a copy of a generated file (GEN-030)"]],
+     "guide": "#5-extending-generated-code"},
+    {"id": "changelog", "name": "CHANGELOG.md", "kind": "gen", "depth": 2, "title": "The generator's own surface diff",
+     "body": "Written by the generator beside gen-src/, committed, and preserved by the clean step. It is diffed against the spec repo's .specfuse/state baseline, which is why that baseline must describe what shipped on this repo's default branch.",
+     "facts": [["Read it", "during regen review: it names what changed in the public surface"], ["Commit", "<code>*.generated-paths.json</code> beside it too: the path manifest, byte-identical when nothing moved (GEN-021)"]],
+     "guide": "#9-the-regen-flow"},
+    {"id": "infra", "name": "HelloOrders.Infrastructure/", "kind": "auto", "depth": 1, "title": "The Infrastructure project",
+     "body": "The EF Core DbContext, entity configurations, value-object converters, repositories, the event runtime (outbox interceptor, dispatcher), concurrency and encryption primitives. References Domain, and Application only for its ports.",
+     "facts": [["Group", "<code>Infrastructure</code>"], ["Registrations", "<code>AddRepositories()</code>, <code>AddSqlServerDatabase()</code> / <code>AddInMemoryDatabase()</code>, <code>AddConcurrencyTokenSink()</code>, <code>AddEventRuntime*()</code>, <code>AddFieldEncryption()</code>"], ["Yours", "EF migrations, the placeholder contracts (ITenantResourceCheck, IRecordVisibilityResolver, keys), external services"]],
+     "guide": "#3-project-file-groups-for-c"},
+    {"id": "app", "name": "HelloOrders.Application/", "kind": "auto", "depth": 1, "title": "The Application project (with an Application group)",
+     "body": "One I{X}Handler plus {X}HandlerBase per consumed event and per scheduled job, and a per-domain Add{Domain}Workers() registration. The base holds logging scope, timeout, inbox dedup and the shared transaction; the concrete handler in src/ holds only the business logic.",
+     "facts": [["Group", "<code>Application</code>: asyncEventHandler, asyncJobInterface, asyncConsumerRegistration"], ["Trap", "implementing I{X}Handler directly compiles and runs with none of the base (GEN-040, GEN-042)"]],
+     "guide": "#52-derive-from-the-generated-base"},
+    {"id": "api", "name": "HelloOrders.Api/", "kind": "auto", "depth": 1, "title": "The Api project",
+     "body": "Controllers, API models, Mapperly API mappers, the authorization runtime, and the application-service interfaces with their concurrency bases. The composition root: Program.cs calls every generated registration.",
+     "facts": [["Group", "<code>Api</code>: apiProject, apiModel, apiMapper, apiController, applicationServiceInterface, authorizationRuntime"], ["By name", "<code>Utils/UserHelper.GetUser(User)</code> from every controller"], ["Yours", "Program.cs, Filters/ExceptionFilter.cs, the concrete {Tag}ApplicationService classes"]],
+     "guide": "#4-the-composition-root-and-the-seams-generated-code-calls-by-name"},
+    {"id": "test", "name": "HelloOrders.Test/", "kind": "auto", "depth": 1, "title": "The Test project (with a Test group)",
+     "body": "Generated builders (A.Order()), fakes, the TestSeed graph, and whole suites: service unit tests, mapper tests, EF configuration tests, the authorization matrix, API functional tests, event contract tests. They derive from three hand-written fixtures.",
+     "facts": [["Yours", "<code>ApiTestFixture</code>, <code>ApiTestBase</code> (CreateHttpClient, EnsureFakeData), <code>InMemoryDbTestHelper</code>"], ["Coverage", "measures src/ only; gen-src/ excluded in coverlet.runsettings"]],
+     "guide": "#44-what-the-generated-tests-expect-from-helloorderstestsrc"}
+  ],
+
+  "projects": [
+    {"id": "Domain", "x": 60, "y": 150, "sdk": "Microsoft.NET.Sdk", "refs": [], "group": "Domain",
+     "packages": "Riok.Mapperly · Microsoft.Extensions.Logging · Microsoft.AspNetCore.Http · Microsoft.Data.SqlClient · Newtonsoft.Json",
+     "body": "The dependency sink. No ProjectReference at all (GEN-013), and no generated using of another layer (GEN-010). Everything else references it."},
+    {"id": "Infrastructure", "x": 300, "y": 60, "sdk": "Microsoft.NET.Sdk", "refs": ["Domain"], "group": "Infrastructure",
+     "packages": "Microsoft.EntityFrameworkCore (+Relational, SqlServer, InMemory) · Azure.Messaging.ServiceBus · Azure.Storage.Blobs · Microsoft.Extensions.Http · Microsoft.Extensions.Configuration.EnvironmentVariables",
+     "body": "Implements Domain's repository and service contracts. May reference Application for its ports (interfaces its use cases need and Infrastructure implements), never for its behaviour. Never references Api (GEN-014)."},
+    {"id": "Application", "x": 300, "y": 240, "sdk": "Microsoft.NET.Sdk", "refs": ["Domain"], "group": "Application", "optional": true,
+     "packages": "Microsoft.Extensions.Logging",
+     "body": "Handlers and jobs. Depends on Domain only: the generated bases take an ITransactionScopeFactory so the layer stays EF-free."},
+    {"id": "Api", "x": 540, "y": 150, "sdk": "Microsoft.NET.Sdk.Web", "refs": ["Domain", "Application", "Infrastructure"], "group": "Api",
+     "packages": "Riok.Mapperly · Newtonsoft.Json",
+     "body": "Controllers and mappers talk to Domain. The reference to Infrastructure exists for one reason: Program.cs is the composition root and calls AddRepositories(), AddSqlServerDatabase() and friends. Generated Api code never uses Infrastructure (GEN-012)."},
+    {"id": "Test", "x": 780, "y": 150, "sdk": "Microsoft.NET.Sdk (IsTestProject)", "refs": ["Domain", "Application", "Infrastructure", "Api"], "group": "Test", "optional": true,
+     "packages": "xunit · xunit.runner.visualstudio · Microsoft.NET.Test.Sdk · Moq · AwesomeAssertions · Microsoft.AspNetCore.Mvc.Testing · Microsoft.EntityFrameworkCore.InMemory · coverlet.collector",
+     "body": "References everything. AwesomeAssertions, never FluentAssertions: both define .Should() and referencing both makes every assertion ambiguous."}
+  ],
+
+  "seams": [
+    {"id": "program", "name": "Program.cs", "layer": "Api/src", "kind": "yours", "when": "always",
+     "body": "Nothing generated calls Program.cs. It calls the generated registrations: AddServices(), AddRepositories(), AddSpecfuseAuthorization(), AddConcurrencyTokenSink(), AddEventRuntimeCore().AddNullEventDispatcher() (or AddEventRuntime() for Azure Service Bus), AddSqlServerDatabase() / AddInMemoryDatabase(), plus Add{Domain}Workers() with an Application group and AddFieldEncryption() with encryption in the spec.",
+     "fails": "A registration left out fails at runtime by name: the first controller that needs an unregistered I{Entity}Service throws from the container.",
+     "cmd": "builder.Services.AddServices();\nbuilder.Services.AddRepositories();\nbuilder.Services.AddSpecfuseAuthorization();\nbuilder.Services.AddConcurrencyTokenSink();\nbuilder.Services.AddEventRuntimeCore().AddNullEventDispatcher();\nbuilder.Services.AddSqlServerDatabase(connectionString);", "check": "CS-09"},
+    {"id": "userhelper", "name": "Utils/UserHelper.GetUser(ClaimsPrincipal)", "layer": "Api/src", "kind": "yours", "when": "always (or generateUserHelper: true from generator 0.20, past the kit's 0.19 pin)",
+     "body": "Every generated controller builds its CallerContext from UserHelper.GetUser(User). The generator references it by name; you map your identity provider's claims to the generated AuthenticatedUser: user id, roles, tenant memberships. From generator 0.20.0 the project file's generateUserHelper: true emits a default one; keep exactly one or the build fails with CS0101.",
+     "fails": "Without it the Api project does not compile: every controller names a type that does not exist.",
+     "cmd": "public static class UserHelper\n{\n    public static AuthenticatedUser GetUser(ClaimsPrincipal user) =>\n        new(user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? \"anonymous\");\n}", "check": "CS-10"},
+    {"id": "exceptionfilter", "name": "Filters/ExceptionFilter", "layer": "Api/src", "kind": "yours", "when": "always",
+     "body": "Maps the generated domain exceptions (BadRequestException, NotFoundException, ConflictException, PreconditionFailedException, UnprocessableEntityException, …) to their StatusCode and Errors list. Added to AddControllers(options => options.Filters.Add<ExceptionFilter>()).",
+     "fails": "Without it a generated NotFoundException comes back as a 500 with no body, and every generated functional test asserting a 404 fails.",
+     "cmd": "builder.Services.AddControllers(o => o.Filters.Add<ExceptionFilter>());", "check": "CS-11"},
+    {"id": "tenantcheck", "name": "ITenantResourceCheck", "layer": "Infrastructure/src or Api/src", "kind": "yours", "when": "the project declares tenancy",
+     "body": "AddSpecfuseAuthorization() registers a throwing placeholder for the one seam the generator cannot write: whether the caller's roles reach this resource in this tenant. A single-tenant project (no tenancy block) gets a generated RoleSufficientTenantResourceCheck instead.",
+     "fails": "The first role-gated request that reaches the tenant check throws, naming the contract. Nothing fails at startup.",
+     "cmd": "services.AddScoped<ITenantResourceCheck, MyTenantResourceCheck>();   // TryAdd in the runtime: order does not matter", "check": "CS-12"},
+    {"id": "visibility", "name": "IRecordVisibilityResolver", "layer": "Infrastructure/src", "kind": "yours", "when": "tenancy with the generated Tenant query filter",
+     "body": "The generated Tenant query filter hides every row of a tenant the caller's token does not name; it asks your resolver which tenants the current principal may see. AddSqlServerDatabase() registers a placeholder whose ResolveAsync throws; AddInMemoryDatabase() defaults to seeing everything, so tests keep running.",
+     "fails": "The first tenant-filtered query in production throws. A path that legitimately crosses tenants (a webhook, a token-keyed lookup) wraps its work in RecordVisibilityAccessor.Use(RecordVisibility.All).",
+     "cmd": "services.AddScoped<IRecordVisibilityResolver, ClaimsRecordVisibilityResolver>();", "check": "CS-12"},
+    {"id": "keys", "name": "IDataKeyProvider · IKeyWrapper · decryption policy", "layer": "Infrastructure/src", "kind": "yours", "when": "field encryption declared in the spec",
+     "body": "AddFieldEncryption() (which you call yourself; nothing generated calls it) registers the cipher, the cache and throwing placeholders for the two key contracts and the two decryption-failure policy contracts. The generator owns the byte format and ships known-answer conformance tests for it.",
+     "fails": "FieldEncryptionNotConfiguredException naming the contract, on the first encrypted write or read.",
+     "cmd": "builder.Services.AddFieldEncryption();\nservices.AddSingleton<IDataKeyProvider, KeyVaultDataKeyProvider>();", "check": "CS-12"},
+    {"id": "concurrency", "name": "IPrincipalKeyResolver · ICallerFieldResolver", "layer": "Infrastructure/src", "kind": "yours", "when": "principal-keyed concurrency tokens · x-populate-from caller fields",
+     "body": "Two more placeholders of the same shape: AddPrincipalKeyResolver() and AddCallerFieldResolver() install factories that throw PrincipalKeyResolverNotConfiguredException / CallerFieldResolverNotConfiguredException naming the method. Register yours anywhere: placeholders are registered with TryAdd, so a registration before or after the generated call wins.",
+     "fails": "Fails by name on first use, never at startup.",
+     "cmd": "services.AddScoped<IPrincipalKeyResolver, ClaimsPrincipalKeyResolver>();", "check": "CS-12"},
+    {"id": "dispatcher", "name": "the event dispatcher", "layer": "Api/src (Program.cs)", "kind": "yours", "when": "eventRuntime registered (always, with service)",
+     "body": "Events are collected per request and written to the outbox in the same transaction as the entity; the dispatcher sends them on commit. AddNullEventDispatcher() drops them, which suits a local run without a broker; AddEventRuntime() dispatches to Azure Service Bus topics with the drainer retrying failures.",
+     "fails": "With the null dispatcher in production, every event is silently dropped: no handler runs, no notification goes out, and nothing logs it.",
+     "cmd": "builder.Services.AddEventRuntimeCore().AddNullEventDispatcher();   // local\nbuilder.Services.AddEventRuntime();                                  // Azure Service Bus", "check": "CS-09"},
+    {"id": "fixtures", "name": "ApiTestFixture · ApiTestBase · InMemoryDbTestHelper", "layer": "Test/src", "kind": "yours", "when": "a Test group is registered",
+     "body": "Every generated functional test is class XApiTests(ApiTestFixture fixture) : ApiTestBase(fixture) and calls CreateHttpClient(role) and EnsureFakeData(). ApiTestFixture is a WebApplicationFactory over the test database with a fake token issuer; EnsureFakeData() seeds the generated TestSeed graph; InMemoryDbTestHelper gives the generated EF configuration tests an isolated context.",
+     "fails": "Without them the Test project does not compile. With EnsureFakeData() seeding nothing, every happy-path theory 404s: a bare A.Order() carries foreign keys to TestSeed ancestors the query filters join.",
+     "cmd": "public abstract class ApiTestBase(ApiTestFixture fixture)\n{\n    protected HttpClient CreateHttpClient(string role) => …;\n    protected void EnsureFakeData() => …;\n}", "check": "CS-13"}
+  ],
+
+  "patterns": [
+    {"id": "partial", "name": "partial class", "who": "yours",
+     "summary": "Every generated entity, DTO, mapper and hook class is partial. A computed property, a domain method, an extra attribute goes in a partial class in src/ with the same namespace.",
+     "code": "// HelloOrders.Domain/src/Entities/Order.cs\nnamespace HelloOrders.Domain.Entities;\n\npublic partial class Order\n{\n    public bool IsDraft => Status == OrderStatus.Draft;\n}",
+     "trap": "A different namespace makes a second, unrelated class with the same name. The build passes and the member is never on the generated type.", "check": "CS-14"},
+    {"id": "base", "name": "derive from *Base", "who": "yours",
+     "summary": "For every event handler, scheduled job and gated application service the generator emits an interface plus an abstract base that holds the operational contract: logging scope, spec timeout, inbox dedup and the shared transaction for handlers, per-item scopes for jobs, the If-Match precondition for application services. The concrete class is yours and derives from the base.",
+     "code": "// HelloOrders.Application/src/Orders/Handlers/OrderPlacedHandler.cs\npublic sealed class OrderPlacedHandler(\n    ILogger<OrderPlacedHandlerBase> logger,\n    IEventInboxStore inbox,\n    ITransactionScopeFactory scopeFactory,\n    IOrderRepository orders) : OrderPlacedHandlerBase(logger, inbox, scopeFactory)\n{\n    protected override Task HandleOrderPlacedAsync(\n        EventEnvelope envelope, OrderPlacedEvent body, CancellationToken ct)\n        => orders.MarkPlacedAsync(body.OrderId, ct);\n}",
+     "trap": "class OrderPlacedHandler : IOrderPlacedHandler also compiles, is found by the generated assembly scan and is invoked by the trigger exactly as if it derived from the base, with none of the contract in effect. Nothing reports it. Same for OrdersApplicationService : IOrdersApplicationService without the base: the If-Match gate is a non-virtual method on the base, so every concurrent write becomes a blind overwrite. GEN-040 to GEN-042 make it a red gate.", "check": "CS-15"},
+    {"id": "hook", "name": "mapper hook", "who": "yours",
+     "summary": "Values a request does not carry (a status, a timestamp, a default) are set in a generated partial hook method the generator declares on {Aggregate}DomainMapperHooks and you implement. Mapperly makes every mapping a compile-time method: a missing mapping is a build error, not a runtime one.",
+     "code": "// HelloOrders.Domain/src/Mappers/OrderDomainMapperHooks.cs\nnamespace HelloOrders.Domain.Mappers;\n\npublic static partial class OrderDomainMapperHooks\n{\n    static partial void OnAfterToOrder(NewOrder source, Order target)\n    {\n        target.Status = OrderStatus.Draft;\n    }\n}",
+     "trap": "Setting the value in the controller or the service instead works until the next entry point (a recipe fixture, a bulk import, a handler) maps the same request and ships the entity without it.", "check": "CS-16"},
+    {"id": "replace", "name": "replace a generated default", "who": "yours",
+     "summary": "AddServices() registers IOrderService -> DefaultOrderService with a plain AddScoped. A custom service derives from the default (or implements the interface) in src/ and is registered after AddServices(); the last registration wins. A decorator wraps after both.",
+     "code": "// Program.cs\nbuilder.Services.AddServices();\nbuilder.Services.AddScoped<IOrderService, OrderService>();   // replaces DefaultOrderService\n\n// HelloOrders.Domain/src/Services/OrderService.cs\npublic class OrderService(...) : DefaultOrderService(...)\n{\n    public override Task<Order> PlaceAsync(Guid id, CallerContext caller, CancellationToken ct) { … }\n}",
+     "trap": "Editing DefaultOrderService in gen-src/ instead is the hand edit the whole layout exists to forbid: it compiles, passes review once, and is gone on the next regen.", "check": "CS-17"}
+  ],
+
+  "patchFlow": [
+    {"t": "Look for a way that needs no patch", "who": "yours", "body": "In order: fix the spec and regenerate; work around it from src/ with a partial member, an override on the generated *Base or Default{Entity}Service, a replacement registered after the generated call, or a mapper hook, marked // Workaround for clabonte/generator#NNNN; take the operation out of generation with x-manual. Each of these survives every regen untouched. Only when none fits, patch gen-src/."},
+    {"t": "File the defect against the generator", "who": "yours", "body": "Before writing the patch: the generated C# you expected, never a proposed template change. The patch names this issue in its header, and a patch with no issue is never removed."},
+    {"t": "Make the patch on a clean regen branch", "who": "yours", "body": "Edit the generated file: modify only, never create or delete one, and leave the header block alone (GEN-002, GEN-003). Write the diff with its header into gen-patches/, add a row to gen-patches/README.md, and a Known failure modes entry in docs/generated-code-expectations.md so the generator's reviewer reads the defect as known. Commit all of it together. A coding agent proposes a patch and waits; it never writes one on its own.", "cmd": "{ printf 'Generator-Issue: clabonte/generator#NNNN\\nGenerator-Version: 0.19.0\\nReason: <what is wrong>\\n\\n'\n  git diff -- <the edited gen-src files>; } > gen-patches/NNNN-<short-name>.patch"},
+    {"t": "Re-applied on every regen", "who": "auto", "body": "generate.sh runs the spec repo's own scripts/post-generate.sh after each group; it calls this repo's apply-gen-patches.sh with the group's project folder. A patch that no longer applies exits non-zero and stops the run, so a regen never finishes with a patch silently dropped.", "cmd": "#!/bin/bash\n# <spec-repo>/scripts/post-generate.sh <group> <language> <destination> <basePackage>\nset -euo pipefail\nif [ \"$2\" = \"C#\" ] && [ -x \"$3/scripts/apply-gen-patches.sh\" ]; then\n  \"$3/scripts/apply-gen-patches.sh\" \"$4\"\nfi"},
+    {"t": "Gated on every pull request", "who": "auto", "body": "The gen-patches gate (build needs it) and the CI step run --check: every patch applied, headed by its Generator-Issue, listed in the index, and touching existing gen-src/ files only. A regen PR that forgot to re-apply a patch fails here, in seconds, with no SDK.", "cmd": "./scripts/apply-gen-patches.sh --check"},
+    {"t": "Retire it when the fix reaches the pin", "who": "yours", "body": "Once the issue is fixed and the generator the spec repo runs (the kit's pin, or the project's .specfuse/generator.lock) reaches that release, regenerate and expect already present. Confirm the output is right without the patch, delete it, move its row to Retired, and remove its expectations entry and any src/ workaround tied to it. Review the index at every pin bump: a closed issue whose patch still reports applied means the fix missed your case."}
+  ],
+
+  "regen": [
+    {"t": "The spec change merges in the spec repo", "who": "yours", "body": "A component PR never lands before the spec change it was generated from. Otherwise this repo's default branch depends on a spec that is not on the spec repo's default branch."},
+    {"t": "Regenerate on a disposable branch of this repo", "who": "auto", "body": "From the spec repo root. cleanGenerated wipes gen-src/ before writing, so this repo must be on a branch you can throw away with no uncommitted work; generate.sh refuses a dirty destination. Name the groups; prefer them over all.", "cmd": "cd ../hello-orders-specs\n./scripts/specfuse/generate.sh Domain Infrastructure Api"},
+    {"t": "Run the contract, then build", "who": "auto", "body": "The contract and apply-gen-patches.sh --check first (tracked patches to generated code go back on through the spec repo's post-generate.sh hook; see the guide, 9.1): seconds, no toolchain, and a red rule is either a generator defect or a hand-written file in the wrong place. Then the build and the unit tests. Fix the hand-written src/ a regen broke (a renamed member, a new abstract method on a base, a new placeholder contract); never the generated side.", "cmd": "./scripts/check-gen-contract.sh\ndotnet build --nologo -warnaserror\ndotnet test --no-build --filter \"Category!=Integration\""},
+    {"t": "Review by file name, not by path", "who": "yours", "body": "A regen rewrites the whole tree, so diff size is not a signal. Diff changed models by file name (a moved file reads as delete plus add), diff each enum's values, diff operation parameter lists, trace every hand-written type that mirrors a generated one, and read each project's CHANGELOG.md. Removals are the highest-risk content of a regen and nothing mechanical catches them."},
+    {"t": "One PR per component", "who": "yours", "body": "The regen and only its required follow-ups. CI runs the contract and the mutation test with no SDK, then the build and tests."},
+    {"t": "Merge, then advance the baseline from the merged default branch", "who": "auto", "body": "The spec repo's .specfuse/state/<group>.json is what the next regen's CHANGELOG is diffed against, so it must describe what shipped here. Never commit it from a spec branch or a local regen. The script keeps a group's new baseline only when this repo is clean, on its default branch and level with origin.", "cmd": "cd ../hello-orders-specs\n./scripts/specfuse/advance-state.sh --repo Backend --dry-run\n./scripts/specfuse/advance-state.sh --repo Backend"}
+  ],
+
+  "rules": [
+    {"id": "GEN-001", "block": "Markers and layout", "title": "Every file under gen-src/ is a .g.cs file", "why": "A generated file without the .g.cs extension is indistinguishable from hand-written code, so the next regen either overwrites developer work or leaves a stale artifact behind that still compiles."},
+    {"id": "GEN-002", "block": "Markers and layout", "title": "Every generated file opens with #nullable enable", "why": "A file missing the pragma silently downgrades every reference type in it to oblivious, and the CS86xx warnings that would have caught a bad annotation never fire."},
+    {"id": "GEN-003", "block": "Markers and layout", "title": "Every generated file carries the auto-generated header block", "why": "The header is what excludes the file from analyzers and formatters. Without it a regen produces thousands of style findings that bury the real ones, and a formatter fixes code the next regen rewrites."},
+    {"id": "GEN-004", "block": "Markers and layout", "title": "No .g.cs file lives outside a gen-src/ folder", "why": "A stray .g.cs still compiles, so it shadows or duplicates the current output instead of failing loudly, and no regen will ever clean it up."},
+    {"id": "GEN-005", "block": "Markers and layout", "title": "Nothing but generated C# lives under gen-src/", "why": "gen-src/ is wiped and re-emitted on every full-group regen, so anything parked there is lost without warning. A group that emits a non-C# file by design names it in the fileset's exclude list."},
+    {"id": "GEN-010", "block": "Layering", "title": "Domain gen-src depends on no other layer", "why": "Domain is the dependency sink. An inbound using inverts the architecture and makes the domain untestable without a database. In generated code it is a generator defect: report it."},
+    {"id": "GEN-011", "block": "Layering", "title": "Infrastructure gen-src depends on Domain only", "why": "A using of Api makes the persistence layer depend on its own callers."},
+    {"id": "GEN-012", "block": "Layering", "title": "Api gen-src never references Infrastructure directly", "why": "Controllers reach persistence through Domain interfaces resolved by DI. A direct Infrastructure using would make every controller untestable without a real DbContext."},
+    {"id": "GEN-013", "block": "Layering", "title": "The Domain project references no other project", "why": "A ProjectReference is the compile-time form of GEN-010. With one in place the using-line rule can be satisfied while the dependency exists anyway through a fully-qualified name."},
+    {"id": "GEN-014", "block": "Layering", "title": "The Infrastructure project never references the Api project", "why": "Api is the composition root and already references Infrastructure. The reverse edge is a cycle, or a persistence layer that cannot be built or tested without the web host."},
+    {"id": "GEN-020", "block": "Host wiring", "title": "Directory.Build.props compiles src/ and gen-src/ and nothing else", "why": "With default globbing on, a .cs file anywhere in a project folder joins the build and a file parked beside gen-src/ shadows the generated one. With one of the two globs missing, half the solution silently stops compiling."},
+    {"id": "GEN-021", "block": "Host wiring", "title": "The generator's path manifests are not git-ignored", "why": "<Group>.generated-paths.json records every emitted path and every file a regen moved. Its timestamp comes from the spec repo's baseline, so an unchanged regen leaves it byte-identical; ignored, the old-to-new mapping a layout change hands over is lost."},
+    {"id": "GEN-030", "block": "Hand-written code", "title": "No hand-written file carries the Specfuse generator header", "why": "A generated file copied into src/ and edited is the hand edit the gen-src/ rule exists to forbid, moved one folder over. It compiles beside the real one until the next regen renames something, and then the copy is the stale one that wins. EF Core's own <auto-generated /> marker on migrations is not matched."},
+    {"id": "GEN-040", "block": "Extension points", "title": "Every generated handler and job base has a concrete class deriving from it", "why": "A {X}HandlerBase with no subclass is a handler the spec declared and nobody wrote. The generated trigger still subscribes to the label, so every delivery dead-letters until someone notices the queue."},
+    {"id": "GEN-041", "block": "Extension points", "title": "Every generated application-service base has a concrete class deriving from it", "why": "The If-Match precondition lives in a non-virtual method on {Tag}ApplicationServiceBase. A service implementing the interface without the base compiles clean and silently drops the precondition: every concurrent write becomes a blind overwrite."},
+    {"id": "GEN-042", "block": "Extension points", "title": "No production class implements a generated handler interface without its base", "why": "class X : IOrderPlacedHandler compiles, is picked up by the assembly scan and runs with none of the base's scaffolding. Only interfaces the generator emitted count, and only in production code: a test double implementing one is what a test is for."}
+  ],
+
+  "checks": [
+    {"id": "CS-01", "section": "Layout", "guide": "#1-layout", "title": "The spec repo is a sibling checkout and every C# group's destination resolves to this repo.", "verify": "python3 -c 'import json,glob,os; p=glob.glob(\"../*/*-project.json\")[0]; d=json.load(open(p)); [print(g[\"name\"], os.path.realpath(os.path.join(os.path.dirname(p), g[\"destination\"]))) for g in d[\"groups\"] if g[\"language\"] in (\"C#\",\"csharp\")]'"},
+    {"id": "CS-02", "section": "Layout", "guide": "#1-layout", "title": "One project folder per C# group basePackage, each with gen-src/ and src/.", "verify": "for d in */gen-src; do p=${d%/gen-src}; [ -f \"$p/$p.csproj\" ] && [ -d \"$p/src\" ] && echo \"ok  $p\" || echo \"FAIL $p\"; done"},
+    {"id": "CS-03", "section": "Layout", "guide": "#1-layout", "title": "Nothing hand-written under gen-src/, no .g.cs outside it, every generated file marked (GEN-001 to GEN-005).", "verify": "./scripts/check-gen-contract.sh --only GEN-001 GEN-002 GEN-003 GEN-004 GEN-005"},
+    {"id": "CS-04", "section": "Build wiring", "guide": "#21-directorybuildprops-at-the-solution-root", "title": "Directory.Build.props turns default globbing off and compiles exactly src\\**\\*.cs and gen-src\\**\\*.cs (GEN-020).", "verify": "./scripts/check-gen-contract.sh --only GEN-020"},
+    {"id": "CS-05", "section": "Build wiring", "guide": "#22-one-csproj-per-layer-with-the-layering-in-the-references", "title": "Project references express the layering: Domain references nothing, Infrastructure never references Api, Api references Infrastructure only as the composition root.", "verify": "./scripts/check-gen-contract.sh --only GEN-013 GEN-014 && grep -n ProjectReference *.Api/*.csproj"},
+    {"id": "CS-06", "section": "Build wiring", "guide": "#22-one-csproj-per-layer-with-the-layering-in-the-references", "title": "A fresh regen builds with zero edits (-warnaserror once clean is a team choice).", "verify": "dotnet build --nologo"},
+    {"id": "CS-07", "section": "Build wiring", "guide": "#23-solution-sdk-pin-and-git", "title": "global.json pins the SDK; the solution lists every project.", "verify": "cat global.json && dotnet sln list 2>/dev/null || grep -c '<Project Path' *.slnx"},
+    {"id": "CS-08", "section": "Build wiring", "guide": "#23-solution-sdk-pin-and-git", "title": "Generated code and the generator's path manifests are committed (GEN-021).", "verify": "./scripts/check-gen-contract.sh --only GEN-021 && git ls-files '*/gen-src/*' | wc -l && git ls-files '*.generated-paths.json'"},
+    {"id": "CS-09", "section": "Composition root and seams", "guide": "#41-programcs", "title": "Program.cs calls every generated registration the groups emit.", "verify": "grep -n 'AddServices\\|AddRepositories\\|AddSpecfuseAuthorization\\|AddConcurrencyTokenSink\\|AddEventRuntime\\|AddInMemoryDatabase\\|AddSqlServerDatabase\\|Workers()' *.Api/src/Program.cs"},
+    {"id": "CS-10", "section": "Composition root and seams", "guide": "#42-two-classes-the-apis-generated-code-names", "title": "Exactly one UserHelper.GetUser(ClaimsPrincipal) exists, hand-written or generated.", "verify": "grep -rln 'class UserHelper' */src */gen-src | wc -l"},
+    {"id": "CS-11", "section": "Composition root and seams", "guide": "#42-two-classes-the-apis-generated-code-names", "title": "An ExceptionFilter maps the generated domain exceptions and is added to AddControllers.", "verify": "grep -n 'ExceptionFilter' *.Api/src/Program.cs *.Api/src/Filters/ExceptionFilter.cs | head"},
+    {"id": "CS-12", "section": "Composition root and seams", "guide": "#43-contracts-registered-as-throwing-placeholders", "title": "Every placeholder contract the spec needs has a hand-written implementation (tenancy, visibility, keys, concurrency, dispatcher).", "verify": "grep -rn 'ITenantResourceCheck\\|IRecordVisibilityResolver\\|IPrincipalKeyResolver\\|ICallerFieldResolver\\|IDataKeyProvider\\|IKeyWrapper' */src --include='*.cs' | grep -v '^.*Test' | head"},
+    {"id": "CS-13", "section": "Composition root and seams", "guide": "#44-what-the-generated-tests-expect-from-helloorderstestsrc", "title": "With a Test group, ApiTestFixture, ApiTestBase (CreateHttpClient, EnsureFakeData) and InMemoryDbTestHelper exist in src/ with the namespaces the generated tests import.", "verify": "grep -rln 'class ApiTestFixture\\|class ApiTestBase\\|class InMemoryDbTestHelper' *.Test/src && grep -rh '^using .*Test\\.' *.Test/gen-src | sort -u"},
+    {"id": "CS-14", "section": "Extension discipline", "guide": "#51-partial-classes", "title": "Hand-written extensions are partial classes in the generated type's namespace, in src/.", "verify": "grep -rn 'partial class' */src --include='*.cs' | head"},
+    {"id": "CS-15", "section": "Extension discipline", "guide": "#52-derive-from-the-generated-base", "title": "Every generated *Base has a concrete class deriving from it and nothing implements a generated handler interface directly (GEN-040 to GEN-042).", "verify": "./scripts/check-gen-contract.sh --only GEN-040 GEN-041 GEN-042"},
+    {"id": "CS-16", "section": "Extension discipline", "guide": "#53-mapper-hooks", "title": "Mapper hooks are implemented as partial methods on the generated {Aggregate}DomainMapperHooks, never by editing the mapper.", "verify": "grep -rn 'static partial void OnAfterTo' */src --include='*.cs' | head"},
+    {"id": "CS-17", "section": "Extension discipline", "guide": "#54-replace-a-generated-default", "title": "Custom services and decorators are registered after the generated AddServices() / AddRepositories() calls.", "verify": "grep -n 'AddServices\\|AddRepositories\\|AddScoped<I' *.Api/src/Program.cs"},
+    {"id": "CS-18", "section": "Contract and CI", "guide": "#61-seed-the-starter-contract", "title": "gen-contract.yml is present, the engine runs, and every rule is green.", "verify": "./scripts/check-gen-contract.sh"},
+    {"id": "CS-19", "section": "Contract and CI", "guide": "#63-the-prose-bar", "title": "docs/generated-code-expectations.md exists with the five section names.", "verify": "grep -n -i '^#\\+ *\\(Standing expectations\\|Integration contract\\|Known failure modes\\|Accepted quirks\\|Do not report\\)' docs/generated-code-expectations.md"},
+    {"id": "CS-20", "section": "Contract and CI", "guide": "#64-wire-it-as-a-gate", "title": ".specfuse/verification.yml has a code gate set with gen-contract, gen-patches, build (needs both) and tests (needs build).", "verify": "grep -n -A2 'name: *\\(gen-contract\\|gen-patches\\|build\\|tests\\)$' .specfuse/verification.yml"},
+    {"id": "CS-21", "section": "Contract and CI", "guide": "#64-wire-it-as-a-gate", "title": "CI runs the contract before the build on every pull request.", "verify": "grep -n 'check-gen-contract\\|dotnet build' .github/workflows/*.yml | head"},
+    {"id": "CS-22", "section": "Contract and CI", "guide": "#7-tests-and-coverage", "title": "Coverage excludes gen-src/ and migrations.", "verify": "grep -n 'ExcludeByFile' coverlet.runsettings"},
+    {"id": "CS-23", "section": "Contract and CI", "guide": "#62-grow-it-from-review-findings", "title": "The mutation test exists and every rule bites.", "verify": "./scripts/test-gen-contract.sh"},
+    {"id": "CS-24", "section": "Agent instructions and workflow", "guide": "#8-agent-instructions", "title": "CLAUDE.md or AGENTS.md carries the five rules near the top: never edit gen-src, check gen-src first, where hand-written code goes, the layering, the regen flow.", "verify": "grep -n -i 'gen-src\\|never edit\\|partial\\|Base\\|check-gen-contract' CLAUDE.md AGENTS.md 2>/dev/null | head"},
+    {"id": "CS-25", "section": "Agent instructions and workflow", "guide": "#9-the-regen-flow", "title": "The README documents the sibling layout, the regen commands and the baseline step.", "verify": "grep -n 'generate.sh\\|advance-state.sh\\|\\.\\./' README.md | head"},
+    {"id": "CS-26", "section": "Agent instructions and workflow", "guide": "#91-temporary-patches-until-the-generator-is-fixed", "title": "Every temporary patch to generated code is applied, indexed in gen-patches/README.md, and names a still-open generator issue.", "verify": "./scripts/apply-gen-patches.sh --check && grep -h '^Generator-Issue:' gen-patches/*.patch 2>/dev/null"}
+  ],
+
+  "prompt": "Read docs/csharp-component-guide.md from the Specfuse authoring kit (or the copy at <path>).\nAudit this repository against every check in §10, in order. For each check, run the\nverification command, then report one line: the check ID, PASS or FAIL, and the\nevidence (a path, a line, a command output). Do not fix anything yet. When the audit\nis complete, list the FAILs grouped by the section that explains the fix, and\npropose the smallest change for each. Wait for my approval before editing."
+}
+</script>
+
+<script>
+(() => {
+  const D = JSON.parse(document.getElementById("guide-data").textContent);
+  const GUIDE = "csharp-component-guide.md";
+  const $ = (s, el = document) => el.querySelector(s);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const main = $("#main"), nav = $("#nav");
+
+  const ui = { view: "layout", node: "backend", proj: "Domain", withOptional: true, seam: "program", pattern: "base", regen: 0, patch: 0, rule: 0, openCheck: null };
+  let ticks = {};
+  try { ticks = JSON.parse(localStorage.getItem("csharp-component.checks") || "{}") || {}; } catch (_) { ticks = {}; }
+  const saveTicks = () => { try { localStorage.setItem("csharp-component.checks", JSON.stringify(ticks)); } catch (_) {} };
+
+  function readHash() {
+    const h = location.hash.replace("#", "");
+    if (D.views.some(v => v.id === h)) ui.view = h;
+  }
+
+  function renderNav() {
+    nav.innerHTML = D.views.map(v => `<button role="tab" data-view="${v.id}" aria-selected="${v.id === ui.view}"><span class="n">${esc(v.name)}</span><span class="s">${esc(v.sub)}</span></button>`).join("");
+  }
+
+  const guideLink = (anchor, text = "In the guide") => `<a href="${GUIDE}${anchor || ""}">${esc(text)}</a>`;
+  const facts = f => f && f.length ? `<dl>${f.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("")}</dl>` : "";
+
+  /* ---------- Layout ---------- */
+  function viewLayout() {
+    const n = D.tree.find(x => x.id === ui.node) || D.tree[0];
+    // Nest the flat, depth-ordered array into <ul> lists.
+    const item = t => `<button class="tnode" data-node="${t.id}" aria-current="${t.id === ui.node}"><span class="d ${t.kind}"></span><span class="n">${esc(t.name)}</span></button>`;
+    const nest = (items, depth) => {
+      let out = `<ul${depth === 0 ? ' class="tree"' : ""}>`;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].depth !== depth) continue;
+        let j = i + 1;
+        while (j < items.length && items[j].depth > depth) j++;
+        const kids = items.slice(i + 1, j);
+        out += `<li>${item(items[i])}${kids.length ? nest(kids, depth + 1) : ""}</li>`;
+      }
+      return out + "</ul>";
+    };
+    const html = nest(D.tree, 0);
+    return `<h2>Layout</h2>
+      <p class="summary">Generation runs from the <b>spec repo</b> and writes each C# group into <code>&lt;destination&gt;/&lt;basePackage&gt;/gen-src/</code> here, wiping that folder first. It writes <b>only</b> <code>gen-src/</code>, plus a <code>CHANGELOG.md</code> and a manifest beside it. The host around it is seeded once and owned here; everything that extends it lives in <code>src/</code>. Click a node.</p>
+      <div class="board">
+        <div>${html}</div>
+        <div class="detail"><span class="who ${n.kind}">${n.kind === "gen" ? "generated" : n.kind === "yours" ? "yours" : n.kind === "once" ? "seeded once, then yours" : "a repo or project"}</span>
+          <h3>${esc(n.title)}</h3><p>${esc(n.body)}</p>${facts(n.facts)}
+          <p style="margin-top:12px">${guideLink(n.guide)}</p></div>
+      </div>`;
+  }
+
+  /* ---------- Build wiring ---------- */
+  function viewWiring() {
+    const shown = D.projects.filter(p => ui.withOptional || !p.optional);
+    const byId = Object.fromEntries(D.projects.map(p => [p.id, p]));
+    const p = byId[ui.proj] && shown.includes(byId[ui.proj]) ? byId[ui.proj] : shown[0];
+    const W = 190, H = 58;
+    const edges = [];
+    for (const s of shown) for (const r of s.refs) {
+      if (!shown.some(x => x.id === r)) continue;
+      const t = byId[r];
+      const root = s.id === "Api" && r === "Infrastructure";
+      const x1 = s.x, y1 = s.y + H / 2, x2 = t.x + W, y2 = t.y + H / 2;
+      // A reference that would cross another box is drawn as a curve below (or above) the row.
+      const crosses = shown.some(o => o !== s && o !== t && o.x + W > Math.min(x1, x2) && o.x < Math.max(x1, x2) && Math.abs(o.y + H / 2 - (y1 + y2) / 2) < H);
+      const dip = crosses ? (t.y < 150 ? 10 : 345) : null;
+      const d = dip === null ? `M${x1} ${y1} L${x2} ${y2}` : `M${x1} ${y1} Q${(x1 + x2) / 2} ${dip} ${x2} ${y2}`;
+      edges.push(`<path class="edge ${root ? "root" : ""}" d="${d}"><title>${esc(s.id)} references ${esc(r)}${root ? " (composition root only)" : ""}</title></path>`);
+    }
+    const nodes = shown.map(n => `<g class="node" role="button" tabindex="0" data-proj="${n.id}" aria-current="${n.id === p.id}" transform="translate(${n.x},${n.y})"><rect width="${W}" height="${H}"/><text x="12" y="24">HelloOrders.${esc(n.id)}</text><text class="s" x="12" y="43">${esc(n.sdk.replace("Microsoft.NET.", ""))}</text></g>`).join("");
+    return `<h2>Build wiring</h2>
+      <p class="summary">The generator emits no <code>.sln</code>, <code>.csproj</code>, <code>Directory.Build.props</code> or <code>Program.cs</code>. One project per group, references expressing the layering, and a <code>Directory.Build.props</code> that compiles exactly <code>src/</code> and <code>gen-src/</code>. Arrows point at what a project references; the dashed one is the composition root's wiring reference. Click a project.</p>
+      <div class="controlrow"><span class="lbl">show</span>
+        <button class="chip" data-optional="false" aria-pressed="${!ui.withOptional}">the three seeded projects</button>
+        <button class="chip" data-optional="true" aria-pressed="${ui.withOptional}">with Application and Test groups</button></div>
+      <svg class="graph" viewBox="0 0 1000 360" role="img" aria-label="Project reference graph">
+        <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--muted)"/></marker></defs>
+        ${edges.join("")}${nodes}
+      </svg>
+      <div class="detail"><span class="who once">seeded once, then yours</span><h3>HelloOrders.${esc(p.id)}</h3><p>${esc(p.body)}</p>
+        <dl><dt>SDK</dt><dd><code>${esc(p.sdk)}</code></dd><dt>References</dt><dd>${p.refs.length ? p.refs.map(r => `<code>${esc(r)}</code>`).join(", ") : "none in the solution"}</dd><dt>Packages (generator 0.19)</dt><dd>${esc(p.packages)}</dd><dt>Group</dt><dd><code>${esc(p.group)}</code>, basePackage <code>HelloOrders.${esc(p.group)}</code></dd></dl>
+        <p style="margin-top:12px">${guideLink("#2-build-wiring")}</p></div>
+      <section class="panel"><h3>Directory.Build.props</h3>
+        <code class="cmd">&lt;Project&gt;
+  &lt;PropertyGroup&gt;
+    &lt;TargetFramework&gt;net10.0&lt;/TargetFramework&gt;
+    &lt;Nullable&gt;enable&lt;/Nullable&gt;
+    &lt;EnableDefaultCompileItems&gt;false&lt;/EnableDefaultCompileItems&gt;
+    &lt;NoWarn&gt;$(NoWarn);CS1591;CS8618&lt;/NoWarn&gt;
+  &lt;/PropertyGroup&gt;
+  &lt;ItemGroup&gt;
+    &lt;Compile Include="src\\**\\*.cs" /&gt;
+    &lt;Compile Include="gen-src\\**\\*.cs" /&gt;
+  &lt;/ItemGroup&gt;
+&lt;/Project&gt;</code>
+        <p>Default globbing off, so a file is generated or yours by where it sits. GEN-020 asserts all three lines. Not on any package list: AutoMapper and FluentAssertions, both commercially licensed; generated code maps through Mapperly and asserts through AwesomeAssertions.</p></section>`;
+  }
+
+  /* ---------- Seams ---------- */
+  function viewSeams() {
+    const s = D.seams.find(x => x.id === ui.seam) || D.seams[0];
+    return `<h2>Seams</h2>
+      <p class="summary">Generated code calls a few hand-written types <b>by name</b> and registers a <b>throwing placeholder</b> for every contract it cannot write for you. The placeholder keeps the container building and fails by name on first use, so a forgotten one is never silent. Select one.</p>
+      <div class="board">
+        <div class="cards">${D.seams.map(x => `<button class="card" data-seam="${x.id}" aria-current="${x.id === s.id}"><span class="t">${esc(x.name)}</span><span class="c">${esc(x.layer)}</span><span class="k">${esc(x.when)}</span></button>`).join("")}</div>
+        <div class="detail"><span class="who yours">you write this</span><h3>${esc(s.name)}</h3><p>${esc(s.body)}</p>
+          <code class="cmd">${esc(s.cmd)}</code>
+          <div class="stops"><h4>What fails without it</h4><p>${esc(s.fails)}</p></div>
+          <p style="margin-top:12px">Checklist ${esc(s.check)} · ${guideLink("#4-the-composition-root-and-the-seams-generated-code-calls-by-name")}</p></div>
+      </div>`;
+  }
+
+  /* ---------- Extend ---------- */
+  function viewExtend() {
+    const p = D.patterns.find(x => x.id === ui.pattern) || D.patterns[0];
+    return `<h2>Extend</h2>
+      <p class="summary">Never edit a file under <code>gen-src/</code>: a wrong generated file is fixed in the spec or the generator, then regenerated, and an edit disappears on the next run. Four patterns cover everything else, all in <code>src/</code>, all in the generated type's own namespace.</p>
+      <div class="tabs">${D.patterns.map(x => `<button class="chip" data-pattern="${x.id}" aria-pressed="${x.id === p.id}">${esc(x.name)}</button>`).join("")}</div>
+      <div class="detail"><span class="who yours">yours, in src/</span><h3>${esc(p.name)}</h3><p>${esc(p.summary)}</p>
+        <code class="cmd">${esc(p.code)}</code>
+        <div class="stops"><h4>The trap</h4><p>${esc(p.trap)}</p></div>
+        <p style="margin-top:12px">Checklist ${esc(p.check)} · ${guideLink("#5-extending-generated-code")}</p></div>
+      <section class="panel"><h3>Stays hand-written by design</h3><ul class="rules">
+        <li>Operations marked <code>x-manual</code> in the spec: the generator emits the interface member, you write the body.</li>
+        <li>EF Core migrations: derived from the generated <code>EntityTypeConfiguration&lt;T&gt;</code> classes, owned here, and the reason a column rename needs <code>x-legacy-names</code> in the spec.</li>
+        <li>Everything the generator does not know your domain needs: external services, custom queries, middleware.</li></ul></section>`;
+  }
+
+  /* ---------- Regen flow ---------- */
+  function viewRegen() {
+    const r = D.regen[ui.regen];
+    return `<h2>Regen flow</h2>
+      <p class="summary">The order matters: <b>spec first, then this component, then the baseline</b>. A component PR that lands before its spec change makes this repo's default branch depend on a spec that is not on the spec repo's default branch; a baseline advanced from a local regen poisons every later changelog.</p>
+      <div class="board">
+        <ol class="track">${D.regen.map((x, i) => `<li><button class="stage ${x.who}" data-regen="${i}" aria-current="${i === ui.regen}"><span class="k">${i + 1}</span><span><span class="t">${esc(x.t)}</span></span></button></li>`).join("")}</ol>
+        <div class="detail"><span class="who ${r.who === "yours" ? "yours" : ""}">${r.who === "yours" ? "you" : "a script does this"}</span><h3>${esc(r.t)}</h3><p>${esc(r.body)}</p>${r.cmd ? `<code class="cmd">${esc(r.cmd)}</code>` : ""}
+          <p style="margin-top:12px">${guideLink("#9-the-regen-flow")}</p></div>
+      </div>
+      <section class="panel"><h3>What a green build does not prove</h3><p>A regen can change a field's name or an enum's wire value while every hand-written type that mirrors it still compiles. Diff changed models by file name, each enum's values, every operation's parameter list, and trace every hand-written mirror. Wrong generated output goes to the generator as the C# that was expected, never as a template change; a wrong spec goes to the spec repo as a <code>specfuse:spec-issue</code>.</p></section>`;
+  }
+
+  /* ---------- Patches ---------- */
+  function viewPatches() {
+    const r = D.patchFlow[ui.patch];
+    return `<h2>Patches</h2>
+      <p class="summary">Sometimes generated code is wrong and the fix cannot wait for a generator release. "Never edit <code>gen-src/</code>" still holds in spirit: the change must survive the next regen, be visible in review, and go away the moment the generator is fixed. A <b>tracked patch</b> in <code>gen-patches/</code> does all three, and it is the last resort, not the first.</p>
+      <div class="board">
+        <ol class="track">${D.patchFlow.map((x, i) => `<li><button class="stage ${x.who}" data-patch="${i}" aria-current="${i === ui.patch}"><span class="k">${i + 1}</span><span><span class="t">${esc(x.t)}</span></span></button></li>`).join("")}</ol>
+        <div class="detail"><span class="who ${r.who === "yours" ? "yours" : ""}">${r.who === "yours" ? "you" : "a script does this"}</span><h3>${esc(r.t)}</h3><p>${esc(r.body)}</p>${r.cmd ? `<code class="cmd">${esc(r.cmd)}</code>` : ""}
+          <p style="margin-top:12px">Checklist CS-26 · ${guideLink("#91-temporary-patches-until-the-generator-is-fixed")}</p></div>
+      </div>
+      <section class="panel"><h3>What apply-gen-patches.sh reports</h3>
+        <table class="t"><thead><tr><th>Report</th><th>Meaning</th><th>Do</th></tr></thead><tbody>
+          <tr><td><span class="who ok">applied</span></td><td>the patch went back on cleanly</td><td>commit it with the regen</td></tr>
+          <tr><td><span class="who">already present</span></td><td>right after a regen, the generator now emits the fix itself</td><td>confirm, then retire the patch</td></tr>
+          <tr><td><span class="who stop">FAILED</span></td><td>the generated code changed around it</td><td>re-derive the patch from the new output, or retire it if the defect is gone</td></tr>
+        </tbody></table>
+        <p>With <code>--check</code> the same script is the gate, reporting <code>ok</code>, <code>NOT APPLIED</code> or <code>STALE</code> per patch.</p></section>
+      <section class="panel"><h3>Keep patches small and away from the public surface</h3><ul class="rules">
+        <li>Modify, never create or delete: a new type goes in <code>src/</code>. The path manifests record what the generator emits, and a patch that adds or removes a file makes them disagree with the tree.</li>
+        <li>The regen's <code>CHANGELOG.md</code> is written before the patch goes back on, while the baseline <code>advance-state.sh</code> captures comes from your merged, patched code. A patch to a Domain entity, value object or service signature therefore shows up in every regen's changelog: say so in the PR rather than chasing it.</li>
+        <li>The starter ships <code>scripts/apply-gen-patches.sh</code> and the <code>gen-patches/README.md</code> index; the script is language-neutral.</li></ul></section>`;
+  }
+
+  /* ---------- Contract ---------- */
+  function viewContract() {
+    const r = D.rules[ui.rule];
+    const blocks = [...new Set(D.rules.map(x => x.block))];
+    return `<h2>Contract</h2>
+      <p class="summary">The split and the patterns are only as true as something checks them. <code>gen-contract.yml</code> states what generated code must look like and what nobody may do to it; the shared engine in <code>specfuse-loop</code> runs it with a rule ID, a <code>file:line</code> and the rule's <b>why</b> on every finding. The kit's starter has 16 rules, green on a fresh seed, each with a mutation case. Select a rule.</p>
+      <div class="board">
+        <div>${blocks.map(b => `<div class="secttl">${esc(b)}</div><div class="cards">${D.rules.map((x, i) => x.block === b ? `<button class="card" data-rule="${i}" aria-current="${i === ui.rule}"><span class="t"><code>${esc(x.id)}</code> ${esc(x.title)}</span></button>` : "").join("")}</div>`).join("")}</div>
+        <div class="detail"><span class="who">${esc(r.block)}</span><h3><code>${esc(r.id)}</code> ${esc(r.title)}</h3>
+          <div class="stops"><h4>Why it matters</h4><p>${esc(r.why)}</p></div>
+          <code class="cmd">./scripts/check-gen-contract.sh --explain ${esc(r.id)}</code>
+          <p style="margin-top:12px">${guideLink("#6-the-generated-code-contract")} · <a href="../templates/component-contract/csharp/gen-contract.yml">the starter file</a></p></div>
+      </div>
+      <section class="panel"><h3>Seed, run, prove, wire</h3>
+        <code class="cmd">./scripts/check-gen-contract.sh            # every rule; 0 green, 1 violations, 2 cannot run
+./scripts/check-gen-contract.sh --list     # what is enforced
+./scripts/test-gen-contract.sh             # every rule bites</code>
+        <p>Then paste the <code>code:</code> gate set from the starter's <code>verification.snippet.yml</code> into <code>.specfuse/verification.yml</code>: <code>gen-contract</code> first, <code>build</code> needing it, <code>tests</code> needing the build. The generator's consumer harness runs that same gate set against every regen, and reads the five section names of <code>docs/generated-code-expectations.md</code> as the prose bar. A review finding that recurs becomes a rule, with a mutation case and a <code>why</code> that says what breaks in production.</p></section>`;
+  }
+
+  /* ---------- Checklist ---------- */
+  function viewChecklist() {
+    const sections = [...new Set(D.checks.map(c => c.section))];
+    const done = D.checks.filter(c => ticks[c.id]).length;
+    const pct = Math.round(100 * done / D.checks.length);
+    return `<h2>Checklist</h2>
+      <p class="summary">The audit from §10 of the guide: <b>${D.checks.length} checks</b>, each with a shell command that answers it. Tick what passes; the ticks stay in this browser. <b>Copy as Markdown</b> gives a report skeleton to paste into a pull request or hand to Claude with the prompt below.</p>
+      <div class="progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><div style="width:${pct}%"></div></div>
+      <div class="btnrow"><button class="btn primary" data-act="copy">Copy as Markdown</button><button class="btn" data-act="prompt">Show the Claude prompt</button><button class="btn" data-act="reset">Reset ticks</button><span style="align-self:center;color:var(--muted);font-size:13px">${done} of ${D.checks.length} ticked</span></div>
+      <textarea class="out" id="out" aria-label="Report" style="display:none" readonly></textarea>
+      ${sections.map(s => `<div class="secttl">${esc(s)}</div><div class="checks">${D.checks.filter(c => c.section === s).map(c => `<div class="check ${ticks[c.id] ? "done" : ""} ${ui.openCheck === c.id ? "open" : ""}">
+          <input type="checkbox" id="tick-${c.id}" data-tick="${c.id}" ${ticks[c.id] ? "checked" : ""} aria-label="${esc(c.id)} passes">
+          <label class="id" for="tick-${c.id}">${esc(c.id)}</label>
+          <div class="t">${esc(c.title)} <button data-open="${c.id}" aria-expanded="${ui.openCheck === c.id}">${ui.openCheck === c.id ? "hide" : "verify"}</button></div>
+          <div class="more"><code class="cmd">${esc(c.verify)}</code><p style="margin:0;font-size:13px">${guideLink(c.guide, "Fix: " + c.section + " in the guide")}</p></div>
+        </div>`).join("")}</div>`).join("")}`;
+  }
+
+  function report() {
+    const lines = ["# C# component audit", "", "| Check | Result | Evidence |", "|---|---|---|"];
+    for (const c of D.checks) lines.push(`| ${c.id} | ${ticks[c.id] ? "PASS" : "FAIL"} | ${c.title} |`);
+    lines.push("", `Source: csharp-component-guide.md §10 · ${D.checks.filter(c => ticks[c.id]).length} of ${D.checks.length} passing`);
+    return lines.join("\n");
+  }
+
+  function render() {
+    renderNav();
+    const v = { layout: viewLayout, wiring: viewWiring, seams: viewSeams, extend: viewExtend, regen: viewRegen, patches: viewPatches, contract: viewContract, checklist: viewChecklist }[ui.view] || viewLayout;
+    main.innerHTML = v();
+    if (location.hash.replace("#", "") !== ui.view) history.replaceState(null, "", "#" + ui.view);
+  }
+
+  nav.addEventListener("click", e => {
+    const b = e.target.closest("[data-view]");
+    if (!b) return;
+    ui.view = b.dataset.view; render(); window.scrollTo({ top: 0 });
+  });
+
+  main.addEventListener("click", e => {
+    const t = e.target.closest("[data-node],[data-proj],[data-optional],[data-seam],[data-pattern],[data-regen],[data-patch],[data-rule],[data-open],[data-act]");
+    if (!t) return;
+    const d = t.dataset;
+    if (d.node) ui.node = d.node;
+    else if (d.proj) ui.proj = d.proj;
+    else if (d.optional) ui.withOptional = d.optional === "true";
+    else if (d.seam) ui.seam = d.seam;
+    else if (d.pattern) ui.pattern = d.pattern;
+    else if (d.regen) ui.regen = +d.regen;
+    else if (d.patch) ui.patch = +d.patch;
+    else if (d.rule) ui.rule = +d.rule;
+    else if (d.open) ui.openCheck = ui.openCheck === d.open ? null : d.open;
+    else if (d.act === "reset") { ticks = {}; saveTicks(); }
+    else if (d.act === "copy" || d.act === "prompt") {
+      const text = d.act === "copy" ? report() : D.prompt;
+      render();
+      const out = $("#out"); out.style.display = "block"; out.value = text; out.focus(); out.select();
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(() => {});
+      return;
+    }
+    const key = ["node", "proj", "seam", "pattern", "regen", "rule", "open"].find(k => d[k] != null);
+    render();
+    if (key) { const again = main.querySelector(`[data-${key}="${d[key]}"]`); if (again) again.focus({ preventScroll: true }); }
+  });
+  main.addEventListener("change", e => {
+    const c = e.target.closest("[data-tick]");
+    if (!c) return;
+    ticks[c.dataset.tick] = c.checked; if (!c.checked) delete ticks[c.dataset.tick];
+    saveTicks(); render();
+    const again = main.querySelector(`[data-tick="${c.dataset.tick}"]`); if (again) again.focus({ preventScroll: true });
+  });
+  main.addEventListener("keydown", e => {
+    const g = e.target.closest && e.target.closest("svg [data-proj]");
+    if (g && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); g.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
+  });
+  window.addEventListener("hashchange", () => { readHash(); render(); });
+
+  readHash();
+  render();
+})();
+</script>
+</body>
+</html>
