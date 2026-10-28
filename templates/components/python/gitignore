@@ -4,5 +4,5 @@ __pycache__/
 .pytest_cache/
 .coverage
 
-# Generator bookkeeping, rewritten on every regen.
-*.generated-paths.json
+# *.generated-paths.json is deliberately NOT ignored: the generator's path
+# manifest is committed, and is byte-identical when a regen moved nothing.
