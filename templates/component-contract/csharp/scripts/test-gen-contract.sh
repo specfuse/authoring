@@ -146,7 +146,14 @@ if [ -n "$APPSVC_BASE" ]; then
 else
   echo "  SKIP  GEN-041 — no *ApplicationServiceBase.g.cs in the tree yet"; skip=$((skip+1))
 fi
-expect_fail_newfile GEN-042 "${SRC_CS%/*}/DirectHandler.cs" "public sealed class DirectHandler : IOrderPlacedHandler { }"
+if [ -n "$HANDLER_BASE" ]; then
+  # The interface beside the base: OrderPlacedHandlerBase.g.cs declares IOrderPlacedHandler.
+  HANDLER_IFACE="I$(basename "$HANDLER_BASE" .g.cs)"
+  HANDLER_IFACE="${HANDLER_IFACE%Base}"
+  expect_fail_newfile GEN-042 "${SRC_CS%/*}/DirectHandler.cs" "public sealed class DirectHandler : $HANDLER_IFACE { }"
+else
+  echo "  SKIP  GEN-042 — no generated handler interface in the tree yet"; skip=$((skip+1))
+fi
 
 echo
 echo "  $pass ok, $fail missed, $skip skipped"

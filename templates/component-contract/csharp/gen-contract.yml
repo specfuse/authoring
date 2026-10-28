@@ -267,7 +267,8 @@ rules:
       the repo and a layout move reads as an unexplained delete plus add.
     check: forbid_pattern
     scope: gitignore
-    pattern: 'generated-paths'
+    # A comment saying the omission is deliberate is fine; an ignore line is not.
+    pattern: '^[^#]*generated-paths'
     allow_empty: true
 
   # ── Hand-written code holds up its end ─────────────────────────────────

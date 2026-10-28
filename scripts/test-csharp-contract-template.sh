@@ -67,6 +67,7 @@ EOF
 cat > .gitignore <<'EOF'
 bin/
 obj/
+# *.generated-paths.json is deliberately NOT ignored (the seed's own comment).
 EOF
 
 header() {

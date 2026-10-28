@@ -1605,6 +1605,36 @@ jobs:
           fi
           echo "==> add-component csharp: seeds, builds, and serves on the pinned generator."
 
+      - name: The C# starter contract holds on real generator output
+        if: steps.token.outputs.have == 'true'
+        # ci.yml proves the starter contract on a synthetic tree. This runs it
+        # where it will actually be used: the component the previous step
+        # seeded and regenerated with the pinned jar. A pin whose output breaks
+        # a marker, layering or wiring rule fails here, not in an adopter's
+        # first regen PR. Skips are expected for rules whose surface hello-orders
+        # does not generate (handler and application-service bases); a miss is
+        # a rule that cannot fail on real output.
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet 'specfuse-loop>=0.30'
+          cd "$RUNNER_TEMP/component-cs/Backend"
+          KIT="$GITHUB_WORKSPACE/templates/component-contract/csharp"
+          cp "$KIT/gen-contract.yml" .
+          mkdir -p scripts docs gen-patches
+          cp "$KIT/scripts/"* scripts/
+          cp "$KIT/docs/generated-code-expectations.md" docs/
+          cp "$KIT/gen-patches/README.md" gen-patches/
+          sed -i 's/__Prefix__/HelloOrders/g' gen-contract.yml docs/generated-code-expectations.md
+          chmod +x scripts/*.sh
+          git -c user.email=ci@example.invalid -c user.name=ci add -A
+          git -c user.email=ci@example.invalid -c user.name=ci commit -q -m "seed and regen"
+          ./scripts/check-gen-contract.sh
+          ./scripts/apply-gen-patches.sh --check
+          out="$(./scripts/test-gen-contract.sh)" || { printf '%s\n' "$out"; exit 1; }
+          printf '%s\n' "$out"
+          grep -q ' 0 missed' <<<"$out" || { echo "::error::a starter rule did not bite on real generator output"; exit 1; }
+          echo "==> the C# starter contract is green on the pinned generator's output, and its rules bite there."
+
       - name: A seeded Python component installs, imports and passes its tests (add-component drift guard, #177)
         if: steps.token.outputs.have == 'true'
         # The project is renamed PascalCase in this copy only: the generator
