@@ -1,0 +1,9 @@
+bin/
+obj/
+*.user
+.vs/
+.idea/
+TestResults/
+
+# *.generated-paths.json is deliberately NOT ignored: the generator's path
+# manifest is committed, and is byte-identical when a regen moved nothing.

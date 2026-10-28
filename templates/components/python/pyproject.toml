@@ -1,0 +1,25 @@
+# Seeded once by `specfuse authoring add-component` for generator {{GeneratorVersion}}. Yours to change.
+[project]
+name = "{{Dir}}"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv.workspace]
+members = ["libs/*"]
+
+[tool.uv.sources]
+{{ContractsDist}} = { workspace = true }
+{{CoreDist}} = { workspace = true }
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["libs"]
+
+[tool.ruff]
+extend-exclude = ["*/_generated/**"]
+
+[tool.coverage.run]
+omit = ["*/_generated/*"]

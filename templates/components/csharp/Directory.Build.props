@@ -1,0 +1,23 @@
+<!--
+  Seeded once by `specfuse authoring add-component`. This file is yours: the
+  kit never rewrites it.
+
+  Every project compiles two roots: src/ (hand-written) and gen-src/ (generated,
+  never edited; the next regen overwrites it).
+-->
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- CS1591: generated code does not document every public member.
+         CS8618: generated entities rely on EF Core to populate non-nullable members. -->
+    <NoWarn>$(NoWarn);CS1591;CS8618</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="src\**\*.cs" />
+    <Compile Include="gen-src\**\*.cs" />
+  </ItemGroup>
+</Project>
