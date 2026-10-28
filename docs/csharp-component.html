@@ -4,7 +4,8 @@ Copyright 2026 Specfuse Contributors
 Licensed under the Apache License, Version 2.0. See LICENSE.
 
 Interactive companion to docs/csharp-component-guide.md: the layout, build
-wiring, seams, extension patterns, regen flow, starter contract and audit
+wiring, seams, extension patterns, regen flow, temporary patches, starter
+contract and audit
 checklist of a C# component repo, as a map you click through. The Markdown
 guide is the source of truth; scripts/check-csharp-page.py keeps the embedded
 data (#guide-data) in step with the guide's check IDs, the starter contract's
@@ -15,7 +16,7 @@ rule IDs and the links.
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>C# Component Map</title>
-<meta name="description" content="How a C# repo receives Specfuse-generated code: layout, build wiring, seams, extension patterns, the regen flow, the contract, and an audit checklist.">
+<meta name="description" content="How a C# repo receives Specfuse-generated code: layout, build wiring, seams, extension patterns, the regen flow, temporary patches to generated code, the contract, and an audit checklist.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -219,6 +220,7 @@ footer { margin-top: 36px; color: var(--muted); font-size: 13px; }
     {"id": "seams", "name": "Seams", "sub": "What generated code needs from you"},
     {"id": "extend", "name": "Extend", "sub": "Four patterns, one trap"},
     {"id": "regen", "name": "Regen flow", "sub": "Spec, component, baseline"},
+    {"id": "patches", "name": "Patches", "sub": "Until the generator is fixed"},
     {"id": "contract", "name": "Contract", "sub": "The 16 starter rules"},
     {"id": "checklist", "name": "Checklist", "sub": "Audit this repo"}
   ],
@@ -350,6 +352,15 @@ footer { margin-top: 36px; color: var(--muted); font-size: 13px; }
      "trap": "Editing DefaultOrderService in gen-src/ instead is the hand edit the whole layout exists to forbid: it compiles, passes review once, and is gone on the next regen.", "check": "CS-17"}
   ],
 
+  "patchFlow": [
+    {"t": "Look for a way that needs no patch", "who": "yours", "body": "In order: fix the spec and regenerate; work around it from src/ with a partial member, an override on the generated *Base or Default{Entity}Service, a replacement registered after the generated call, or a mapper hook, marked // Workaround for clabonte/generator#NNNN; take the operation out of generation with x-manual. Each of these survives every regen untouched. Only when none fits, patch gen-src/."},
+    {"t": "File the defect against the generator", "who": "yours", "body": "Before writing the patch: the generated C# you expected, never a proposed template change. The patch names this issue in its header, and a patch with no issue is never removed."},
+    {"t": "Make the patch on a clean regen branch", "who": "yours", "body": "Edit the generated file: modify only, never create or delete one, and leave the header block alone (GEN-002, GEN-003). Write the diff with its header into gen-patches/, add a row to gen-patches/README.md, and a Known failure modes entry in docs/generated-code-expectations.md so the generator's reviewer reads the defect as known. Commit all of it together. A coding agent proposes a patch and waits; it never writes one on its own.", "cmd": "{ printf 'Generator-Issue: clabonte/generator#NNNN\\nGenerator-Version: 0.19.0\\nReason: <what is wrong>\\n\\n'\n  git diff -- <the edited gen-src files>; } > gen-patches/NNNN-<short-name>.patch"},
+    {"t": "Re-applied on every regen", "who": "auto", "body": "generate.sh runs the spec repo's own scripts/post-generate.sh after each group; it calls this repo's apply-gen-patches.sh with the group's project folder. A patch that no longer applies exits non-zero and stops the run, so a regen never finishes with a patch silently dropped.", "cmd": "#!/bin/bash\n# <spec-repo>/scripts/post-generate.sh <group> <language> <destination> <basePackage>\nset -euo pipefail\nif [ \"$2\" = \"C#\" ] && [ -x \"$3/scripts/apply-gen-patches.sh\" ]; then\n  \"$3/scripts/apply-gen-patches.sh\" \"$4\"\nfi"},
+    {"t": "Gated on every pull request", "who": "auto", "body": "The gen-patches gate (build needs it) and the CI step run --check: every patch applied, headed by its Generator-Issue, listed in the index, and touching existing gen-src/ files only. A regen PR that forgot to re-apply a patch fails here, in seconds, with no SDK.", "cmd": "./scripts/apply-gen-patches.sh --check"},
+    {"t": "Retire it when the fix reaches the pin", "who": "yours", "body": "Once the issue is fixed and the generator the spec repo runs (the kit's pin, or the project's .specfuse/generator.lock) reaches that release, regenerate and expect already present. Confirm the output is right without the patch, delete it, move its row to Retired, and remove its expectations entry and any src/ workaround tied to it. Review the index at every pin bump: a closed issue whose patch still reports applied means the fix missed your case."}
+  ],
+
   "regen": [
     {"t": "The spec change merges in the spec repo", "who": "yours", "body": "A component PR never lands before the spec change it was generated from. Otherwise this repo's default branch depends on a spec that is not on the spec repo's default branch."},
     {"t": "Regenerate on a disposable branch of this repo", "who": "auto", "body": "From the spec repo root. cleanGenerated wipes gen-src/ before writing, so this repo must be on a branch you can throw away with no uncommitted work; generate.sh refuses a dirty destination. Name the groups; prefer them over all.", "cmd": "cd ../hello-orders-specs\n./scripts/specfuse/generate.sh Domain Infrastructure Api"},
@@ -419,7 +430,7 @@ footer { margin-top: 36px; color: var(--muted); font-size: 13px; }
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const main = $("#main"), nav = $("#nav");
 
-  const ui = { view: "layout", node: "backend", proj: "Domain", withOptional: true, seam: "program", pattern: "base", regen: 0, rule: 0, openCheck: null };
+  const ui = { view: "layout", node: "backend", proj: "Domain", withOptional: true, seam: "program", pattern: "base", regen: 0, patch: 0, rule: 0, openCheck: null };
   let ticks = {};
   try { ticks = JSON.parse(localStorage.getItem("csharp-component.checks") || "{}") || {}; } catch (_) { ticks = {}; }
   const saveTicks = () => { try { localStorage.setItem("csharp-component.checks", JSON.stringify(ticks)); } catch (_) {} };
@@ -553,6 +564,29 @@ footer { margin-top: 36px; color: var(--muted); font-size: 13px; }
       <section class="panel"><h3>What a green build does not prove</h3><p>A regen can change a field's name or an enum's wire value while every hand-written type that mirrors it still compiles. Diff changed models by file name, each enum's values, every operation's parameter list, and trace every hand-written mirror. Wrong generated output goes to the generator as the C# that was expected, never as a template change; a wrong spec goes to the spec repo as a <code>specfuse:spec-issue</code>.</p></section>`;
   }
 
+  /* ---------- Patches ---------- */
+  function viewPatches() {
+    const r = D.patchFlow[ui.patch];
+    return `<h2>Patches</h2>
+      <p class="summary">Sometimes generated code is wrong and the fix cannot wait for a generator release. "Never edit <code>gen-src/</code>" still holds in spirit: the change must survive the next regen, be visible in review, and go away the moment the generator is fixed. A <b>tracked patch</b> in <code>gen-patches/</code> does all three, and it is the last resort, not the first.</p>
+      <div class="board">
+        <ol class="track">${D.patchFlow.map((x, i) => `<li><button class="stage ${x.who}" data-patch="${i}" aria-current="${i === ui.patch}"><span class="k">${i + 1}</span><span><span class="t">${esc(x.t)}</span></span></button></li>`).join("")}</ol>
+        <div class="detail"><span class="who ${r.who === "yours" ? "yours" : ""}">${r.who === "yours" ? "you" : "a script does this"}</span><h3>${esc(r.t)}</h3><p>${esc(r.body)}</p>${r.cmd ? `<code class="cmd">${esc(r.cmd)}</code>` : ""}
+          <p style="margin-top:12px">Checklist CS-26 · ${guideLink("#91-temporary-patches-until-the-generator-is-fixed")}</p></div>
+      </div>
+      <section class="panel"><h3>What apply-gen-patches.sh reports</h3>
+        <table class="t"><thead><tr><th>Report</th><th>Meaning</th><th>Do</th></tr></thead><tbody>
+          <tr><td><span class="who ok">applied</span></td><td>the patch went back on cleanly</td><td>commit it with the regen</td></tr>
+          <tr><td><span class="who">already present</span></td><td>right after a regen, the generator now emits the fix itself</td><td>confirm, then retire the patch</td></tr>
+          <tr><td><span class="who stop">FAILED</span></td><td>the generated code changed around it</td><td>re-derive the patch from the new output, or retire it if the defect is gone</td></tr>
+        </tbody></table>
+        <p>With <code>--check</code> the same script is the gate, reporting <code>ok</code>, <code>NOT APPLIED</code> or <code>STALE</code> per patch.</p></section>
+      <section class="panel"><h3>Keep patches small and away from the public surface</h3><ul class="rules">
+        <li>Modify, never create or delete: a new type goes in <code>src/</code>. The path manifests record what the generator emits, and a patch that adds or removes a file makes them disagree with the tree.</li>
+        <li>The regen's <code>CHANGELOG.md</code> is written before the patch goes back on, while the baseline <code>advance-state.sh</code> captures comes from your merged, patched code. A patch to a Domain entity, value object or service signature therefore shows up in every regen's changelog: say so in the PR rather than chasing it.</li>
+        <li>The starter ships <code>scripts/apply-gen-patches.sh</code> and the <code>gen-patches/README.md</code> index; the script is language-neutral.</li></ul></section>`;
+  }
+
   /* ---------- Contract ---------- */
   function viewContract() {
     const r = D.rules[ui.rule];
@@ -600,7 +634,7 @@ footer { margin-top: 36px; color: var(--muted); font-size: 13px; }
 
   function render() {
     renderNav();
-    const v = { layout: viewLayout, wiring: viewWiring, seams: viewSeams, extend: viewExtend, regen: viewRegen, contract: viewContract, checklist: viewChecklist }[ui.view] || viewLayout;
+    const v = { layout: viewLayout, wiring: viewWiring, seams: viewSeams, extend: viewExtend, regen: viewRegen, patches: viewPatches, contract: viewContract, checklist: viewChecklist }[ui.view] || viewLayout;
     main.innerHTML = v();
     if (location.hash.replace("#", "") !== ui.view) history.replaceState(null, "", "#" + ui.view);
   }
@@ -612,7 +646,7 @@ footer { margin-top: 36px; color: var(--muted); font-size: 13px; }
   });
 
   main.addEventListener("click", e => {
-    const t = e.target.closest("[data-node],[data-proj],[data-optional],[data-seam],[data-pattern],[data-regen],[data-rule],[data-open],[data-act]");
+    const t = e.target.closest("[data-node],[data-proj],[data-optional],[data-seam],[data-pattern],[data-regen],[data-patch],[data-rule],[data-open],[data-act]");
     if (!t) return;
     const d = t.dataset;
     if (d.node) ui.node = d.node;
@@ -621,6 +655,7 @@ footer { margin-top: 36px; color: var(--muted); font-size: 13px; }
     else if (d.seam) ui.seam = d.seam;
     else if (d.pattern) ui.pattern = d.pattern;
     else if (d.regen) ui.regen = +d.regen;
+    else if (d.patch) ui.patch = +d.patch;
     else if (d.rule) ui.rule = +d.rule;
     else if (d.open) ui.openCheck = ui.openCheck === d.open ? null : d.open;
     else if (d.act === "reset") { ticks = {}; saveTicks(); }
