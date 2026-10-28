@@ -121,12 +121,15 @@ The generator keeps one file per group under `stateDir` (default `.specfuse/stat
 - `baseline` rewrites every group's state file, so restore the files for groups whose component was not on a clean, merged `main` (`git checkout -- .specfuse/state/<group>.json`). Commit the rest in a spec-repo PR on its own (no spec changes), citing the component PR and commit.
 - `baseline` rewrites only `<group>.json`. If `<group>.paths.json` has drifted too, it takes a real regen whose output matches the component's `main` byte for byte.
 
-## 7. Contract checks in the component (optional)
+## 7. Contract checks in the component
 
-A component can also guard its generated tree mechanically, with a CI check that fails when generated files are hand-edited or don't meet the shape the component depends on, plus a short doc describing that expected shape. Tooling for this is not shipped by the kit yet ([#171](https://github.com/specfuse/authoring/issues/171)). Until it is, keep any such check small and specific to the component.
+A component can guard its generated tree mechanically: a contract file (`gen-contract.yml`) whose rules fail when generated files are hand-edited or do not meet the shape the component depends on, run as a `code` gate in `.specfuse/verification.yml`, plus a short prose doc (`docs/generated-code-expectations.md`) saying what "acceptable" means beyond the rules. The ownership is settled ([#171](https://github.com/specfuse/authoring/issues/171)): the rules and the prose are the component's, the engine is `specfuse.loop.gen_contract` in specfuse-loop 0.30+, and what the generator's own QA harness reads from those two files is published as a stable interface ([`CONSUMER-CONTRACT.md`](https://github.com/clabonte/generator/blob/main/docs/CONSUMER-CONTRACT.md)).
+
+For C#, the kit ships a starter: [`templates/component-contract/csharp/`](../templates/component-contract/csharp/), 16 rules green on a fresh seed, each with a mutation case, and the full walkthrough is [`csharp-component-guide.md`](csharp-component-guide.md) §6. `add-component` will seed it once [#181](https://github.com/specfuse/authoring/issues/181) lands; until then its README has the copy-and-sed steps. Other languages keep any such check small and specific to the component.
 
 ## Where to go next
 
+- [`csharp-component-guide.md`](csharp-component-guide.md): the C# component in full, with an audit checklist for Claude
 - [`Project_File.md`](../handbooks/Project_File.md): `destination`, `cleanGenerated`, `cleanScope`, `stateDir`
 - [`Vendor_Extensions.md` §4.5](../handbooks/Vendor_Extensions.md): `x-manual`, the operations that stay hand-written
 - [`generator-access.md`](generator-access.md): generator access for whoever runs regens

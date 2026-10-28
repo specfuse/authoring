@@ -1,0 +1,32 @@
+# The `code` gate set for .specfuse/verification.yml in a C# component repo.
+#
+# Paste the `code:` block into .specfuse/verification.yml (created by
+# `specfuse init <repo>`), or keep it as the whole file if the repo has no
+# other gate sets yet. The generator's consumer harness reads exactly this
+# key, and the Specfuse loop runs it as the exit oracle of every work unit.
+#
+# Cheap, self-contained checks first; `build` hangs off `gen-contract` so a
+# structural breach never pays for the .NET chain; `tests` hangs off `build`
+# so `--no-build` is only ever reached after a clean build in the same run.
+
+code:
+  - name: gen-contract
+    # Structural contract on generated and hand-written code: rule IDs,
+    # file:line, no judgement calls. Seconds, no toolchain.
+    command: "./scripts/check-gen-contract.sh"
+
+  - name: build
+    needs: [gen-contract]
+    command: "dotnet build --nologo -warnaserror"
+
+  - name: tests
+    needs: [build]
+    command: "dotnet test --no-build --nologo --filter \"Category!=Integration\" --settings coverlet.runsettings --collect:\"XPlat Code Coverage\" --results-directory ./CoverageResults"
+
+  # Optional: a coverage floor over hand-written src/ only. coverlet.runsettings
+  # excludes **/gen-src/** so generated tests and generated code count for
+  # nothing. See the guide, check CS-22.
+  # - name: coverage
+  #   needs: [tests]
+  #   tier: broad
+  #   command: "./scripts/check-coverage-floor.sh CoverageResults"
