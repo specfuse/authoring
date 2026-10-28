@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0. See LICENSE.
 
 # Setting up component repos
 
-[Getting started](getting-started.md) covers the **spec repo**, where you author, validate, and run the generator. This guide covers the other side: the **component repos** (backend service, mobile or web app, Python services) that receive the generated code. It sets out a layout and a set of conventions that a multi-repo project runs on in production. Adopt them as they are, or use them as a checklist when you choose your own.
+[Getting started](https://github.com/specfuse/authoring/blob/main/docs/getting-started.md) covers the **spec repo**, where you author, validate, and run the generator. This guide covers the other side: the **component repos** (backend service, mobile or web app, Python services) that receive the generated code. It sets out a layout and a set of conventions that a multi-repo project runs on in production. Adopt them as they are, or use them as a checklist when you choose your own.
 
 ## 1. The model: the spec repo pushes, components receive
 
@@ -134,4 +134,4 @@ When generated code is wrong and the fix cannot wait for a generator release, th
 - [`csharp-component-guide.md`](csharp-component-guide.md): the C# component in full, with an audit checklist for Claude
 - [`Project_File.md`](../handbooks/Project_File.md): `destination`, `cleanGenerated`, `cleanScope`, `stateDir`
 - [`Vendor_Extensions.md` §4.5](../handbooks/Vendor_Extensions.md): `x-manual`, the operations that stay hand-written
-- [`generator-access.md`](generator-access.md): generator access for whoever runs regens
+- [`generator-access.md`](https://github.com/specfuse/authoring/blob/main/docs/generator-access.md): generator access for whoever runs regens

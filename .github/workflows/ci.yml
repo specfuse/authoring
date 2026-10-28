@@ -37,6 +37,12 @@ jobs:
       - name: Flows page matches the kit
         run: python scripts/check-flows-page.py
 
+      # The component guides and the generator release notes ship into every
+      # project's .specfuse/authoring/docs/; a relative link that only works in
+      # this repo is broken there.
+      - name: Shipped docs keep their links inside the overlay
+        run: python scripts/check-shipped-docs.py
+
       # docs/csharp-component.html is the interactive form of the C# component
       # guide; its embedded data must list the guide's checks and the starter
       # contract's rules, not a stale copy of either.
@@ -79,6 +85,10 @@ jobs:
           test -f /tmp/smoke/.specfuse/authoring/.scaffold-manifest
           test -f /tmp/smoke/.specfuse/authoring/schemas/spectral/specfuse-openapi.yaml
           cmp docs/flows.html /tmp/smoke/.specfuse/authoring/docs/flows.html
+          for d in component-repos.md add-component.md csharp-component-guide.md csharp-component.html generator-releases.md; do
+            cmp "docs/$d" "/tmp/smoke/.specfuse/authoring/docs/$d"
+          done
+          test -f /tmp/smoke/.specfuse/authoring/templates/component-contract/csharp/gen-contract.yml
 
       # The overlay's whole job is reaching projects that already exist. Each
       # case below is one the manifest was added to make possible — without it

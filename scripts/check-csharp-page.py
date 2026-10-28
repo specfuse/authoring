@@ -110,7 +110,7 @@ for p in data["patterns"]:
     check(p["check"] in page_checks, f"pattern {p['id']}: cites unknown check {p['check']}")
 
 # The prompt on the page is the prompt in the guide.
-prompt_in_guide = re.search(r"```\n(Read docs/csharp-component-guide\.md.*?)```", guide, re.S)
+prompt_in_guide = re.search(r"```\n(Read \S*csharp-component-guide\.md.*?)```", guide, re.S)
 check(prompt_in_guide is not None and prompt_in_guide.group(1).strip() == data["prompt"].strip(),
       "prompt: the page's Claude prompt differs from the guide's")
 

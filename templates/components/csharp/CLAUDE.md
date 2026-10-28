@@ -11,6 +11,10 @@
 - `src/` in each project. Extend generated types with `partial` classes, or derive from the generated `*Base` classes.
 - `{{Prefix}}.Api/src/Program.cs` wires the generated registrations. `Utils/UserHelper.cs` maps claims to the caller the generated controllers expect, and `Filters/ExceptionFilter.cs` maps domain exceptions to HTTP.
 
+## The guide
+
+- `../{{SpecRepo}}/.specfuse/authoring/docs/csharp-component-guide.md` is the full reference for this repo: layout, build wiring, the seams generated code calls by name, extension patterns, the generated-code contract, the regen flow, and an audit checklist (§10). The kit refreshes it on every `upgrade` of the spec repo. Read it before changing build wiring or adding a seam.
+
 ## Layering
 
 - `{{Prefix}}.Domain` depends on nothing in this solution.
