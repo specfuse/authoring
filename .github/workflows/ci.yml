@@ -733,7 +733,8 @@ jobs:
           for f in SmokeApp.slnx Directory.Build.props .gitignore README.md CLAUDE.md \
                    SmokeApp.Domain/SmokeApp.Domain.csproj SmokeApp.Infrastructure/SmokeApp.Infrastructure.csproj \
                    SmokeApp.Api/SmokeApp.Api.csproj SmokeApp.Api/src/Program.cs \
-                   SmokeApp.Api/src/Utils/UserHelper.cs SmokeApp.Api/src/Filters/ExceptionFilter.cs; do
+                   SmokeApp.Api/src/Utils/UserHelper.cs SmokeApp.Api/src/Filters/ExceptionFilter.cs \
+                   SmokeApp.Api/appsettings.Development.json; do
             test -f "$R/Backend/$f" || fail "seed is missing $f"
           done
           test -d "$R/Backend/.git" || fail "the seeded repo was not git-initialised"

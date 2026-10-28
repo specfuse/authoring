@@ -1618,21 +1618,30 @@ jobs:
             specfuse-authoring generate generate --group "$g" hello-orders-project.json
           done
           cd "$R/Backend"
+          # A local token through the seed's JWT bearer, as its README shows. The
+          # generated role filter reads `sub` and `roles`; Admin may call every
+          # Customer operation. user-jwts sets UserSecretsId, so it runs before the build.
+          TOKEN=$(dotnet user-jwts create --project HelloOrders.Api --name ci-user --claim roles=Admin --audience HelloOrders --output token)
           dotnet build -nologo
-          # The composition root resolves: a list, a missing resource, a bad body.
-          dotnet run --project HelloOrders.Api --no-build --urls http://127.0.0.1:5180 > "$RUNNER_TEMP/api.log" 2>&1 &
+          # The composition root resolves: anonymous is refused, then a list, a
+          # missing resource and a bad body. Since generator 0.20.0 the role
+          # filters are registered by AddSpecfuseAuthorization(), so a seed with no
+          # authentication scheme answered every role-gated request with a 500.
+          ASPNETCORE_ENVIRONMENT=Development dotnet run --project HelloOrders.Api --no-build --urls http://127.0.0.1:5180 > "$RUNNER_TEMP/api.log" 2>&1 &
           API_PID=$!
           for _ in $(seq 1 60); do curl -s -o /dev/null http://127.0.0.1:5180/ && break; sleep 1; done
           T=11111111-1111-1111-1111-111111111111
           code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
-          list=$(code "http://127.0.0.1:5180/v1/tenants/$T/customers")
-          missing=$(code "http://127.0.0.1:5180/v1/customers/$T")
-          bad=$(code -X POST -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:5180/v1/tenants/$T/customers")
+          AUTH=(-H "Authorization: Bearer $TOKEN")
+          anon=$(code "http://127.0.0.1:5180/v1/tenants/$T/customers")
+          list=$(code "${AUTH[@]}" "http://127.0.0.1:5180/v1/tenants/$T/customers")
+          missing=$(code "${AUTH[@]}" "http://127.0.0.1:5180/v1/customers/$T")
+          bad=$(code "${AUTH[@]}" -X POST -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:5180/v1/tenants/$T/customers")
           kill "$API_PID" || true
-          echo "list=$list missing=$missing bad=$bad"
-          if [[ "$list $missing $bad" != "200 404 400" ]]; then
+          echo "anon=$anon list=$list missing=$missing bad=$bad"
+          if [[ "$anon $list $missing $bad" != "401 200 404 400" ]]; then
             cat "$RUNNER_TEMP/api.log"
-            echo "::error::the seeded C# component built but did not serve as expected (want 200 404 400)"; exit 1
+            echo "::error::the seeded C# component built but did not serve as expected (want 401 200 404 400)"; exit 1
           fi
           echo "==> add-component csharp: seeds, builds, and serves on the pinned generator."
 

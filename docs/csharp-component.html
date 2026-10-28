@@ -306,7 +306,7 @@ footer { margin-top: 36px; color: var(--muted); font-size: 13px; }
     {"id": "exceptionfilter", "name": "Filters/ExceptionFilter", "layer": "Api/src", "kind": "yours", "when": "always",
      "body": "Maps the generated domain exceptions (BadRequestException, NotFoundException, ConflictException, PreconditionFailedException, UnprocessableEntityException, …) to their StatusCode and Errors list. Added to AddControllers(options => options.Filters.Add<ExceptionFilter>()).",
      "fails": "Without it a generated NotFoundException comes back as a 500 with no body, and every generated functional test asserting a 404 fails.",
-     "cmd": "builder.Services.AddControllers(o => o.Filters.Add<ExceptionFilter>());", "check": "CS-11"},
+     "cmd": "builder.Services.AddControllers(o => o.Filters.Add<ExceptionFilter>());\nbuilder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)\n    .AddJwtBearer(o => o.MapInboundClaims = false);   // the generated role filter challenges anonymous callers", "check": "CS-11"},
     {"id": "tenantcheck", "name": "ITenantResourceCheck", "layer": "Infrastructure/src or Api/src", "kind": "yours", "when": "the project declares tenancy",
      "body": "AddSpecfuseAuthorization() registers a throwing placeholder for the one seam the generator cannot write: whether the caller's roles reach this resource in this tenant. A single-tenant project (no tenancy block) gets a generated RoleSufficientTenantResourceCheck instead.",
      "fails": "The first role-gated request that reaches the tenant check throws, naming the contract. Nothing fails at startup.",

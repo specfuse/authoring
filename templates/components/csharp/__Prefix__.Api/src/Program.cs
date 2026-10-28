@@ -5,10 +5,19 @@ using {{Prefix}}.Domain;
 using {{Prefix}}.Infrastructure;
 using {{Prefix}}.Infrastructure.Concurrency;
 using {{Prefix}}.Infrastructure.Events;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers(options => options.Filters.Add<ExceptionFilter>());
+
+// Authentication. The generated [RoleRequired] filter challenges an anonymous caller,
+// so a scheme must exist, or every role-gated request fails with a 500. JWT bearer
+// reads its settings from Authentication:Schemes:Bearer; for local runs,
+// `dotnet user-jwts create` writes them (see README.md). Claims keep their JWT names:
+// the generated reader looks for `sub` and `roles`. Point this at your identity provider.
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options => options.MapInboundClaims = false);
 
 // Generated registrations (gen-src/**/ConfigureServices.g.cs and friends).
 builder.Services.AddServices();
@@ -30,5 +39,7 @@ else
     builder.Services.AddSqlServerDatabase(connectionString);
 
 var app = builder.Build();
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapControllers();
 app.Run();

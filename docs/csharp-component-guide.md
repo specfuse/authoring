@@ -161,9 +161,15 @@ using HelloOrders.Domain;
 using HelloOrders.Infrastructure;
 using HelloOrders.Infrastructure.Concurrency;
 using HelloOrders.Infrastructure.Events;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers(options => options.Filters.Add<ExceptionFilter>());
+
+// Authentication: the generated [RoleRequired] filter challenges anonymous callers.
+// JWT claim names are kept; the generated reader looks for `sub` and `roles`.
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options => options.MapInboundClaims = false);
 
 // Generated registrations (gen-src/**/ConfigureServices.g.cs and friends).
 builder.Services.AddServices();                 // Domain: I{Entity}Service -> Default{Entity}Service
@@ -182,11 +188,15 @@ else
     builder.Services.AddSqlServerDatabase(connectionString);
 
 var app = builder.Build();
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapControllers();
 app.Run();
 ```
 
 With an Application group, add `builder.Services.Add{Domain}Workers()` per domain (or the aggregate `AddAllWorkers()`), which registers every concrete handler and job found by assembly scan. With field encryption declared in the spec, add `builder.Services.AddFieldEncryption()`; nothing generated calls it for you.
+
+**An authentication scheme is required.** Since generator 0.20.0, `AddSpecfuseAuthorization()` registers the role and scope filters itself. They challenge an anonymous caller, and with no authentication scheme the challenge throws, so every role-gated request answers 500 instead of 401. The seed uses JWT bearer with `MapInboundClaims = false`, because the generated `ClaimsPrincipalReader` reads the `sub` and `roles` claims by those names; point `Authentication:Schemes:Bearer` at your identity provider, and use `dotnet user-jwts create --claim roles=<Role>` for a local token (the seeded README has the commands).
 
 **Register your own implementations after the generated calls.** `AddServices()` and `AddRepositories()` register with a plain `AddScoped`, so the last registration wins: a custom `I{Entity}Service` goes right after `AddServices()`, a decorator after both. The placeholder contracts in §4.3 are the exception: they are registered with `TryAdd`, so for them order does not matter.
 

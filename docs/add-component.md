@@ -35,8 +35,9 @@ Backend/
 ├── <Ns>.Domain/<Ns>.Domain.csproj
 ├── <Ns>.Infrastructure/…csproj      references Domain
 ├── <Ns>.Api/…csproj                 Web SDK; references Domain and Infrastructure
+│   ├── appsettings.Development.json   where `dotnet user-jwts` writes a local token's settings
 │   └── src/
-│       ├── Program.cs               wires the generated registrations
+│       ├── Program.cs               wires the generated registrations and JWT bearer authentication
 │       ├── Utils/UserHelper.cs      claims → the caller the generated controllers expect
 │       └── Filters/ExceptionFilter.cs   generated domain exceptions → HTTP status + Error list
 ├── README.md, CLAUDE.md, .gitignore

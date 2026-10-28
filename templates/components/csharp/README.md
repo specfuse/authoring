@@ -21,6 +21,16 @@ dotnet run --project {{Prefix}}.Api
 
 Without `ConnectionStrings__Default`, the API runs on an in-memory database.
 
+Every generated operation that declares `x-roles` requires an authenticated caller: anonymous requests get 401. `Program.cs` uses JWT bearer; for a local token, use the .NET SDK's `user-jwts` (the `roles` claim carries the role, `sub` the user id):
+
+```bash
+TOKEN=$(dotnet user-jwts create --project {{Prefix}}.Api --name dev --claim roles=Admin --audience {{Prefix}} --output token)
+ASPNETCORE_ENVIRONMENT=Development dotnet run --project {{Prefix}}.Api
+curl -H "Authorization: Bearer $TOKEN" http://localhost:5000/...
+```
+
+In production, configure `Authentication:Schemes:Bearer` (authority, audience) for your identity provider.
+
 ## Regenerate
 
 From `../{{SpecRepo}}`, on a branch of this repo with no uncommitted changes:
