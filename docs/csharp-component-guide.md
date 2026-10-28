@@ -224,7 +224,7 @@ The generated `TestSeed` (stable GUIDs and a pre-wired entity graph) and the `A.
 
 ## 5. Extending generated code
 
-Never edit a file under `gen-src/`. A wrong generated file is fixed in the spec or in the generator, then regenerated; an edit disappears on the next run. Four patterns cover everything else, all in `src/`, all in the generated type's own namespace.
+Never edit a file under `gen-src/`. A wrong generated file is fixed in the spec or in the generator, then regenerated; an edit disappears on the next run. The one exception, a tracked patch while a generator fix is pending, is §9.1. Four patterns cover everything else, all in `src/`, all in the generated type's own namespace.
 
 ### 5.1 `partial` classes
 
@@ -321,7 +321,7 @@ A review finding that recurs becomes a rule, not a longer checklist. The bar for
 
 ### 6.4 Wire it as a gate
 
-`.specfuse/verification.yml` (`specfuse init <repo>` creates it) carries a `code` gate set. That key is what the Specfuse loop runs as its exit oracle and what the generator's harness runs against every regen. The starter's `verification.snippet.yml` is the shape: `gen-contract` first (seconds, no toolchain), `build` with `needs: [gen-contract]`, `tests` with `needs: [build]`, so a structural breach never pays for the .NET chain. CI runs the same order: the starter's `.github/workflows/gen-contract.yml` runs the contract and its mutation test on every PR with no SDK; the `dotnet build` / `dotnet test` job sits beside it.
+`.specfuse/verification.yml` (`specfuse init <repo>` creates it) carries a `code` gate set. That key is what the Specfuse loop runs as its exit oracle and what the generator's harness runs against every regen. The starter's `verification.snippet.yml` is the shape: `gen-contract` and `gen-patches` first (seconds, no toolchain), `build` with `needs: [gen-contract, gen-patches]`, `tests` with `needs: [build]`, so a structural breach never pays for the .NET chain. CI runs the same order: the starter's `.github/workflows/gen-contract.yml` runs the contract, its mutation test and the patch check on every PR with no SDK; the `dotnet build` / `dotnet test` job sits beside it.
 
 ## 7. Tests and coverage
 
@@ -334,11 +334,11 @@ A review finding that recurs becomes a rule, not a longer checklist. The bar for
 
 Put the rules an agent will need in the first thirty lines of `CLAUDE.md` (or `AGENTS.md`), before anything else, because it reads them before it reads the error. The seed from `add-component` carries rules 1, 2 and 4; add 3 and 5 when you seed the contract (§6). An older repo writes all five in:
 
-1. `*/gen-src/**` and every `*.g.cs` are generated from `../<spec-repo>`; the next regen overwrites them. **Never edit them.** If a task seems to need it, stop: the fix belongs in the spec or the generator. Say so and note that a regen is required.
+1. `*/gen-src/**` and every `*.g.cs` are generated from `../<spec-repo>`; the next regen overwrites them. **Never edit them.** If a task seems to need it, stop: the fix belongs in the spec or the generator. Say so and note that a regen is required. The only exception is a tracked patch (§9.1), and an agent proposes one rather than writing it.
 2. Before writing a model, DTO, repository, mapper, service or controller by hand, check `gen-src/`. It probably exists.
 3. Hand-written code goes in `src/`: `partial` classes in the generated namespace, concrete classes deriving from the generated `*Base`, `partial` mapper hooks. Never implement a generated `I{X}Handler` or `I{Tag}ApplicationService` directly.
 4. The layering (§2.2) and where the seams live (§4).
-5. The regen flow (§9), and that `./scripts/check-gen-contract.sh` is the first thing to run after any regen.
+5. The regen flow (§9), and that `./scripts/check-gen-contract.sh` and `./scripts/apply-gen-patches.sh --check` are the first things to run after any regen.
 
 ## 9. The regen flow
 
@@ -348,8 +348,8 @@ Put the rules an agent will need in the first thirty lines of `CLAUDE.md` (or `A
    cd ../hello-orders-specs
    ./scripts/specfuse/generate.sh Domain Infrastructure Api      # one jar run per group, bundled once
    ```
-   `generate.sh` refuses a destination repo with uncommitted changes.
-3. **Run the contract, then build.** `./scripts/check-gen-contract.sh` first: a red rule is a generator defect or a hand-written file in the wrong place, and either is cheaper to see before the build. Then `dotnet build` and the unit tests. Fix the hand-written `src/` that the regen broke (a renamed member, a new abstract method on a base, a new placeholder contract); never the generated side.
+   `generate.sh` refuses a destination repo with uncommitted changes. With `scripts/post-generate.sh` wired in the spec repo (§9.1), each group's tracked patches go back on as soon as it is generated.
+3. **Run the contract, then build.** `./scripts/check-gen-contract.sh` and `./scripts/apply-gen-patches.sh --check` first: a red rule is a generator defect or a hand-written file in the wrong place, and either is cheaper to see before the build. Then `dotnet build` and the unit tests. Fix the hand-written `src/` that the regen broke (a renamed member, a new abstract method on a base, a new placeholder contract); never the generated side.
 4. **Review by file name, not by path.** A regen rewrites the whole tree, so diff size is not a signal. Diff changed models by file name (a moved file reads as delete plus add), diff each enum's **values**, diff operation parameter lists, trace every hand-written type that mirrors a generated one, and read `CHANGELOG.md` where the generator writes one. For C# it tracks Domain entities, value objects and services and the Test group's event builders, not controllers, DTOs or EF configuration, so it complements the file-by-file review rather than replacing it. Removals are the highest-risk content of a regen and nothing mechanical catches them.
 5. **One PR per component**, containing the regen and only its required follow-ups. CI runs the contract and the mutation test, then the build.
 6. **Merge, then advance the baseline** in the spec repo from the merged default branch, never from a local regen:
@@ -360,7 +360,53 @@ Put the rules an agent will need in the first thirty lines of `CLAUDE.md` (or `A
    ```
    and open a spec-repo PR with only the changed `.specfuse/state/<group>.json` files ([`component-repos.md` §6](component-repos.md#6-advance-the-statedir-baseline-only-from-merged-component-code)).
 
-When generated output is wrong, file it against the generator with the generated C# that is expected, never a proposed template change; the generator agent locates the template from the output shape. When the spec is wrong, the component files a `specfuse:spec-issue` in the spec repo.
+When generated output is wrong, file it against the generator with the generated C# that is expected, never a proposed template change; the generator agent locates the template from the output shape. If the fix cannot wait, §9.1. When the spec is wrong, the component files a `specfuse:spec-issue` in the spec repo.
+
+### 9.1 Temporary patches, until the generator is fixed
+
+Sometimes generated code is wrong and the fix cannot wait for a generator release: it does not compile, or it does the wrong thing in a method you cannot override. "Never edit `gen-src/`" still holds in spirit: whatever you change must survive the next regen, be visible in review, and go away the moment the generator is fixed. A tracked patch does all three.
+
+**First, look for a way that needs no patch.** In this order:
+
+1. **The spec is wrong.** Fix it there and regenerate, or file a `specfuse:spec-issue` in the spec repo.
+2. **Work around it from `src/`** with the §5 patterns: a `partial` member, an override on the generated `*Base` or `Default{Entity}Service`, a replacement registered after the generated call, a mapper hook. These survive every regen untouched. Mark each with a `// Workaround for clabonte/generator#NNNN` comment so it is found when the fix lands.
+3. **Take the operation out of generation** with `x-manual` (§5.4) when the defect is confined to one operation and the hand-written version is small.
+4. **Only then, patch `gen-src/`.**
+
+Whichever you choose, file the defect against the generator first, with the generated C# you expected (§9). The patch names that issue; a patch without one is never removed.
+
+**How a patch works.** `gen-patches/NNNN-<name>.patch` is a `git diff` of generated files, headed by `Generator-Issue:`, `Generator-Version:` and `Reason:` lines. `gen-patches/README.md` is the index: every active patch, its issue, and what breaks without it. The starter ships the index and `scripts/apply-gen-patches.sh`, which re-applies the patches after a regen and reports one line per patch:
+
+| Report | Meaning | Do |
+|---|---|---|
+| `applied` | the patch went back on cleanly | commit it with the regen |
+| `already present` | right after a regen, the generator now emits the fix itself | confirm, then retire the patch |
+| `FAILED` | the generated code changed around it | re-derive the patch from the new output, or retire it if the defect is gone |
+
+`--check` is the gate: every patch is applied, carries its header, is in the index, and only modifies existing files under `gen-src/`. A regen PR that forgot to re-apply a patch fails it.
+
+**Re-apply on every regen, automatically.** The spec repo's `generate.sh` runs a project-owned `scripts/post-generate.sh` after each group. Have it call the component's script:
+
+```bash
+#!/bin/bash
+# <spec-repo>/scripts/post-generate.sh <group> <language> <destination> <basePackage>
+set -euo pipefail
+if [ "$2" = "C#" ] && [ -x "$3/scripts/apply-gen-patches.sh" ]; then
+  "$3/scripts/apply-gen-patches.sh" "$4"
+fi
+```
+
+A `FAILED` patch exits non-zero and stops the run, so a regen never finishes with a patch silently dropped.
+
+**Making one.** On a clean regen branch, edit the generated file, write the patch with its header and add the index row; the seeded `gen-patches/README.md` has the exact commands. Commit the patch, the patched files, the index row and a **Known failure modes** entry in `docs/generated-code-expectations.md` together. That entry is how the generator's consumer-QA reviewer learns the defect is known and tracked instead of reporting it again. A coding agent proposes a patch and waits; it never creates one on its own (§8).
+
+**Keep patches small and away from the public surface.**
+
+- Modify, never create or delete: a new type goes in `src/`. The path manifests record what the generator emits, and a patch that adds or removes a file makes them disagree with the tree.
+- Leave the header block alone: `GEN-002` and `GEN-003` still apply to a patched file.
+- The regen's `CHANGELOG.md` is written before the patch goes back on, while the baseline `advance-state.sh` captures comes from your merged, patched code. A patch that changes a tracked surface (a Domain entity, value object or service signature) therefore shows up in every regen's `CHANGELOG.md`. Say so in the PR rather than chasing it.
+
+**Retiring one.** When the issue is fixed and the generator the spec repo runs (the kit's pin, or the project's `.specfuse/generator.lock`) reaches that release, regenerate and expect `already present`. Confirm the output is right without the patch, delete the patch file, move its row to **Retired**, and remove its expectations entry and any `src/` workaround tied to it. Review the index at every pin bump: a patch whose issue is closed but that still reports `applied` means the fix did not cover your case, so comment on or reopen the issue.
 
 ## 10. The audit checklist
 
@@ -480,9 +526,9 @@ grep -n -i '^#\+ *\(Standing expectations\|Integration contract\|Known failure m
 ```
 Five lines.
 
-**CS-20 · `.specfuse/verification.yml` has a `code` gate set with `gen-contract`, `build` (`needs: [gen-contract]`) and `tests` (`needs: [build]`).**
+**CS-20 · `.specfuse/verification.yml` has a `code` gate set with `gen-contract`, `gen-patches`, `build` (`needs: [gen-contract, gen-patches]`) and `tests` (`needs: [build]`).**
 ```bash
-grep -n -A2 'name: *\(gen-contract\|build\|tests\)$' .specfuse/verification.yml
+grep -n -A2 'name: *\(gen-contract\|gen-patches\|build\|tests\)$' .specfuse/verification.yml
 ```
 
 **CS-21 · CI runs the contract before the build on every pull request.**
@@ -514,10 +560,16 @@ grep -n -i 'gen-src\|never edit\|partial\|Base\|check-gen-contract' CLAUDE.md AG
 grep -n 'generate.sh\|advance-state.sh\|\.\./' README.md | head
 ```
 
+**CS-26 · Every temporary patch to generated code is applied, indexed, and names a generator issue.**
+```bash
+./scripts/apply-gen-patches.sh --check && grep -h '^Generator-Issue:' gen-patches/*.patch 2>/dev/null
+```
+Exit 0, and every issue listed is still open: a closed one is a patch to retire (§9.1).
+
 ## Where to go next
 
 - [`component-repos.md`](component-repos.md): the language-neutral rules, the commit policy and the baseline step in full
 - [`add-component.md`](add-component.md): the seeded host for a new C# repo
 - [`Project_File.md`](../handbooks/Project_File.md): `destination`, `basePackage`, `cleanGenerated`, `tenancy`, the C# artifact catalogue
-- [`templates/component-contract/csharp/`](../templates/component-contract/csharp/): the starter contract, its mutation test and the expectations skeleton
+- [`templates/component-contract/csharp/`](../templates/component-contract/csharp/): the starter contract, its mutation test, the expectations skeleton and the patch tooling
 - [`csharp-component.html`](csharp-component.html): this guide as an interactive map, with the checklist you can tick off and copy

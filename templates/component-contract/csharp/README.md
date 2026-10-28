@@ -13,6 +13,8 @@ and `add-component` will seed them automatically once
 | `scripts/gen_contract_checks.py` | `scripts/` | The two project-specific checks the generic engine cannot express: `generated_base_adopted` and `generated_handler_interface_implemented_directly`. |
 | `scripts/check-gen-contract.sh` | `scripts/` | Runs the contract through the shared engine (`specfuse.loop.gen_contract`, specfuse-loop 0.30+). |
 | `scripts/test-gen-contract.sh` | `scripts/` | Mutation test: breaks the tree one rule at a time and asserts the rule reports it. |
+| `scripts/apply-gen-patches.sh` | `scripts/` | Re-applies the tracked temporary patches in `gen-patches/` after a regen; `--check` is the gate that they are all in place. |
+| `gen-patches/README.md` | `gen-patches/` | The index of active and retired patches, and how to make and retire one. |
 | `docs/generated-code-expectations.md` | `docs/` | The prose half, with the five section names the generator's QA reviewer reads. |
 | `verification.snippet.yml` | merge into `.specfuse/verification.yml` | The `code` gate set: contract, build, tests. |
 | `.github/workflows/gen-contract.yml` | `.github/workflows/` | CI: contract plus mutation test on every PR, no .NET SDK needed. |
@@ -33,7 +35,8 @@ cp "$KIT/scripts/"* scripts/
 cp "$KIT/docs/generated-code-expectations.md" docs/
 cp "$KIT/.github/workflows/gen-contract.yml" .github/workflows/
 sed -i.bak 's/__Prefix__/HelloOrders/g' gen-contract.yml docs/generated-code-expectations.md && rm -f *.bak docs/*.bak
-chmod +x scripts/check-gen-contract.sh scripts/test-gen-contract.sh
+mkdir -p gen-patches && cp "$KIT/gen-patches/README.md" gen-patches/
+chmod +x scripts/check-gen-contract.sh scripts/test-gen-contract.sh scripts/apply-gen-patches.sh
 python3 -m pip install 'specfuse-loop>=0.30'     # or: pipx install specfuse
 ./scripts/check-gen-contract.sh                  # must be green
 ./scripts/test-gen-contract.sh                   # every rule must bite

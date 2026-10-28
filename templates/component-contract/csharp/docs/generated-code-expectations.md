@@ -77,6 +77,9 @@ here breaks the app even when the generated tree itself compiles:
 
 ## Known failure modes — re-check each regen
 
+Every active patch in `gen-patches/` has an entry here naming the patch and
+its generator issue, so a reviewer reads the defect as known and tracked.
+
 <!-- Regressions this repo has been burned by. Each is re-checked against the
      current diff. Date or issue-link every entry. -->
 

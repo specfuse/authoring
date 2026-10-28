@@ -15,8 +15,13 @@ code:
     # file:line, no judgement calls. Seconds, no toolchain.
     command: "./scripts/check-gen-contract.sh"
 
+  - name: gen-patches
+    # Every tracked temporary patch to generated code is applied, indexed and
+    # names its generator issue (gen-patches/README.md). Seconds, no toolchain.
+    command: "./scripts/apply-gen-patches.sh --check"
+
   - name: build
-    needs: [gen-contract]
+    needs: [gen-contract, gen-patches]
     # Add -warnaserror once the build is clean; that is a team choice, not
     # something the generated code requires.
     command: "dotnet build --nologo"

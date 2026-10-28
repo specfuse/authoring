@@ -127,6 +127,8 @@ A component can guard its generated tree mechanically: a contract file (`gen-con
 
 For C#, the kit ships a starter: [`templates/component-contract/csharp/`](../templates/component-contract/csharp/), 16 rules green on a fresh seed, each with a mutation case, and the full walkthrough is [`csharp-component-guide.md`](csharp-component-guide.md) §6. `add-component` will seed it once [#181](https://github.com/specfuse/authoring/issues/181) lands; until then its README has the copy-and-sed steps. Other languages keep any such check small and specific to the component.
 
+When generated code is wrong and the fix cannot wait for a generator release, the same guide's §9.1 covers the stop-gap: a workaround from hand-written code where one exists, otherwise a tracked patch that `post-generate.sh` re-applies after every regen until the fix ships. Its `apply-gen-patches.sh` is language-neutral.
+
 ## Where to go next
 
 - [`csharp-component-guide.md`](csharp-component-guide.md): the C# component in full, with an audit checklist for Claude

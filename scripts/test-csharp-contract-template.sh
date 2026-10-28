@@ -49,7 +49,7 @@ cp "$KIT/docs/generated-code-expectations.md" docs/
 cp "$KIT/.github/workflows/gen-contract.yml" .github/workflows/
 sed -i.bak "s/__Prefix__/$PREFIX/g" gen-contract.yml docs/generated-code-expectations.md
 rm -f gen-contract.yml.bak docs/generated-code-expectations.md.bak
-chmod +x scripts/check-gen-contract.sh scripts/test-gen-contract.sh
+chmod +x scripts/check-gen-contract.sh scripts/test-gen-contract.sh scripts/apply-gen-patches.sh
 
 # ── A minimal component tree ───────────────────────────────────────────────
 cat > Directory.Build.props <<'EOF'
@@ -175,5 +175,57 @@ variant_green "a test double in a *UnitTests project"
 
 git rm -q .gitignore
 variant_green "no .gitignore at all"
+
+# ── Temporary patches: every state apply-gen-patches.sh must tell apart ───
+echo "── temporary patches"
+expect_patches() {  # <exit> <text the output must contain> [args...]
+  local code="$1" want="$2" out rc=0
+  shift 2
+  out="$(./scripts/apply-gen-patches.sh "$@" 2>&1)" || rc=$?
+  if [ "$rc" -ne "$code" ] || ! grep -qF -- "$want" <<<"$out"; then
+    echo "FAIL: apply-gen-patches.sh $*: wanted exit $code and '$want', got exit $rc:" >&2
+    printf '%s\n' "$out" >&2
+    exit 1
+  fi
+  echo "  ok    ${*:-(apply)}: $want"
+}
+
+ORDER="$PREFIX.Domain/gen-src/Entities/Order.g.cs"
+PATCH=gen-patches/0001-order-id-init.patch
+mkdir -p gen-patches
+cp "$KIT/gen-patches/README.md" gen-patches/
+expect_patches 0 "no patches"
+sed -i.bak 's/{ get; set; }/{ get; init; }/' "$ORDER" && rm -f "$ORDER.bak"
+{ printf 'Generator-Issue: clabonte/generator#1\nGenerator-Version: 0.19.0\nReason: Id must be init-only\n\n'
+  git diff -- "$ORDER"; } > "$PATCH"
+printf '| `0001-order-id-init.patch` | clabonte/generator#1 | 0.19.0 | Id is mutable |\n' >> gen-patches/README.md
+git add -A
+git commit -q -m "patch"
+
+expect_patches 0 "ok               $PATCH" --check
+./scripts/check-gen-contract.sh --quiet >/dev/null || { echo "FAIL: the contract rejects a tree with gen-patches/" >&2; exit 1; }
+
+git show HEAD~1:"$ORDER" > "$ORDER"                       # a regen wiped the fix
+expect_patches 1 "NOT APPLIED" --check
+expect_patches 0 "" "$PREFIX.Api"                          # out of scope: left alone
+expect_patches 1 "NOT APPLIED" --check
+expect_patches 0 "applied          $PATCH"
+expect_patches 0 "ok" --check
+
+expect_patches 0 "already present  $PATCH"                 # the generator now emits the fix
+
+git show HEAD~1:"$ORDER" | sed 's/public partial class Order/public sealed partial class Order/' > "$ORDER"
+expect_patches 1 "FAILED           $PATCH"                 # the code around it changed
+expect_patches 1 "STALE" --check
+git checkout -q -- "$ORDER"
+
+grep -vF '0001-order-id-init.patch' gen-patches/README.md > gen-patches/README.tmp && mv gen-patches/README.tmp gen-patches/README.md
+expect_patches 1 "not listed in gen-patches/README.md" --check
+git checkout -q -- gen-patches/README.md
+
+sed -i.bak '/^Generator-Issue:/d' "$PATCH" && rm -f "$PATCH.bak"
+expect_patches 1 "no 'Generator-Issue:' line" --check
+git checkout -q -- "$PATCH"
+git reset -q --hard HEAD~1
 
 echo "OK: the C# starter contract is green on a fresh seed and every rule bites."

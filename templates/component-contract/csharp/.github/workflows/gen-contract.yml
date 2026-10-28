@@ -36,3 +36,6 @@ jobs:
 
       - name: Prove the rules bite
         run: ./scripts/test-gen-contract.sh
+
+      - name: Temporary patches to generated code are applied and tracked
+        run: ./scripts/apply-gen-patches.sh --check
