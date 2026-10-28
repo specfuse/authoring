@@ -9,10 +9,10 @@ The kit pins one generator release at a time (`generator.lock`). This page is th
 
 The other two places release information lives:
 
-- [`compatibility.md`](../compatibility.md) is the authoritative pin table: the kit version, the jar, its SHA-256 and the full verification record for each release. This page summarises it and does not repeat the evidence.
+- [`compatibility.md`](https://github.com/specfuse/authoring/blob/main/compatibility.md) is the authoritative pin table: the kit version, the jar, its SHA-256 and the full verification record for each release. This page summarises it and does not repeat the evidence.
 - The generator's own `CHANGELOG.md` is the complete list. It lives in the generator repository, which not every kit user can read, so this page is where its kit-facing content is restated.
 
-Newest first. An entry is **pending** until the kit release that pins it is published.
+Newest first. An entry is **pending** until the kit release that pins it is published. A copy of this page ships into every project at `.specfuse/authoring/docs/generator-releases.md`, so the notes for the pin you just upgraded to are already in your repo.
 
 ## How to read an entry
 
@@ -26,7 +26,7 @@ Newest first. An entry is **pending** until the kit release that pins it is publ
 
 ## 0.21.0 (with 0.20.0)
 
-**Status: pending.** Pinned by kit `v0.29.0` (jar sha256 `a78b5ea7…27f08a94`; full record in [`compatibility.md`](../compatibility.md) §58). Generator release date: 2026-10-28.
+**Status: published.** Pinned by kit `v0.29.0` (released 2026-10-28) (jar sha256 `a78b5ea7…27f08a94`; full record in [`compatibility.md`](https://github.com/specfuse/authoring/blob/main/compatibility.md) §58). Generator release date: 2026-10-28.
 
 The kit goes straight from **0.19.0 to 0.21.0**. Generator 0.20.0 (2026-10-25) was never published to the release channel, so its changes reach kit users for the first time with this pin; everything below covers both releases.
 
@@ -98,7 +98,7 @@ The kit's hold on releases for #2882 to #2884 ends with this pin.
 
 ## Earlier releases
 
-Pin bumps before this page existed are recorded only in [`compatibility.md`](../compatibility.md), one row per kit release:
+Pin bumps before this page existed are recorded only in [`compatibility.md`](https://github.com/specfuse/authoring/blob/main/compatibility.md), one row per kit release:
 
 | Generator | Pinned by kit |
 |---|---|

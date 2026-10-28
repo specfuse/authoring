@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "specfuse-authoring"
-version = "0.29.0"
+version = "0.30.0"
 description = "Specfuse authoring kit: handbooks, samples, Claude assets, project bootstrap, and the generator launcher."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -43,6 +43,11 @@ packages = ["specfuse"]
 "schemas" = "specfuse/authoring/_kit/schemas"
 "generator.lock" = "specfuse/authoring/_kit/generator.lock"
 "docs/flows.html" = "specfuse/authoring/_kit/docs/flows.html"
+"docs/component-repos.md" = "specfuse/authoring/_kit/docs/component-repos.md"
+"docs/add-component.md" = "specfuse/authoring/_kit/docs/add-component.md"
+"docs/csharp-component-guide.md" = "specfuse/authoring/_kit/docs/csharp-component-guide.md"
+"docs/csharp-component.html" = "specfuse/authoring/_kit/docs/csharp-component.html"
+"docs/generator-releases.md" = "specfuse/authoring/_kit/docs/generator-releases.md"
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -53,6 +58,11 @@ include = [
   "schemas",
   "generator.lock",
   "docs/flows.html",
+  "docs/component-repos.md",
+  "docs/add-component.md",
+  "docs/csharp-component-guide.md",
+  "docs/csharp-component.html",
+  "docs/generator-releases.md",
   "README.md",
   "LICENSE",
 ]

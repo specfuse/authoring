@@ -7,9 +7,9 @@ Licensed under the Apache License, Version 2.0. See LICENSE.
 
 [Setting up component repos](component-repos.md) says what every component repo, in any language, has to get right. This guide is the C# version in full: the layout the generator writes into, the build wiring and host files the generator never writes, the seams generated code calls by name, how hand-written code extends generated code without ever editing it, the mechanical contract that keeps all of that true, and the regen flow. It ends in an **audit checklist** (§10) that a person or a coding agent can run against an existing repo and report on, check by check.
 
-It is written to be handed to Claude. Every rule has a reason, a way to verify it from a shell, and a pointer to the section that explains the fix. The interactive companion, [`csharp-component.html`](csharp-component.html), is the same material as a map you click through.
+Every spec repo the kit sets up carries a copy at `.specfuse/authoring/docs/csharp-component-guide.md`, refreshed on `upgrade`, and the starter contract at `.specfuse/authoring/templates/component-contract/csharp/`; a component repo checked out beside it reads both from there. It is written to be handed to Claude. Every rule has a reason, a way to verify it from a shell, and a pointer to the section that explains the fix. The interactive companion, [`csharp-component.html`](csharp-component.html), is the same material as a map you click through.
 
-Project names in this guide use `HelloOrders`, the root namespace of the kit's bundled example [`hello-orders`](../examples/hello-orders/) (which itself generates only a Domain group): the solution is `HelloOrders`, the layered projects are `HelloOrders.Domain`, `HelloOrders.Infrastructure`, `HelloOrders.Api`, and so on. Substitute your own root namespace throughout.
+Project names in this guide use `HelloOrders`, the root namespace of the kit's bundled example [`hello-orders`](https://github.com/specfuse/authoring/blob/main/examples/hello-orders/) (which itself generates only a Domain group): the solution is `HelloOrders`, the layered projects are `HelloOrders.Domain`, `HelloOrders.Infrastructure`, `HelloOrders.Api`, and so on. Substitute your own root namespace throughout.
 
 > **New repo?** `specfuse authoring add-component csharp <Dir>` ([`add-component.md`](add-component.md)) seeds most of the host files in §2 and §4 once, with the package versions the kit's pinned generator compiles against: the solution, `Directory.Build.props`, the Domain, Infrastructure and Api projects, `Program.cs`, `UserHelper`, `ExceptionFilter`, `.gitignore` and a `CLAUDE.md`. `global.json`, `.gitattributes`, the Application and Test projects and the §6 contract are yours to add. This guide is what the seed implements, and what to check when a repo was set up some other way.
 
@@ -18,7 +18,7 @@ Project names in this guide use `HelloOrders`, the root namespace of the kit's b
 Open a Claude Code session in the component repo and paste:
 
 ```
-Read docs/csharp-component-guide.md from the Specfuse authoring kit (or the copy at <path>).
+Read ../<spec-repo>/.specfuse/authoring/docs/csharp-component-guide.md (the Specfuse kit's C# guide).
 Audit this repository against every check in §10, in order. For each check, run the
 verification command, then report one line: the check ID, PASS or FAIL, and the
 evidence (a path, a line, a command output). Do not fix anything yet. When the audit
@@ -109,7 +109,7 @@ Default globbing is **off** on purpose: with it on, a `.cs` file anywhere in a p
 | `HelloOrders.Api` | `Microsoft.NET.Sdk.Web` | Domain, Application, Infrastructure | `Riok.Mapperly`, `Newtonsoft.Json` |
 | `HelloOrders.Test` | `Microsoft.NET.Sdk` (`IsTestProject`) | all of the above | `xunit`, `xunit.runner.visualstudio`, `Microsoft.NET.Test.Sdk`, `Moq`, `AwesomeAssertions`, `Microsoft.AspNetCore.Mvc.Testing`, `Microsoft.EntityFrameworkCore.InMemory`, `coverlet.collector` |
 
-The references are the Clean Architecture layering made compile-time: Domain references nothing in the solution; Infrastructure implements Domain's interfaces; Api talks to Domain and references Infrastructure **only** to wire it up in `Program.cs`. Infrastructure referencing Application is allowed when Application owns ports (interfaces its use cases need and Infrastructure implements), never for Application's behaviour. The exact versions are those the kit's pinned generator compiles against; `add-component` seeds them, [`compatibility.md`](../compatibility.md) says when a generator release needs a new one, and `dotnet build` names the missing package when it does.
+The references are the Clean Architecture layering made compile-time: Domain references nothing in the solution; Infrastructure implements Domain's interfaces; Api talks to Domain and references Infrastructure **only** to wire it up in `Program.cs`. Infrastructure referencing Application is allowed when Application owns ports (interfaces its use cases need and Infrastructure implements), never for Application's behaviour. The exact versions are those the kit's pinned generator compiles against; `add-component` seeds them, [`compatibility.md`](https://github.com/specfuse/authoring/blob/main/compatibility.md) says when a generator release needs a new one, and `dotnet build` names the missing package when it does.
 
 Two libraries are deliberately **not** on the list: AutoMapper and FluentAssertions. Both became commercially licensed; generated code maps through Mapperly and asserts through AwesomeAssertions (the Apache-2.0 fork with the same `.Should()` API). Referencing FluentAssertions beside AwesomeAssertions makes every assertion ambiguous.
 

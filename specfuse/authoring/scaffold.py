@@ -83,9 +83,21 @@ OVERLAY: tuple[tuple[str, str], ...] = (
         "templates/initiative-idea-dossier.template.md",
         ".specfuse/authoring/templates/initiative-idea-dossier.template.md",
     ),
-    # The interactive flows page. Only this one file from docs/ ships: the rest
-    # of docs/ is kit-repo documentation, and the page links to it on GitHub.
+    # The docs an adopting project reads after init: the interactive flows page,
+    # the component-repo guides (a component's agent reads them from the sibling
+    # spec repo), and the generator release notes an upgrade brings in. The rest
+    # of docs/ (getting-started, generator-access) is read before or outside a
+    # project and stays on GitHub. scripts/check-shipped-docs.py keeps every
+    # relative link in these files resolvable in an installed project.
     ("docs/flows.html", ".specfuse/authoring/docs/flows.html"),
+    ("docs/component-repos.md", ".specfuse/authoring/docs/component-repos.md"),
+    ("docs/add-component.md", ".specfuse/authoring/docs/add-component.md"),
+    ("docs/csharp-component-guide.md", ".specfuse/authoring/docs/csharp-component-guide.md"),
+    ("docs/csharp-component.html", ".specfuse/authoring/docs/csharp-component.html"),
+    ("docs/generator-releases.md", ".specfuse/authoring/docs/generator-releases.md"),
+    # The starter generated-code contracts the C# guide's §6 seeds into a
+    # component repo. Seeded from here once; the component owns its copy.
+    ("templates/component-contract", ".specfuse/authoring/templates/component-contract"),
     ("templates/project-init/scripts/specfuse", "scripts/specfuse"),
 )
 
@@ -309,6 +321,7 @@ def upgrade(target: Path, *, dry_run: bool = False) -> int:
                         "not written by a prior init/upgrade (project-authored?).",
                         file=sys.stderr,
                     )
+                    clobbered.append(rel)
                 elif on_disk != owned:
                     print(
                         f"specfuse authoring upgrade: WARNING — overwriting locally-"
@@ -316,7 +329,7 @@ def upgrade(target: Path, *, dry_run: bool = False) -> int:
                         "changes upstream rather than editing in place.",
                         file=sys.stderr,
                     )
-                clobbered.append(rel)
+                    clobbered.append(rel)
 
         if not dry_run:
             dest.parent.mkdir(parents=True, exist_ok=True)

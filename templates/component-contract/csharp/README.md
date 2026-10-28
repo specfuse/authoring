@@ -25,10 +25,10 @@ From the component repo root, with `<Prefix>` the solution's root namespace
 (`HelloOrders` for `HelloOrders.Domain` / `.Infrastructure` / `.Api`):
 
 ```bash
-# This folder: templates/component-contract/csharp in an authoring checkout, or
-# specfuse/authoring/_kit/templates/component-contract/csharp inside the
-# installed package (with pipx, under ~/.local/pipx/venvs/specfuse/lib/python3.*/site-packages/).
-KIT=/path/to/component-contract/csharp
+# This folder ships in every spec repo the kit set up, at
+# .specfuse/authoring/templates/component-contract/csharp (refreshed by upgrade).
+# From a component repo checked out beside its spec repo:
+KIT=../<spec-repo>/.specfuse/authoring/templates/component-contract/csharp
 cp "$KIT/gen-contract.yml" .
 mkdir -p scripts docs .github/workflows
 cp "$KIT/scripts/"* scripts/

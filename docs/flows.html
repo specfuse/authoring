@@ -1494,8 +1494,8 @@ table.surf th { font-size: 12px; color: var(--muted); text-transform: uppercase;
     {"p": "handbooks/", "d": 1, "o": "kit", "what": "The rules: REST API, AsyncAPI, Arazzo, vendor extensions, AI access policy, project file, field encryption runtime.", "up": "Replaced on upgrade. Edits are overwritten with a warning; send changes upstream.", "link": ["Vendor extensions", "../handbooks/Vendor_Extensions.md"]},
     {"p": "samples/", "d": 1, "o": "kit", "what": "Canonical YAML for endpoints, async messages, scenarios and recipes. Authored files should pattern-match these.", "up": "Replaced on upgrade.", "link": ["Endpoint samples", "../samples/endpoint-samples.yaml"]},
     {"p": "schemas/", "d": 1, "o": "kit", "what": "Spectral rulesets and custom functions for OpenAPI, AsyncAPI and Arazzo, plus JSON Schemas for the Arazzo extensions.", "up": "Replaced on upgrade. Project-specific rules go in your own overlay ruleset.", "link": ["Schemas README", "../schemas/README.md"]},
-    {"p": "templates/", "d": 1, "o": "kit", "what": "The AI access policy template, the backlog index template and the idea dossier template.", "up": "Replaced on upgrade.", "link": ["Dossier template", "../templates/initiative-idea-dossier.template.md"]},
-    {"p": "docs/flows.html", "d": 1, "o": "kit", "what": "This page.", "up": "Replaced on upgrade, so it matches the installed kit."},
+    {"p": "templates/", "d": 1, "o": "kit", "what": "The AI access policy template, the backlog index template, the idea dossier template, and the starter generated-code contract a C# component repo seeds (component-contract/).", "up": "Replaced on upgrade.", "link": ["Dossier template", "../templates/initiative-idea-dossier.template.md"]},
+    {"p": "docs/", "d": 1, "o": "kit", "what": "This page; the component-repo guides (component-repos.md, add-component.md, the C# guide and its interactive map), which a component repo's agent reads from here; and generator-releases.md, the notes for each generator pin bump.", "up": "Replaced on upgrade, so they match the installed kit.", "link": ["Generator release notes", "generator-releases.md"]},
     {"p": "config.yml", "d": 1, "o": "yours", "what": "Authoring-plane settings: where the orchestration repo is checked out, which GitHub repo receives backlog issues. An unknown key is an error.", "up": "Seeded once; upgrade neither overwrites nor prunes it."},
     {"p": "vocabulary-exceptions.yaml", "d": 1, "o": "yours", "what": "Exceptions to the extension-vocabulary check for your project.", "up": "Seeded once; upgrade neither overwrites nor prunes it."},
     {"p": ".scaffold-manifest", "d": 1, "o": "record", "what": "The sha256 of every file the last init or upgrade wrote. It is how upgrade tells a kit file you edited from one you created.", "up": "Rewritten by every upgrade. Do not edit it."},
@@ -1640,6 +1640,12 @@ table.surf th { font-size: 12px; color: var(--muted); text-transform: uppercase;
     ".specfuse/authoring/templates/initiative-backlog.template.md",
     ".specfuse/authoring/templates/initiative-idea-dossier.template.md",
     ".specfuse/authoring/docs/flows.html",
+    ".specfuse/authoring/docs/component-repos.md",
+    ".specfuse/authoring/docs/add-component.md",
+    ".specfuse/authoring/docs/csharp-component-guide.md",
+    ".specfuse/authoring/docs/csharp-component.html",
+    ".specfuse/authoring/docs/generator-releases.md",
+    ".specfuse/authoring/templates/component-contract",
     "scripts/specfuse"
   ],
 

@@ -418,7 +418,7 @@ footer { margin-top: 36px; color: var(--muted); font-size: 13px; }
     {"id": "CS-26", "section": "Agent instructions and workflow", "guide": "#91-temporary-patches-until-the-generator-is-fixed", "title": "Every temporary patch to generated code is applied, indexed in gen-patches/README.md, and names a still-open generator issue.", "verify": "./scripts/apply-gen-patches.sh --check && grep -h '^Generator-Issue:' gen-patches/*.patch 2>/dev/null"}
   ],
 
-  "prompt": "Read docs/csharp-component-guide.md from the Specfuse authoring kit (or the copy at <path>).\nAudit this repository against every check in §10, in order. For each check, run the\nverification command, then report one line: the check ID, PASS or FAIL, and the\nevidence (a path, a line, a command output). Do not fix anything yet. When the audit\nis complete, list the FAILs grouped by the section that explains the fix, and\npropose the smallest change for each. Wait for my approval before editing."
+  "prompt": "Read ../<spec-repo>/.specfuse/authoring/docs/csharp-component-guide.md (the Specfuse kit's C# guide).\nAudit this repository against every check in §10, in order. For each check, run the\nverification command, then report one line: the check ID, PASS or FAIL, and the\nevidence (a path, a line, a command output). Do not fix anything yet. When the audit\nis complete, list the FAILs grouped by the section that explains the fix, and\npropose the smallest change for each. Wait for my approval before editing."
 }
 </script>
 
