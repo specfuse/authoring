@@ -1399,6 +1399,44 @@ jobs:
           [[ $fail -eq 0 ]] || exit 1
           echo "==> Masking and x-stream rules fire on all fourteen violations and stay silent on six accepted shapes."
 
+      # uniqueBy nullsDistinct/where and x-protection.unmask (generator 0.20.0),
+      # x-entity.visibility (0.21.0). Each rejected case mirrors one jar ERROR;
+      # each accepted case is one the jar parses, including the jar's
+      # WARNING-only keys and the bare {property} a null-stripped `is: null`
+      # becomes. See the fixture header.
+      - name: uniqueBy where, visibility and unmask shapes (both directions)
+        run: |
+          set +e
+          set -uo pipefail
+          REPORT="${RUNNER_TEMP}/uniqueby-visibility-unmask.txt"
+          spectral lint --ruleset schemas/spectral/specfuse-openapi.yaml \
+            schemas/spectral/fixtures/uniqueby-visibility-unmask.yaml >"$REPORT" 2>&1
+          STATUS=$?
+          cat "$REPORT"
+          [[ $STATUS -ge 2 ]] && { echo "::error::Spectral crashed on the uniqueBy/visibility/unmask fixture (exit ${STATUS})." >&2; exit 1; }
+          fail=0
+          check()  { grep "$1 " "$REPORT" | grep -qF "components.schemas.$2" || { echo "::error::$1 did not flag $2." >&2; fail=1; }; }
+          silent() { grep "$1 " "$REPORT" | grep -qF "components.schemas.$2" && { echo "::error::$1 flagged $2, which the generator accepts." >&2; fail=1; }; }
+          for s in UbNullsDistinctString UbWhereEmpty UbWhereNotList UbWhereBoth UbWhereUnknownKey \
+                   UbWhereBadIs UbWhereFraction UbWhereNoProperty UbWhereRepeated \
+                   VisUnknownMode VisObjectNoMode VisScalarGrantFiltered VisGrantNoScope \
+                   VisGrantBlankScope VisBadUnscopedRows VisUnknownKey; do
+            check specfuse-xentity-shape "$s."
+          done
+          for s in UbNullsDistinctFalse UbWhereIsNull UbWhereIsNullString UbWhereNotNullAndEquals \
+                   UbWhereNullStripped VisScalarSubTenant VisScalarTenantWide VisObjectRestricted \
+                   VisGrantFiltered VisScopeOnSubTenant VisUnscopedOnGrant; do
+            silent specfuse-xentity-shape "$s."
+          done
+          for p in unmaskScopes unmaskHolderUnknownKey unmaskHolderNoCaller unmaskHolderBadCaller unmaskNotObject; do
+            check specfuse-xprotection-shape "Person.properties.$p."
+          done
+          for p in unmaskRoles unmaskRoleScalar unmaskHolder unmaskHolderNamed unmaskEmpty; do
+            silent specfuse-xprotection-shape "Person.properties.$p."
+          done
+          [[ $fail -eq 0 ]] || exit 1
+          echo "==> uniqueBy, visibility and unmask guards fire on 21 violations and stay silent on 16 accepted shapes."
+
   generate:
     # The job authoring #97 asked for. `validate` and `spectral` above prove the
     # example *lints*; neither runs the generator, and that gap let the kit's
@@ -1566,20 +1604,13 @@ jobs:
         # `add-component csharp` seeds project files whose package references
         # must match what the pinned generator's output compiles against. A pin
         # that needs a new package fails HERE, not in an adopter's first build.
-        # hello-orders gains a `tenancy` block in this copy only: C# services
-        # need the event runtime, which needs tenancy (clabonte/generator#2883).
+        # hello-orders declares no `tenancy`, so this also proves a single-tenant
+        # project compiles its services (clabonte/generator#2883, generator 0.20.0).
         run: |
           set -euo pipefail
           R="$RUNNER_TEMP/component-cs" && mkdir -p "$R"
           cp -R examples/hello-orders "$R/hello-orders"
           cd "$R/hello-orders"
-          python3 - <<'EOF'
-          import json
-          p = "hello-orders-project.json"
-          d = json.load(open(p))
-          d["tenancy"] = {"tenant": {"entity": "Tenant", "foreignKey": "TenantId", "marker": "IHelloTenantScoped"}}
-          json.dump(d, open(p, "w"), indent=2)
-          EOF
           specfuse-authoring add-component csharp Backend --group-prefix Backend --no-generate
           bash "$GITHUB_WORKSPACE/templates/project-init/scripts/specfuse/bundle-spec.sh"
           bash "$GITHUB_WORKSPACE/templates/project-init/scripts/specfuse/bundle-async-spec.sh"
@@ -1637,16 +1668,15 @@ jobs:
 
       - name: A seeded Python component installs, imports and passes its tests (add-component drift guard, #177)
         if: steps.token.outputs.have == 'true'
-        # The project is renamed PascalCase in this copy only: the generator
-        # derives an invalid package root from kebab-case names
-        # (clabonte/generator#2882), and add-component refuses them.
+        # hello-orders keeps its kebab-case name, so the package roots are
+        # hello_orders_contracts / hello_orders_core (clabonte/generator#2882,
+        # generator 0.20.0): the seed and the generated imports must agree.
         run: |
           set -euo pipefail
           pip install --quiet uv
           R="$RUNNER_TEMP/component-py" && mkdir -p "$R"
           cp -R examples/hello-orders "$R/hello-orders"
           cd "$R/hello-orders"
-          sed -i 's/"name": "hello-orders"/"name": "HelloOrders"/' hello-orders-project.json
           specfuse-authoring add-component python hello-orders-ai --no-generate
           bash "$GITHUB_WORKSPACE/templates/project-init/scripts/specfuse/bundle-spec.sh"
           bash "$GITHUB_WORKSPACE/templates/project-init/scripts/specfuse/bundle-async-spec.sh"
@@ -1658,7 +1688,7 @@ jobs:
           uv run python - <<'EOF'
           import importlib, pkgutil, sys
           failed = []
-          for root in ("ho_contracts", "ho_core"):
+          for root in ("hello_orders_contracts", "hello_orders_core"):
               for m in pkgutil.walk_packages(importlib.import_module(root).__path__, root + "."):
                   try:
                       importlib.import_module(m.name)

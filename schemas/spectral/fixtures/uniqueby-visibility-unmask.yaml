@@ -1,0 +1,418 @@
+# =============================================================================
+# Regression fixture: `uniqueBy` nullsDistinct / where (generator 0.20.0),
+# `x-entity.visibility` (generator 0.21.0) and `x-protection.unmask`
+# (generator 0.20.0)
+# =============================================================================
+# Pins the three widenings of the closed shape guards in BOTH directions. The
+# accept direction matters more: each key is one the guards would otherwise
+# reject on a spec that generates fine. Each rejected case mirrors a jar
+# ERROR, read from the generator source at the 0.21.0 release commit
+# (EntityDefinition.loadUniqueByWhere, VisibilityPolicy,
+# EntityVisibilityValidationRule, ProtectionDefinition,
+# UnmaskRuleValidationRule).
+#
+# Expected (asserted by .github/workflows/example-regen.yml):
+#
+# specfuse-xentity-shape SILENT on (the jar parses each):
+#   UbNullsDistinctFalse    nullsDistinct: false
+#   UbWhereIsNull           is: null (YAML null)
+#   UbWhereIsNullString     is: "null" (the jar reads it as the same thing)
+#   UbWhereNotNullAndEquals is: notNull, then equals boolean, integer, string
+#   UbWhereNullStripped     a bare {property}: what `is: null` becomes after the
+#                           kit's validate-spectral.sh strips nulls. The jar
+#                           refuses this shape when written by hand, but lint
+#                           cannot tell the two apart, so it must accept it.
+#   VisScalarSubTenant      visibility: subTenant
+#   VisScalarTenantWide     visibility: tenantWide
+#   VisObjectRestricted     { mode: subTenant, unscopedRows: restricted }
+#   VisGrantFiltered        { mode: grantFiltered, scope: departmentId }
+#   VisScopeOnSubTenant     scope on subTenant: the jar only WARNS
+#                           (VISIBILITY_UNSCOPED_ROWS_UNUSED)
+#   VisUnscopedOnGrant      unscopedRows on grantFiltered: same WARNING
+#
+# specfuse-xentity-shape FLAGS (one jar ERROR each):
+#   UbNullsDistinctString   nullsDistinct: "false"        INVALID_EXTENSION_VALUE
+#   UbWhereEmpty            where: []                     INVALID_EXTENSION_VALUE
+#   UbWhereNotList          where: { ... }                INVALID_EXTENSION_VALUE
+#   UbWhereBoth             is AND equals                 INVALID_EXTENSION_VALUE
+#   UbWhereUnknownKey       notEquals                     INVALID_EXTENSION_VALUE
+#   UbWhereBadIs            is: isNull                    INVALID_EXTENSION_VALUE
+#   UbWhereFraction         equals: 1.5                   INVALID_EXTENSION_VALUE
+#   UbWhereNoProperty       no property                   INVALID_EXTENSION_VALUE
+#   UbWhereRepeated         one condition twice           UNIQUE_BY_WHERE_DUPLICATE_PROPERTY
+#   VisUnknownMode          visibility: department        VISIBILITY_UNKNOWN_MODE
+#   VisObjectNoMode         { unscopedRows: restricted }  VISIBILITY_UNKNOWN_MODE
+#   VisScalarGrantFiltered  visibility: grantFiltered     VISIBILITY_SCOPE_MISSING
+#   VisGrantNoScope         { mode: grantFiltered }       VISIBILITY_SCOPE_MISSING
+#   VisGrantBlankScope      scope: " "                    VISIBILITY_SCOPE_MISSING
+#   VisBadUnscopedRows      unscopedRows: everyone        VISIBILITY_UNKNOWN_UNSCOPED_ROWS
+#   VisUnknownKey           tier: ...                     INVALID_EXTENSION_VALUE
+#
+# specfuse-xprotection-shape, on Person.properties.<p>:
+#   SILENT: unmaskRoles, unmaskRoleScalar, unmaskHolder, unmaskHolderNamed,
+#           unmaskEmpty ({} parses and grants nothing, as no rule does)
+#   FLAGS:  unmaskScopes          UNKNOWN_PROTECTION_SUBKEY
+#           unmaskHolderUnknownKey UNKNOWN_PROTECTION_SUBKEY
+#           unmaskHolderNoCaller  UNMASK_HOLDER_INVALID
+#           unmaskHolderBadCaller UNMASK_HOLDER_INVALID
+#           unmaskNotObject       INVALID_EXTENSION_VALUE
+#
+# Generator-only, deliberately not here: everything that needs the schema's
+# properties, `required` list, `tenancy` or the operations (UNIQUE_BY_WHERE_*
+# type and nullability checks, UNIQUE_BY_NULLS_DISTINCT_NO_EFFECT, the
+# project-level VISIBILITY_* codes, UNMASK_WITHOUT_MASKING,
+# UNMASK_RULE_UNDECLARED, UNMASK_ROLE_UNREACHABLE).
+#
+# Not a Specfuse-conformant example — do not copy.
+# =============================================================================
+openapi: 3.0.3
+info:
+  title: uniqueBy / visibility / unmask fixture
+  version: "1.0.0"
+paths: {}
+components:
+  schemas:
+
+    # ---- uniqueBy: accepted -------------------------------------------------
+    UbNullsDistinctFalse:
+      type: object
+      x-entity:
+        domain: staff
+        type: aggregate
+        uniqueBy:
+          - properties: [userId, role, restaurantId]
+            nullsDistinct: false
+      properties:
+        id: { type: string, format: uuid }
+
+    UbWhereIsNull:
+      type: object
+      x-entity:
+        domain: staff
+        type: aggregate
+        uniqueBy:
+          - properties: [employeeId, shiftId]
+            where:
+              - property: revokedAt
+                is: null
+      properties:
+        id: { type: string, format: uuid }
+
+    UbWhereIsNullString:
+      type: object
+      x-entity:
+        domain: staff
+        type: aggregate
+        uniqueBy:
+          - properties: [employeeId, shiftId]
+            where:
+              - { property: revokedAt, is: "null" }
+      properties:
+        id: { type: string, format: uuid }
+
+    UbWhereNotNullAndEquals:
+      type: object
+      x-entity:
+        domain: staff
+        type: aggregate
+        uniqueBy:
+          - name: UX_Location_Primary
+            properties: [organizationId]
+            where:
+              - { property: openedAt, is: notNull }
+              - { property: isPrimary, equals: true }
+              - { property: tier, equals: 2 }
+              - { property: kind, equals: store }
+      properties:
+        id: { type: string, format: uuid }
+
+    UbWhereNullStripped:
+      type: object
+      x-entity:
+        domain: staff
+        type: aggregate
+        uniqueBy:
+          - properties: [employeeId, shiftId]
+            where:
+              - { property: revokedAt }
+      properties:
+        id: { type: string, format: uuid }
+
+    # ---- uniqueBy: rejected -------------------------------------------------
+    UbNullsDistinctString:
+      type: object
+      x-entity:
+        domain: staff
+        type: aggregate
+        uniqueBy:
+          - properties: [userId]
+            nullsDistinct: "false"
+      properties:
+        id: { type: string, format: uuid }
+
+    UbWhereEmpty:
+      type: object
+      x-entity:
+        domain: staff
+        type: aggregate
+        uniqueBy:
+          - properties: [userId]
+            where: []
+      properties:
+        id: { type: string, format: uuid }
+
+    UbWhereNotList:
+      type: object
+      x-entity:
+        domain: staff
+        type: aggregate
+        uniqueBy:
+          - properties: [userId]
+            where: { property: isActive, equals: true }
+      properties:
+        id: { type: string, format: uuid }
+
+    UbWhereBoth:
+      type: object
+      x-entity:
+        domain: staff
+        type: aggregate
+        uniqueBy:
+          - properties: [userId]
+            where:
+              - { property: isActive, is: notNull, equals: true }
+      properties:
+        id: { type: string, format: uuid }
+
+    UbWhereUnknownKey:
+      type: object
+      x-entity:
+        domain: staff
+        type: aggregate
+        uniqueBy:
+          - properties: [userId]
+            where:
+              - { property: status, notEquals: closed }
+      properties:
+        id: { type: string, format: uuid }
+
+    UbWhereBadIs:
+      type: object
+      x-entity:
+        domain: staff
+        type: aggregate
+        uniqueBy:
+          - properties: [userId]
+            where:
+              - { property: revokedAt, is: isNull }
+      properties:
+        id: { type: string, format: uuid }
+
+    UbWhereFraction:
+      type: object
+      x-entity:
+        domain: staff
+        type: aggregate
+        uniqueBy:
+          - properties: [userId]
+            where:
+              - { property: rank, equals: 1.5 }
+      properties:
+        id: { type: string, format: uuid }
+
+    UbWhereNoProperty:
+      type: object
+      x-entity:
+        domain: staff
+        type: aggregate
+        uniqueBy:
+          - properties: [userId]
+            where:
+              - { is: notNull }
+      properties:
+        id: { type: string, format: uuid }
+
+    UbWhereRepeated:
+      type: object
+      x-entity:
+        domain: staff
+        type: aggregate
+        uniqueBy:
+          - properties: [userId]
+            where:
+              - { property: isActive, equals: true }
+              - { property: isActive, equals: true }
+      properties:
+        id: { type: string, format: uuid }
+
+    # ---- visibility: accepted -----------------------------------------------
+    VisScalarSubTenant:
+      type: object
+      x-entity: { domain: staff, type: aggregate, visibility: subTenant }
+      properties:
+        id: { type: string, format: uuid }
+
+    VisScalarTenantWide:
+      type: object
+      x-entity: { domain: staff, type: aggregate, visibility: tenantWide }
+      properties:
+        id: { type: string, format: uuid }
+
+    VisObjectRestricted:
+      type: object
+      x-entity:
+        domain: staff
+        type: aggregate
+        visibility: { mode: subTenant, unscopedRows: restricted }
+      properties:
+        id: { type: string, format: uuid }
+
+    VisGrantFiltered:
+      type: object
+      x-entity:
+        domain: staff
+        type: aggregate
+        visibility: { mode: grantFiltered, scope: departmentId }
+      properties:
+        id: { type: string, format: uuid }
+
+    VisScopeOnSubTenant:
+      type: object
+      x-entity:
+        domain: staff
+        type: aggregate
+        visibility: { mode: subTenant, scope: departmentId }
+      properties:
+        id: { type: string, format: uuid }
+
+    VisUnscopedOnGrant:
+      type: object
+      x-entity:
+        domain: staff
+        type: aggregate
+        visibility: { mode: grantFiltered, scope: departmentId, unscopedRows: tenantWide }
+      properties:
+        id: { type: string, format: uuid }
+
+    # ---- visibility: rejected -----------------------------------------------
+    VisUnknownMode:
+      type: object
+      x-entity: { domain: staff, type: aggregate, visibility: department }
+      properties:
+        id: { type: string, format: uuid }
+
+    VisObjectNoMode:
+      type: object
+      x-entity:
+        domain: staff
+        type: aggregate
+        visibility: { unscopedRows: restricted }
+      properties:
+        id: { type: string, format: uuid }
+
+    VisScalarGrantFiltered:
+      type: object
+      x-entity: { domain: staff, type: aggregate, visibility: grantFiltered }
+      properties:
+        id: { type: string, format: uuid }
+
+    VisGrantNoScope:
+      type: object
+      x-entity:
+        domain: staff
+        type: aggregate
+        visibility: { mode: grantFiltered }
+      properties:
+        id: { type: string, format: uuid }
+
+    VisGrantBlankScope:
+      type: object
+      x-entity:
+        domain: staff
+        type: aggregate
+        visibility: { mode: grantFiltered, scope: " " }
+      properties:
+        id: { type: string, format: uuid }
+
+    VisBadUnscopedRows:
+      type: object
+      x-entity:
+        domain: staff
+        type: aggregate
+        visibility: { mode: subTenant, unscopedRows: everyone }
+      properties:
+        id: { type: string, format: uuid }
+
+    VisUnknownKey:
+      type: object
+      x-entity:
+        domain: staff
+        type: aggregate
+        visibility: { mode: subTenant, tier: restaurant }
+      properties:
+        id: { type: string, format: uuid }
+
+    # ---- x-protection.unmask ------------------------------------------------
+    Person:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        employeeId: { type: string, format: uuid }
+        unmaskRoles:
+          type: string
+          x-protection:
+            atRest: encrypted
+            unmask: { roles: [Admin, Support] }
+        unmaskRoleScalar:
+          type: string
+          x-protection:
+            atRest: encrypted
+            unmask: { roles: Admin }
+        unmaskHolder:
+          type: string
+          format: date
+          x-protection:
+            atRest: encrypted
+            masking: { reveal: [year] }
+            unmask:
+              roles: [Admin]
+              holder: { property: id, caller: caller.userId }
+        unmaskHolderNamed:
+          type: string
+          x-protection:
+            atRest: encrypted
+            unmask:
+              holder: { property: employeeId, caller: caller.employeeId }
+        unmaskEmpty:
+          type: string
+          x-protection:
+            atRest: encrypted
+            unmask: {}
+        unmaskScopes:
+          type: string
+          x-protection:
+            atRest: encrypted
+            unmask: { scopes: [pii.read] }
+        unmaskHolderUnknownKey:
+          type: string
+          x-protection:
+            atRest: encrypted
+            unmask:
+              holder: { property: id, caller: caller.userId, via: claims }
+        unmaskHolderNoCaller:
+          type: string
+          x-protection:
+            atRest: encrypted
+            unmask:
+              holder: { property: id }
+        unmaskHolderBadCaller:
+          type: string
+          x-protection:
+            atRest: encrypted
+            unmask:
+              holder: { property: id, caller: userId }
+        unmaskNotObject:
+          type: string
+          x-protection:
+            atRest: encrypted
+            unmask: true

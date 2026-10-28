@@ -1,6 +1,6 @@
 # Project File
 
-> **Status:** Canonical reference. This document is the authoritative specification of the Specfuse project file — the JSON document consumed at the project root by the generator. The generator's own internal documentation should be a short summary that points back here. The authoritative parser source of truth lives in `dev.specfuse.generator.configs.ProjectDefinition`, `ArtifactGroup`, `TenancyDefinition`, `BrokerDefinition`, and `ProjectNamingOverrides`.
+> **Status:** Canonical reference. This document is the authoritative specification of the Specfuse project file — the JSON document consumed at the project root by the generator. The generator's own internal documentation should be a short summary that points back here. The authoritative parser source of truth lives in `dev.specfuse.generator.configs.ProjectDefinition`, `ArtifactGroup`, `TenancyDefinition`, `BrokerDefinition`, `WorkerPlacementDefinition`, `FunctionalTestConfig`, and `ProjectNamingOverrides`.
 
 The project file declares everything the generator needs to turn a bundled OpenAPI specification, an optional AsyncAPI specification, and optional Arazzo workflow specifications into per-language code trees. It tells the generator:
 
@@ -43,6 +43,7 @@ Language-coupling column: ✱ means the field is honoured only for a specific la
 | `tenancy.tenant.foreignKey` | string | yes (when `tenancy` set) | ✱ | PascalCase FK column ending in `Id`. |
 | `tenancy.tenant.marker` | string | yes (when `tenancy` set) | ✱ | Marker interface, `I` + PascalCase. |
 | `tenancy.subTenant` | object | optional | ✱ | Same shape as `tenancy.tenant`. |
+| `tenancy.enforcement` | enum | optional | ✱ C# only | **From generator `0.21.0`, deprecated on arrival.** `route` is the only value: it suppresses the generated `Tenant` query filter. Absent means the filter is always on. See §4.1. |
 | `broker` | object | optional | ✱ C# event-runtime only | Messaging-broker dialect / topology settings. |
 | `broker.type` | enum | optional | ✱ | `azureServiceBus` (only working value). |
 | `broker.topology` | enum | optional | ✱ | `runtime` (default) \| `bicep` (experimental — emits stub). |
@@ -66,6 +67,11 @@ Language-coupling column: ✱ means the field is honoured only for a specific la
 | `authorization.kioskSession.role` | string | optional | validation | **From generator `0.15.0`.** The role a kiosk-session principal carries. Arms `KIOSK_SESSION_ROLE_UNSATISFIABLE`. See §16. |
 | `authorization.testGrants` | string (path) | optional | ✱ C# tests only | **From generator `0.15.0`.** A role-grants file for the generated authorization tests of a `scopes`-mode project whose spec declares no grants. See §16. |
 | `functionalTests` | object | optional | ✱ C# tests | xUnit collection assignment for the generated API functional tests: `collectionNamePattern` (placeholders `{tag}` / `{group}`; by default every test is in one collection, `ApiFunctionalTest`) and `collectionGroups` (group name → list of operation tags). See §9 for `FUNCTIONAL_TEST_TAG_UNGROUPED`. |
+| `functionalTests.emitAssertions` | enum | optional | ✱ C# scenario tests | **From generator `0.21.0`.** `off` (default) \| `strict`. `strict` makes a scenario step's `x-async.emit` an awaited assertion the test fails on. See §18. |
+| `generateUserHelper` | boolean | optional | ✱ C# only | **From generator `0.20.0`.** Default `false`. `true` makes `authorizationRuntime` emit `Utils/UserHelper.g.cs`. See §16. |
+| `workerPlacement` | object | optional | ✱ C# workers | **From generator `0.20.0`.** Which host runs each topic worker: `azureFunctions` (default) or `genericHost`. See §17. |
+| `workerPlacement.messages.default` | enum | optional | ✱ | `azureFunctions` (default) \| `genericHost`. |
+| `workerPlacement.messages.azureFunctions[]` / `.genericHost[]` | array<string> | optional | ✱ | AsyncAPI operation names placed on that host, whatever the default. |
 | `groups[]` | array<object> | yes for generation | — | One artifact group per output tree. |
 | `groups[].name` | string | recommended | — | Human-readable group label; used by `--group` and diagnostics. |
 | `groups[].description` | string | optional | — | Free-form description. |
@@ -334,7 +340,7 @@ Measured on `examples/hello-orders`: on a TypeScript group the entry renames the
 
 The Python and Dart/Flutter artifact factories do **not** register a tenancy-marker artifact today and emit no `I{Tenant}Scoped` equivalents. The block is still useful for those languages indirectly: AsyncAPI validation rules (e.g. tenancy ordering on `belongsTo`, the "events from emitting entities should include the tenant in their chain" suggestion) consult `tenancy` regardless of which language group consumes the result.
 
-**Required**: Optional. Single-tenant projects omit the entire block.
+**Required**: Optional. Single-tenant projects omit the entire block, whatever C# artifacts they register. From generator `0.20.0` no artifact requires it. `eventRuntime`, `eventRuntimeImpl`, `eventRuntimeFunctions`, `tenancyMarker` and `eventContractTest` all generate without it (`clabonte/generator#2883`): `eventRuntime` emits a do-nothing `Tenancy/ITenantScoped.g.cs` that no type implements, so an event envelope's `CompanyId` stays unset, and `tenancyMarker` emits nothing. Through `0.19.0` those artifacts failed the load with `PROJECT_EVENT_RUNTIME_TENANCY_REQUIRED`, `PROJECT_TENANCY_REQUIRED` or `PROJECT_EVENT_CONTRACT_TEST_TENANCY_REQUIRED`. Generated services always use the event runtime, so at `0.19.0` a project registering `service` needed a `tenancy` block. All three codes are removed. A single-tenant project that added a placeholder `tenancy` block to get past them can delete it, but read "What declaring `tenancy` turns on" below first: from `0.21.0` the block does much more than declare markers.
 
 **Type**: object with mandatory `tenant` and optional `subTenant`.
 
@@ -352,10 +358,13 @@ The Python and Dart/Flutter artifact factories do **not** register a tenancy-mar
       "entity":     "<PascalCase>",
       "foreignKey": "<PascalCase>Id",
       "marker":     "I<PascalCase>"
-    }
+    },
+    "enforcement": "route"
   }
 }
 ```
+
+`enforcement` is optional, read from generator `0.21.0`, and deprecated on arrival (below).
 
 **Validation** (all enforced at load):
 
@@ -365,6 +374,7 @@ The Python and Dart/Flutter artifact factories do **not** register a tenancy-mar
 - `entity` must be PascalCase.
 - `foreignKey` must be PascalCase **and** end in `Id`.
 - `marker` must match `^I[A-Z][A-Za-z0-9]*$`.
+- `enforcement`, when present, must be `route` (generator `0.21.0`, `PROJECT_TENANCY_ENFORCEMENT_UNKNOWN`). Any other value fails the load. Generator `0.19.0` and `0.20.0` drop the key without a word, like any unknown key.
 - `marker` must not be `ITenantScoped` or `ISubTenantScoped` (generator `0.18.0`, `PROJECT_TENANCY_MARKER_RESERVED`). Those are the abstract markers the C# `tenancyMarker` artifact always emits. A concrete marker of the same name was written to the same file as `interface ITenantScoped : ITenantScoped`, which failed `dotnet build` with `CS0529` while `validate` and `generate` passed. An entity named `Tenant` invites the name; pick another (`IHelloTenantScoped`, `ITenantOwned`).
 
 **Cross-spec entity resolution**: The project-file loader does **not** check that `tenancy.tenant.entity` (or `subTenant.entity`) actually names an `x-entity` schema in the bundled OpenAPI spec. A typo or missing schema produces no load-time error. Detection moves downstream:
@@ -384,6 +394,27 @@ If you change the tenant entity name, double-check both `tenancy.tenant.entity` 
   }
 }
 ```
+
+#### What declaring `tenancy` turns on (generator `0.21.0`, breaking for C#)
+
+Through `0.20.0` the block declared marker interfaces and nothing filtered a query by tenant. From `0.21.0`, in a C# project that declares `tenancy`:
+
+- **Every entity whose `belongsTo` chain reaches the tenant entity is filtered by a generated `Tenant` named query filter** in `AppDbContext`. The filter follows the shortest owning chain, so a child with no tenant column of its own is filtered through its owner. The tenant entity is filtered by its own `Id`. A row reached through an optional hop whose foreign key is null is hidden. An entity with no path to the tenant gets no filter.
+- **The host must register an `IRecordVisibilityResolver`.** `AddSqlServerDatabase` registers a placeholder that throws, naming the interface, at the first query that reads a filtered entity. The host still builds and starts, so the failure appears at the first filtered read, not at startup.
+- **A get, update or delete of another tenant's row answers `404`** through the generated service, because the filtered by-id query returns nothing. A list never returns the other tenant's rows. Declare `404` on every operation with an id path parameter (`API_Handbook.md` §2).
+- **An entity that declares `x-entity.visibility` gains a second filter, `Visibility`**, within the tenant (`Vendor_Extensions.md`). A row hidden by it also answers `404`, not `403`.
+
+The host-side migration (the resolver, background paths, hand-built `DbContext`s, a bare `IgnoreQueryFilters()`, test hosts) is C# component work, covered in `docs/csharp-component-guide.md`. A project with no `tenancy` block generates byte-identical output.
+
+`validate` also reports `VISIBILITY_NOT_ENFORCED` (WARNING, generator `0.21.0`) once per Python group and tenant-owned entity it reads: every entity, for a group registering `repository`; the `aiAccess` entities, for one registering `aiRepository`. SQLAlchemy readers carry no tenant filter, so scope those queries by hand. A project with a Python group and a `tenancy` block sees new warnings on the jar bump; they fail nothing.
+
+#### `tenancy.enforcement: route` (generator `0.21.0`, deprecated on arrival)
+
+A transition switch for a project whose list routes do not yet carry the tenant path parameter, where the always-on filter would break existing reads. `"enforcement": "route"` suppresses the `Tenant` query filter only; tenant isolation is then the host's route checks, as it was through `0.20.0`. The `Visibility` filter and the soft-delete filter stay on.
+
+While the switch is set, project-level `validate` reports `TENANCY_ENFORCEMENT_ROUTE` (WARNING), once, naming each tenant-owned entity that a list route returns without a tenant path parameter. Those entities are readable across tenants. A route parameter named for either tier's `foreignKey` counts. The message also counts the further entities that only the sub-tenant's parameter covers. With no such entity the warning does not fire.
+
+**Remove the switch once every list route carries the tenant path parameter.** The generator's release gate refuses to ship a release after 2027-01-31 while the switch still exists in its code, so a project that keeps it will lose it on a later pin bump. Under the switch, `tenantIsolationTest` emits only the `Visibility` facts (none when no entity declares `visibility`), `VISIBILITY_NOT_ENFORCED` names only entities with a `visibility` narrowing, and `bareIgnoreSourceScanTest` emits nothing (§11.1).
 
 ---
 
@@ -939,6 +970,10 @@ The project file fails to load when any of the following conditions hold. All er
 | `PROJECT_TENANCY_FK_NOT_PASCAL` | Tier `foreignKey` is not PascalCase. |
 | `PROJECT_TENANCY_FK_NOT_ID` | Tier `foreignKey` does not end in `Id`. |
 | `PROJECT_TENANCY_MARKER_NOT_INTERFACE` | Tier `marker` does not match `^I[A-Z][A-Za-z0-9]*$`. |
+| `PROJECT_TENANCY_ENFORCEMENT_UNKNOWN` | **From generator `0.21.0`.** `tenancy.enforcement` is set to anything but `route` (§4.1). |
+| `UNKNOWN_WORKER_HOST` | **From generator `0.20.0`.** `workerPlacement.messages.default`, or a key under `messages`, names neither `azureFunctions` nor `genericHost` (§17). |
+| `UNKNOWN_EMIT_ASSERTIONS` | **From generator `0.21.0`.** `functionalTests.emitAssertions` is neither `off` nor `strict` (§18). |
+| `TRIGGER_REQUIRES_EVENT_RUNTIME_IMPL` | **From generator `0.20.0`, breaking.** A group registers `azureFunctionTopicTrigger`, `hostedTopicConsumer` or `heldEntityHydrationTrigger`, and no group of the same language registers `eventRuntimeImpl` (§10). |
 | `PROJECT_BROKER_TYPE_UNKNOWN` / `PROJECT_BROKER_TOPOLOGY_UNKNOWN` / `PROJECT_BROKER_DIALECT_UNKNOWN` | `broker.type` / `broker.topology` / `broker.outboxDialect` set to an unrecognised value. |
 | `INVALID_DART_GROUP_FIELD` | `unknownEnumPolicy` or `formatPolicy` outside its accepted set (Dart/Flutter groups only). |
 | `INVALID_FILTER` | `groups[].filter` malformed — multiple top-level operators, unknown operator, wrong value shape. |
@@ -955,6 +990,22 @@ The project file fails to load when any of the following conditions hold. All er
 
 The OpenAPI / AsyncAPI / Arazzo spec contents are validated separately by the per-spec validators after the project file loads.
 
+**Removed in generator `0.20.0`:** `PROJECT_TENANCY_REQUIRED`, `PROJECT_EVENT_RUNTIME_TENANCY_REQUIRED` and `PROJECT_EVENT_CONTRACT_TEST_TENANCY_REQUIRED`. A single-tenant project may now register the event runtime, `tenancyMarker` and `eventContractTest` (§4.1).
+
+**Project-level `validate` findings** (they need the specs, so they run under `validate <project>.json` and `generate`, not at load):
+
+| Code | Severity | From | Fires when | Fix |
+|---|---|---|---|---|
+| `WORKER_PLACEMENT_UNKNOWN_WORKER` | ERROR | `0.20.0` | A name under `workerPlacement.messages` matches no AsyncAPI operation. | Spell it as the operation key under `operations`, or remove the line. |
+| `WORKER_PLACEMENT_NOT_A_TOPIC_WORKER` | ERROR | `0.20.0` | The name is a scheduled job, a publisher or an `x-ai` worker. | Remove it. Only a topic worker can be placed. |
+| `WORKER_PLACEMENT_NO_HOST_GROUP` | ERROR | `0.20.0` | A topic worker is placed on a host whose artifact (`azureFunctionTopicTrigger` or `hostedTopicConsumer`) no C# group registers, so nothing emits it. | Register the host artifact, or place the worker elsewhere. |
+| `WORKER_PLACEMENT_CONFLICT` | ERROR | `0.20.0` | An operation is listed under both hosts, or one C# group registers both `azureFunctionTopicTrigger` and `hostedTopicConsumer`. | List it once; give each host artifact its own group. |
+| `WORKER_K8S_NAME_COLLISION` | ERROR (generation) | `0.20.0` | In a group registering `hostedTopicConsumer`, two topic workers derive the same `k8sName` for `workers.json` (kebab-case of the operation id, at most 52 characters). Generation fails. | Rename one operation. |
+| `WORKER_TIMEOUT_EXCEEDS_FUNCTIONS_LOCK_RENEWAL` | WARNING | `0.21.0` | A topic worker on `azureFunctions` declares an `x-worker.timeout` above 240 s, while a C# group registers `azureFunctionTopicTrigger` (`AsyncAPI_Handbook.md` §4.3). | Place it on `genericHost` (§17), or lower its timeout to 240 s or less. |
+| `PROJECT_AUTHORIZATION_RUNTIME_MISSING` | WARNING | `0.20.0` | A C# group registers `apiController`, some operation declares `x-roles` or `x-scopes`, and no C# group with the same `basePackage` registers `authorizationRuntime`. The generated controllers then fail `dotnet build` (CS0246 / CS0234) on `[RoleRequired]` / `[ScopesRequired]`. | Register `authorizationRuntime` in that group or a same-`basePackage` group (§11.1). Ignore it only if you hand-write those types. The operation scan covers the whole spec, whatever the group's `pillar` or `domains`. |
+| `TENANCY_ENFORCEMENT_ROUTE` | WARNING | `0.21.0` | `tenancy.enforcement: route` is set and a tenant-owned entity is listed by a route with no tenant path parameter (§4.1). | Add the tenant path parameter to those routes, then remove the switch. |
+| `VISIBILITY_NOT_ENFORCED` | WARNING | `0.21.0` (Python groups) | A Python `repository` / `aiRepository` group reads a tenant-owned entity (§4.1). | Scope those Python queries to the tenant by hand. |
+
 From generator `0.16.0`, `validate` also warns `FUNCTIONAL_TEST_TAG_UNGROUPED` when `functionalTests.collectionNamePattern` uses `{group}` and an operation tag is in no `collectionGroups` entry. That tag silently becomes its own collection (measured: `Tag 'Customers' is in no functionalTests.collectionGroups entry, so its functional tests get their own collection 'CustomersFunctionalTests'`), and nothing in the consumer's test project defines it. A pattern without `{group}` opts out.
 
 ---
@@ -964,7 +1015,9 @@ From generator `0.16.0`, `validate` also warns `FUNCTIONAL_TEST_TAG_UNGROUPED` w
 - **`name` ⟷ `dbContextClassname`** — when `dbContextClassname` is unset, the C# templates derive `{name}DbContext`. When `name` is also unset, they fall back to `AppDbContext`.
 - **`name` ⟷ `configs.applicationPackage`** — the C# event-contract test artifact derives `{name}.Application` when no explicit value is set; if both are absent, the artifact fails with a hard error.
 - **`groups[]` ⟷ event-runtime opt-in** — when any group registers the `eventRuntime` artifact (or the language equivalents `eventRuntimeImpl` / `eventRuntimeFunctions`), the generator stamps a project-wide `hasEventRuntime: true` additional property visible to every artifact in every group. This is the unambiguous opt-in marker for event-runtime emission.
-- **`service` ⟷ `eventRuntime` (generator `0.16.0`, breaking)** — a C# group rendering `service` for an operation whose `x-emits` links to an AsyncAPI message requires some group to register `eventRuntime` (or `configs.hasEventRuntime`). Otherwise `validate` and `generate` fail with `PROJECT_EVENT_RUNTIME_REQUIRED` (ERROR), one finding per operation, naming its messages and the group. Before `0.16.0` such a project generated service methods that read `beforeSnapshot` / `afterSnapshot` without declaring them, and failed only at `dotnet build` (CS0103). Measured: adding `service` to `hello-orders`' Domain group gives six findings, one per `x-emits` write. **Fix:** register `eventRuntime` in a C# Domain group (it requires a project-level `tenancy` block, §4.1), or remove the operation's `x-emits`. **Scope (generator `0.17.0`):** an operation counts for a group only when the group's `pillar` or `domains.include` scope keeps it, the same test `service` applies when it renders. At `0.16.0` a filtered group was flagged for every `x-emits` operation in the whole spec, so a pillar owning no event-emitting entity failed with one finding per emitting operation elsewhere (`clabonte/generator#2651`). An unfiltered group is flagged as before. Every pillar-bound group that renders an emitting operation still needs `eventRuntime` registered somewhere in the project (`Vendor_Extensions.md` §14.6).
+- **`service` ⟷ `eventRuntime` (generator `0.16.0`, breaking)** — a C# group rendering `service` for an operation whose `x-emits` links to an AsyncAPI message requires some group to register `eventRuntime` (or `configs.hasEventRuntime`). Otherwise `validate` and `generate` fail with `PROJECT_EVENT_RUNTIME_REQUIRED` (ERROR), one finding per operation, naming its messages and the group. Before `0.16.0` such a project generated service methods that read `beforeSnapshot` / `afterSnapshot` without declaring them, and failed only at `dotnet build` (CS0103). Measured: adding `service` to `hello-orders`' Domain group gives six findings, one per `x-emits` write. **Fix:** register `eventRuntime` in a C# Domain group, or remove the operation's `x-emits`. Through `0.19.0` `eventRuntime` also required a project-level `tenancy` block; from `0.20.0` it does not (§4.1). The generator's own fix text still says it does; ignore that clause. **Scope (generator `0.17.0`):** an operation counts for a group only when the group's `pillar` or `domains.include` scope keeps it, the same test `service` applies when it renders. At `0.16.0` a filtered group was flagged for every `x-emits` operation in the whole spec, so a pillar owning no event-emitting entity failed with one finding per emitting operation elsewhere (`clabonte/generator#2651`). An unfiltered group is flagged as before. Every pillar-bound group that renders an emitting operation still needs `eventRuntime` registered somewhere in the project (`Vendor_Extensions.md` §14.6).
+- **Topic-worker host artifacts ⟷ `eventRuntimeImpl` (generator `0.20.0`, breaking)** — a project registering `azureFunctionTopicTrigger`, `hostedTopicConsumer` or `heldEntityHydrationTrigger` must register `eventRuntimeImpl` in some group of the same language, or the load fails with `TRIGGER_REQUIRES_EVENT_RUNTIME_IMPL`, naming the trigger artifact and its group. The triggers call the message decision core (`MessageDecisionCore`), which only `eventRuntimeImpl` emits into Infrastructure. Through `0.19.0` such a project loaded and emitted triggers that did not compile. The check is project-wide and order-independent, and runs at load and again before `generate` cleans any destination. **Fix:** add `eventRuntimeImpl` to the Infrastructure group (with its own destination subtree), or drop the trigger artifact. A project that already registers both is unaffected.
+- **`workerPlacement` ⟷ host groups (generator `0.20.0`)** — a C# group registering `azureFunctionTopicTrigger` is the Azure Functions host, one registering `hostedTopicConsumer` is the generic host, and each emits only the topic workers placed on it (§17). With no `workerPlacement`, every topic worker is on Azure Functions, so a `hostedTopicConsumer` group emits no consumer.
 - **`namingOverrides` ⟷ `x-enumCase`** — `x-enumCase: preserve` on a schema wins over a project-wide `enumValue` override.
 - **`tenancy` ⟷ `x-entity.belongsTo`** — entities whose `belongsTo` references the tenancy entities receive the corresponding `I{Tenant}Scoped` marker interface in the C# target. From generator `0.15.0`, so does an entity with a `resolve: remote` reference to the tenant entity (§4.1). The project-file loader does not validate that `tenancy.tenant.entity` resolves to a real `x-entity` schema; see §4.1 for the downstream symptoms.
 - **`broker.outboxDialect` ⟷ event-runtime functions artifact** — `postgres` emits a stub in the drainer; only `sqlServer` produces a working runtime today.
@@ -991,6 +1044,18 @@ The full live inventory is available via `java -jar specfuse-generator.jar templ
 
 **From generator `0.15.0`, `autoMapperTest` is renamed `mapperTest`** (`clabonte/generator#464`), because the generated C# maps through Mapperly instead of AutoMapper (§11.1.1). `autoMapperTest` stays an alias: a project file naming it loads and generates the replacement without a warning. Measured on `examples/hello-orders`, either id now emits one file, `Generated/Unit/Domain/DomainMapperTests.g.cs`, where `0.14.0` emitted two AutoMapper profile tests (Domain and Api). Prefer the new id in new project files. From the same release `templates` prints an aliased artifact once, under its own id, so neither `autoMapperTest` nor `asyncEvent` appears in its output. On `0.14.0` the C# `event` artifact was listed twice, once for the alias. **`event` is not removed:** it is still accepted and still emits one record per AsyncAPI event message.
 
+#### Artifacts added in generator `0.20.0` and `0.21.0`
+
+Three opt-in C# ids, none in the snapshot list above. Each emits only when registered.
+
+| Id | From | Group | What it emits | Conditions |
+|---|---|---|---|---|
+| `hostedTopicConsumer` | `0.20.0` | A C# group of its own (the generic host), beside `asyncEventHandler`, `asyncConsumerRegistration` and `event` | One `<Handler>TopicConsumer` per topic worker placed on `genericHost` (§17), each reading the worker's subscription through one `ServiceBusProcessor` and calling the same `I<Handler>` the Functions trigger calls; the `HostedTopicConsumer` base and `WorkerHostContext`; `services.AddGeneratedWorkers()` (hosted services, graceful SIGTERM stop, `live` / `ready` health checks); `workers.json` and `WorkerManifest` listing every topic worker and its host; `WorkerProvisioning` for a `provision` command. No `Program.cs`. | Registering it beside `azureFunctionTopicTrigger` in one group is `WORKER_PLACEMENT_CONFLICT`. Needs `eventRuntimeImpl` in the project (`TRIGGER_REQUIRES_EVENT_RUNTIME_IMPL`). Scheduled jobs stay in the Functions group. With no `workerPlacement`, it emits no consumer. |
+| `tenantIsolationTest` | `0.21.0` | Test | `Generated/Unit/Infrastructure/TenantIsolationTests.g.cs`: per tenant-owned entity, a list never returns the foreign tenant's rows, a get, update or delete of a foreign row answers not found, `Unrestricted` sees both tenants, an empty visibility sees nothing, the model carries the `Tenant` filter. Adds the within-tenant facts for entities that declare `x-entity.visibility`. `TestSeed` gains the foreign tenant's graph. | Needs a `tenancy` block. Emits nothing unless a `Tenant` or `Visibility` filter is declared. The Test project must reference Infrastructure. Runs in memory under the unit-test step, not under the functional suite. |
+| `bareIgnoreSourceScanTest` | `0.21.0` | Test | `Generated/Unit/Infrastructure/BareIgnoreSourceScanTest.g.cs`: fails when hand-written C# calls `IgnoreQueryFilters()` with no argument, which drops the `Tenant` filter too, unless the call is listed in `bare-ignore-query-filters.baseline` at the solution root. | Needs a `tenancy` block and `tenancy.enforcement` unset; otherwise it emits nothing. The baseline is yours, never generated, and only shrinks: a missing file reads as empty, and a line for a call that is gone fails as stale. |
+
+`hostedTopicConsumer`'s host must register a `ServiceBusClient`, set `AzureServiceBus:TopicName`, and reference `Microsoft.Extensions.Hosting` and `Microsoft.Extensions.Diagnostics.HealthChecks`. The C# host wiring is in `docs/csharp-component-guide.md`.
+
 #### 11.1.1 Generated C# mapping and test libraries (generator `0.15.0`)
 
 Two package changes reach a consumer's C# projects on the first regeneration. Both replace a library that became commercially licensed.
@@ -1009,13 +1074,17 @@ Three opt-in artifact ids, none in the lists above, which predate them. Each is 
 | `authorizationConformanceTest` | C#, TypeScript, Dart, Python | **C#** (Test group): `AuthorizationConformanceTests`, `FakeTenantResourceCheck`, `RoleClaimsTestPrincipalFactory`, `AuthorizationTestSupport.ForbiddenRoles`. Registering it also moves the generated `WithForbiddenRole` theory onto `ForbiddenRoles`, derived as registry − listed − superuser − implicit with no role hierarchy. **TypeScript, Dart, Python**: one test per grant-matcher known-answer vector, the table every runtime is proved against so no two disagree on a wildcard. |
 | `authorizationMatrix` | Markdown | See §11.5. |
 
-**The C# runtime is the same set of files in either `mode`** — measured: 23 files under `roles` and under `scopes`. `mode` changes the attribute on each controller action (§16), not the runtime. `AddSpecfuseAuthorization()` registers every service with `TryAdd`, so a host registration made before or after it wins, and registers `ITenantResourceCheck` as a **throwing placeholder**: a host that forgets to implement it fails by name on first use. The decision order is `IPrincipalPolicy`, then effective roles (claimed ∪ `implicit`), then a `superuser` role passes without the tenant check, then a listed `implicit` role passes without it, then listed ∩ held — empty is `403` — then `ITenantResourceCheck` with exactly the holding roles. A role not listed in `x-roles` never reaches the tenant check, so a hand-written handler that let a resource check admit unlisted roles does not carry over.
+**The C# runtime is the same set of files in either `mode`** — measured: 23 files under `roles` and under `scopes`. `mode` changes the attribute on each controller action (§16), not the runtime. `AddSpecfuseAuthorization()` registers every service with `TryAdd`, so a host registration made before or after it wins. In a project that declares `tenancy` it registers `ITenantResourceCheck` as a **throwing placeholder**: a host that forgets to implement it fails by name on first use. **From generator `0.20.0`, a project with no `tenancy` gets `RoleSufficientTenantResourceCheck` instead**, which returns `true`, so the role or scope gate is the whole decision. A single-tenant host that relied on the throw to refuse every gated request must register its own check. **Also from `0.20.0`, `AddSpecfuseAuthorization()` adds `RoleAuthorizationFilter` and `ScopeAuthorizationFilter` to `MvcOptions.Filters`** when the host has not added them (`clabonte/generator#2864`). The attributes are metadata only, so through `0.19.0` a host that never added the filters served every gated action to every caller. After the bump such a host starts answering `401` / `403`. `PROJECT_AUTHORIZATION_RUNTIME_MISSING` (WARNING, §9) flags a C# `apiController` group whose `basePackage` no `authorizationRuntime` group shares. `generateUserHelper` (§16) adds `Utils/UserHelper.g.cs` to this artifact. The decision order is `IPrincipalPolicy`, then effective roles (claimed ∪ `implicit`), then a `superuser` role passes without the tenant check, then a listed `implicit` role passes without it, then listed ∩ held — empty is `403` — then `ITenantResourceCheck` with exactly the holding roles. A role not listed in `x-roles` never reaches the tenant check, so a hand-written handler that let a resource check admit unlisted roles does not carry over.
 
 ### 11.2 Python artifacts
 
 **Snapshot date:** 2026-05-26. **Live source:** `templates --language python`.
 
 `entity`, `enum`, `valueObject`, `repository`, `aiEntity`, `aiRepository`, `event`, `eventBuilder`, `snapshot`, `eventOutbox`, `defaultEventEmitter`, `asyncEventHandler`, `eventContractTest`, `aiWorker`.
+
+**`aiWorker` settings name no model from generator `0.20.0` (breaking at run time).** Each worker's generated `*Settings` class declares `primary_model: str` with no default, read from `<PREFIX>_PRIMARY_MODEL`, where `<PREFIX>` is the worker's `x-worker.settingsPrefix` (`AsyncAPI_Handbook.md` §4.3). Through `0.19.0` it defaulted to `claude-sonnet-4-6`. A worker started without the variable fails at settings construction with pydantic's `primary_model Field required`. Set it in every environment that runs the worker, including local `.env.local` files.
+
+From generator `0.20.0`, every Python project registering `repository` or `aiRepository` also gets `{core}/_generated/consumer_defaults.py` (a fallback error taxonomy) and `{core}/_generated/__init__.py`. A consumer-written `{core}/errors.py` still wins.
 
 ### 11.3 Dart / Flutter artifacts
 
@@ -1376,6 +1445,16 @@ All four fail `Project.Load`, like the codes under "Where it is checked" below, 
 
 For moving from roles to scopes without betting a release on it. Each action carries both `[RoleRequired]` and `[ScopesRequired(…, OperationId = "…")]`. **The role decision always governs the request.** The generated `ScopeAuthorizationFilter` evaluates the scope requirement alongside it, and when the two disagree it logs a structured event and increments the counter `authorization.divergence{operationId, decidedBy}` on the meter `Specfuse.Authorization`. A scope evaluation that throws is logged and never rethrown, so a defect on the scope side cannot fail a live request. Measured: both attributes and the counter are emitted.
 
+### `generateUserHelper` (top-level key, generator `0.20.0`)
+
+A boolean at the **top level** of the project file, not under `authorization`. Default `false`. With `true`, `authorizationRuntime` emits `Utils/UserHelper.g.cs` into the Api group: a static `{Api}.Utils.UserHelper.GetUser(ClaimsPrincipal)` returning the `AuthenticatedUser` every generated controller passes down (`new CallerContext(UserHelper.GetUser(User))`). It returns `Anonymous` with no roles for an unauthenticated principal, takes the user id from the `claims.userId` claim type (default `sub`, falling back to `Identity.Name`), and fills the roles, plus each role's tenant ids and attributes as properties, from the default `ClaimsPrincipalReader`. It ignores a custom `IPrincipalReader` registration, because a static method cannot resolve a service.
+
+```json
+{ "generateUserHelper": true }
+```
+
+**Delete a hand-written `{Api}.Utils.UserHelper` before turning it on**, or the build fails with CS0101. Absent or `false`, nothing is emitted and you keep writing the class yourself. Generator `0.19.0` drops the key without a word.
+
 ### Where it is checked
 
 | Code | Fires when |
@@ -1385,6 +1464,60 @@ For moving from roles to scopes without betting a release on it. Each action car
 | `UNKNOWN_ROLES_SHAPE` | `claims.rolesShape` is neither `name` nor `object`. |
 
 All three fail `Project.Load`. The CLI prints the message, not the code (`Validation failed: Authorization mode 'bogus' is not recognized. Valid modes: roles | scopes.`).
+
+---
+
+## 17. Worker Placement
+
+**From generator `0.20.0`.** `workerPlacement` says which host runs each C# topic worker: Azure Functions (`azureFunctions`) or a generic .NET host such as a Kubernetes pod (`genericHost`). Keys under `messages` are AsyncAPI operation names, as written under `operations`.
+
+```json
+{
+  "workerPlacement": {
+    "messages": {
+      "default": "azureFunctions",
+      "genericHost": ["onCompanyPurgeStarted", "onDataExportRequested"]
+    }
+  }
+}
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `messages.default` | `azureFunctions` | The host of every topic worker no list names. |
+| `messages.azureFunctions[]` | none | Operations placed on Azure Functions whatever the default. Use it when `default` is `genericHost`. |
+| `messages.genericHost[]` | none | Operations placed on the generic host whatever the default. |
+
+Any other key under `messages`, or a `default` that names no host, fails the load with `UNKNOWN_WORKER_HOST`. Without that check a misspelt host would leave the worker silently on Azure Functions.
+
+**Only topic workers can be placed**: an `on-*` receive operation that is not `x-ai`. Scheduled jobs stay on the Azure Functions group, and AI workers are Python. A C# group's host follows from its artifacts: `azureFunctionTopicTrigger` makes it the Azure Functions host, `hostedTopicConsumer` the generic host (§11.1), and Domain, Application, Infrastructure and Test groups are never narrowed. Each host group emits only the workers placed on it, with their handler bases and registrations. Moving a worker is one line, a regeneration and a rebuild; the handler class does not change.
+
+**Absent, every topic worker runs on Azure Functions**, and output is byte-identical to `0.19.0`. Generator `0.19.0` drops the key without a word.
+
+The four `WORKER_PLACEMENT_*` codes (ERROR, §9) catch a name that matches no worker, a name that is not a topic worker, a worker placed on a host no group emits, and a worker listed twice or a group registering both host artifacts. They are silent for a project with no `workerPlacement`.
+
+**When to move a worker to `genericHost`.** The Functions host renews a message lock for five minutes whatever the worker's `x-worker.timeout`, and a lock lapses 60 s after its last renewal. A worker kept on Functions whose timeout is above 240 s can lose its lock while its handler still runs, and the broker redelivers the message. From generator `0.21.0` `validate` reports it as `WORKER_TIMEOUT_EXCEEDS_FUNCTIONS_LOCK_RENEWAL` (WARNING), with or without a `workerPlacement`. The generic host renews each worker's lock for its own timeout plus 130 s, so long-running workers belong there.
+
+---
+
+## 18. Functional Tests
+
+`functionalTests` configures the generated C# functional tests. `collectionNamePattern` and `collectionGroups` assign tests to xUnit collections (Quick Reference, and `FUNCTIONAL_TEST_TAG_UNGROUPED` in §9).
+
+### `emitAssertions` (generator `0.21.0`)
+
+Whether a scenario step's `x-async.emit` is checked by the generated scenario test (`scenarioFunctionalTest`, `Arazzo_Handbook.md` §6.2).
+
+| Value | Generated test |
+|---|---|
+| `off` (default) | Each `emit` entry is a reviewer comment, as through `0.20.0`. Output is byte-identical. |
+| `strict` | Each `emit` entry is an awaited `Fixture.WaitForEventAsync<TEvent>(predicate, timeoutMs: N)` plus `Assert.NotNull`, so the test fails when the event is never published. `expect` is a subset predicate; `timeout` defaults to `PT10S`. |
+
+```json
+{ "functionalTests": { "emitAssertions": "strict" } }
+```
+
+Any other value fails the load with `UNKNOWN_EMIT_ASSERTIONS`. The default is `off` because existing scenarios carry `emit` declarations nobody has checked, so switching to `strict` can turn a green suite red. `strict` calls the `ApiTestFixture.WaitForEventAsync<TEvent>(Func<TEvent, bool>, int timeoutMs)` member that `x-async.await` already uses. It scans the outbox, so an event an earlier step wrote also satisfies a later `emit` unless `expect` is keyed on the step's own outputs.
 
 ---
 

@@ -639,6 +639,16 @@ steps:
 | `emit[].expect` | No | object | Partial payload match -- key/value pairs to assert on the event payload |
 | `emit[].timeout` | No | string | ISO 8601 duration. Max wait time for the event to appear. Default: `PT10S` |
 
+**Every `expect` key must name a member of the event's payload (generator `0.21.0`, breaking).** `validate` resolves each key against the payload, as it already did for `await.match`, and reports a key naming no member as `ARAZZO_CROSS_SPEC_ERROR` (ERROR), whatever the project's `functionalTests.emitAssertions`. Through `0.20.0` the keys were not checked, so a scenario with a stale or misspelt `expect` key that passed `0.20.0` fails `0.21.0`. Fix the key, or drop it.
+
+**Whether the generated C# scenario test checks `emit` is a project setting.** By default (`functionalTests.emitAssertions: off`) each entry is a comment for the reviewer and nothing is asserted. Under `strict` (generator `0.21.0`, `Project_File.md` §18) each entry becomes an awaited wait for the event and the test fails when it is never published:
+
+- `expect` is a subset match: only the declared keys are compared. Enum, `uuid`, decimal, `date` and `date-time` literals are typed, and `$steps` outputs bind to the step's own locals. An `emit` without `expect` matches on the event type alone.
+- The wait scans the outbox, so an event an **earlier** step wrote also satisfies a later `emit` of the same type. Key `expect` on something only this step produces, typically one of its own outputs (`$steps.<thisStep>.outputs.<id>`), when an earlier step can publish the same event.
+- `timeout` is the wait's limit, `PT10S` by default.
+
+Write `emit` as if `strict` were on: an `emit` nobody checks today becomes a failing test the day a project turns it on.
+
 #### `await` -- Passively wait for an event
 
 The step waits for an asynchronous event matching specified criteria. Typically used after a step triggers an async workflow (e.g., an AI worker) and the scenario needs to observe the outcome.
@@ -952,6 +962,7 @@ This means:
 |-------|--------|--------|----------|
 | `operationId` exists | Arazzo step | OpenAPI `operationId` | Error |
 | Event `{Entity}.{Action}` exists | `x-async.emit` / `x-async.await` | AsyncAPI message `x-label` | Error |
+| Every `emit[].expect` key names a payload member (`ARAZZO_CROSS_SPEC_ERROR`) | `x-async.emit[].expect` | The emitted message's payload | Error, from generator `0.21.0` (§6.2) |
 | Status code assertions don't contradict OpenAPI response codes | `successCriteria` | OpenAPI operation responses | Error |
 | Actor `role` in closed set (`ARAZZO_INVALID_ACTOR_ROLE`) | `x-actors.*.role` | Project's OpenAPI `info.x-roles` registry | Error |
 | Actor role's grants cover the step operation's `x-scopes` (`ARAZZO_ACTOR_LACKS_SCOPE`) | `x-actors.*.role` + step `operationId` | Mapping-form `info.x-roles` grants, operation `x-scopes` | Error, under `authorization.mode: scopes` only; from generator `0.15.0`, never at `0.14.0` (§4.6, `clabonte/generator#2418`) |

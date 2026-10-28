@@ -54,7 +54,8 @@ x-entity:
   mutability: string             # Optional: "mutable" | "immutable" | "appendOnly" (default: "mutable")
   concurrency: string | object   # Required, NO default: "optimistic" | "none", or { mode, reason } / { mode: delegated, to }
   delete: string | object        # Optional: "hard" | "soft", or { mode, retention, reason, archiveVisibility } (default: "hard")
-  uniqueBy: object[]             # Optional: uniqueness constraints, each { name?, properties[] }
+  uniqueBy: object[]             # Optional: uniqueness constraints, each { name?, properties[], nullsDistinct?, where[]? }
+  visibility: string | object    # Optional: "tenantWide" | "subTenant", or { mode, scope, unscopedRows } (generator 0.21.0)
   valueObjects: object           # Optional: Value object storage configuration
   aiAccess: object               # Optional: AI agent access policy (see 1.1.1). Absent = no AI access.
 ```
@@ -823,6 +824,8 @@ x-entity:
 |---|---|
 | `properties` | **Required, non-empty.** The tuple of property names that must be unique together. |
 | `name` | Optional index name. Must be unique across the entity's constraints. |
+| `nullsDistinct` | Optional boolean, default `true` (generator `0.20.0`). `false` makes NULL one value of the tuple. See below. |
+| `where` | Optional, non-empty list of conditions (generator `0.20.0`). Makes the index partial: only rows that satisfy every condition must be unique. See below. |
 
 **Each member must name a property of this schema, spelled exactly.** The
 generator resolves the tuple against the schema's own properties and raises
@@ -832,11 +835,126 @@ object. This is the opposite of `filterableProperties` and `searchableProperties
 which do accept dotted paths — a difference worth knowing before you copy a line
 from one key to the other.
 
+#### `nullsDistinct` and `where` — partial and NULL-equal unique indexes (generator `0.20.0`)
+
+The generated unique index is **filtered**. Without either key, the filter is
+derived: one `[Col] IS NOT NULL` per **optional** member (optional means absent
+from `required`), then `[DeletedAt] IS NULL` when the entity declares
+`delete: soft`. That is the SQL-standard reading, where two rows with a NULL
+member never collide. Two common rules do not fit it, and these keys declare
+them:
+
+```yaml
+x-entity:
+  uniqueBy:
+    # One role assignment per user, role, company and restaurant. A
+    # company-level role has no restaurantId, and it must still be unique.
+    - properties: [userId, role, companyId, restaurantId]
+      nullsDistinct: false
+    # One active authorization per employee and shift.
+    - properties: [employeeId, shiftId]
+      where:
+        - property: revokedAt
+          is: null
+    # One primary location per organization.
+    - name: UX_Location_OrganizationId_Primary
+      properties: [organizationId]
+      where:
+        - { property: isPrimary, equals: true }
+```
+
+**`nullsDistinct: false`** drops the `IS NOT NULL` conjunct of every optional
+member, so two rows that agree everywhere, NULLs included, collide. The
+soft-delete conjunct stays. With no other conjunct left, the C# configuration
+emits `.HasFilter(null)` explicitly, because EF's SQL Server convention would
+otherwise add `IS NOT NULL` back. The value must be a boolean; anything else,
+`null` included, is `INVALID_EXTENSION_VALUE`. An entry without the key
+generates exactly what it did at `0.19.0`.
+
+**`where`** is a closed grammar. Each condition is a map with `property` and
+exactly one of:
+
+| Form | Meaning |
+|---|---|
+| `is: null` | the column is NULL. A YAML null value; the quoted string `"null"` is read the same way. |
+| `is: notNull` | the column is not NULL |
+| `equals: <literal>` | the column equals a boolean, an integer or a string, or for an enum property one of its values |
+
+Conditions are ANDed. There is no OR, no negation and no comparison operator.
+`equals: null` is refused (write `is: null`), and so is a fraction, a list, a
+map, an empty `where`, both `is` and `equals`, neither, and any other key
+(`INVALID_EXTENSION_VALUE`). A `belongsTo` foreign key resolves as a `where`
+property exactly as it does as a tuple member.
+
+**The filter's order is fixed, not yours.** The generated filter is always
+`[member] IS NOT NULL`… (one per optional member, none under
+`nullsDistinct: false`), then `[DeletedAt] IS NULL`, then your conditions in the
+order you declared them. The soft-delete entity above with `revokedAt is null`
+is filtered by exactly `[DeletedAt] IS NULL AND [RevokedAt] IS NULL`. If you are
+moving a hand-written index into the spec, compare its filter text with this
+order: EF compares filters as text, so the same conjuncts in another order show
+up as a change in your next migration. Give the entry the hand-written index's
+`name` as well, so the migration compares filters instead of dropping and
+recreating the index.
+
+**Where it is enforced.** The C# configuration (`HasFilter`), the Python model
+(`mssql_where`), the generated C# pre-check `FindUniqueConstraintConflict`, and
+the TypeScript and Dart fakes all apply the same rule. The pre-check evaluates
+the conditions on the candidate and on the stored rows, so it agrees with the
+index, and a raced write still gets the generated `409`. Under
+`nullsDistinct: false` the pre-check and the fakes treat two NULLs as equal.
+
+**Limits, from the generator's own notes:**
+
+- **SQL Server is the supported target.** SQLite never enforces
+  `nullsDistinct: false` at the index (only the pre-check rejects the
+  duplicate), and it rejects the `N'…'` prefix, so a string or enum `where` entity
+  cannot be created on SQLite. On Postgres the Python model's `mssql_where` is
+  ignored and the index is **unfiltered**, which is stricter than your rule. A
+  Python group on Postgres must not declare `where`.
+- **A string or enum literal may not contain `"`, `\`, `:` or a control
+  character**, and a condition on an `atRest: encrypted` property is refused (the
+  column holds ciphertext). These fail at build time
+  (`PROPERTY_UNIQUE_BY_WHERE_LITERAL_CHARS`, `PROPERTY_UNIQUE_BY_WHERE_ENCRYPTED`,
+  `PROPERTY_UNIQUE_BY_WHERE_LITERAL_TYPE`), not as `validate` findings of the
+  rule below. `validate` reports the character and type cases as
+  `UNIQUE_BY_WHERE_LITERAL_TYPE_MISMATCH`, but not the encrypted case.
+- **Adopting either key on a populated table is a schema change.** The new
+  index fails to create when existing rows already collide under it. Query for
+  them before you apply the migration: duplicate NULL-member rows for
+  `nullsDistinct: false`, and rows that collide under the new filter for
+  `where`.
+- **A column the application never writes** makes an `is: null` condition true
+  for every row, so the index is stricter than you meant. The generator cannot
+  detect it.
+
+> **On a jar older than `0.20.0` both keys are dropped without a word.** The
+> generator ignores an unknown `uniqueBy` member, so a `where` you copy from
+> here into a project pinned to `0.19.0` generates a unique index over **all**
+> rows: one location per organization instead of one primary location per
+> organization. `nullsDistinct: false` is dropped the same way, so the optional
+> members are filtered out again. Check the pin (`generator.lock`) before you
+> rely on either key: lint does not catch this, because the kit's ruleset
+> accepts both keys whatever jar the project pins. The jar still ignores an
+> unknown member at `0.21.0`, so a typo such as `filter:` is caught by
+> `specfuse-xentity-shape` and never by `validate`.
+
 | Rule | Severity | Fires when |
 |---|---|---|
-| `UNIQUE_BY_UNKNOWN_PROPERTY` | ERROR | a tuple names something that is not a property of the entity |
+| `UNIQUE_BY_UNKNOWN_PROPERTY` | ERROR | a tuple member or a `where` property is not a property of the entity |
+| `UNIQUE_BY_NOT_A_COLUMN` | ERROR | a tuple member or a `where` property is a value object, a collection or a navigation, or is declared only on an ancestor (an index cannot span tables) |
 | `UNIQUE_BY_DUPLICATE_INDEX_NAME` | ERROR | two constraints on one entity share a `name` |
+| `UNIQUE_BY_NULLABLE_MEMBER` | WARNING | a member declares `nullable: true` and the entry keeps the default `nullsDistinct`: rows with no value are outside the constraint. Silent for a `nullsDistinct: false` entry. |
+| `UNIQUE_BY_NULLS_DISTINCT_NO_EFFECT` | WARNING | `nullsDistinct: false` on an entry whose members are all `required` (generator `0.20.0`) |
+| `UNIQUE_BY_WHERE_NULL_ON_REQUIRED` | ERROR | `is: null` on a `required` property: the index would hold no row (generator `0.20.0`) |
+| `UNIQUE_BY_WHERE_NOT_NULL_REDUNDANT` | WARNING | `is: notNull` on a `required` property, or on an optional member of an entry that keeps the default `nullsDistinct` (the derived conjunct already says it) (generator `0.20.0`) |
+| `UNIQUE_BY_WHERE_LITERAL_TYPE_MISMATCH` | ERROR | an `equals` literal of another kind than its property, `equals` on a `date`, `date-time`, `uuid`, `byte` or `binary` string, a value that is not in the enum, or a forbidden character (generator `0.20.0`) |
+| `UNIQUE_BY_WHERE_DUPLICATE_PROPERTY` | ERROR | one `where` names the same property twice: with no OR, that is redundant or contradictory (generator `0.20.0`) |
+| `UNIQUE_BY_NO_CONFLICT_RESPONSE` | WARNING | a write operation of the entity declares no `409`, so a generated Dart client has no typed conflict to catch |
 | `UNIQUE_BY_CENSUS` | SUGGESTION | always — how many entities declare constraints, and how many of those are composite |
+
+None of the `UNIQUE_BY_WHERE_*` codes can fire on a spec that declares no
+`where`.
 
 Malformed shapes are refused at parse time, before those rules run: a constraint
 with no `properties`, an empty `properties` list, a `properties` that is not a
@@ -852,6 +970,116 @@ through `0.15.0`. From `0.16.0` it is `components.schemas.<Name>.x-entity.unique
 a repeated member within one tuple and an unknown member on a constraint — both
 of which the jar takes silently. The key is new in `0.8.0`, so no spec predates
 that tightening.
+
+**What lint checks on `nullsDistinct` and `where`, and what it leaves to the
+generator.** `specfuse-xentity-shape` checks the shape only: `nullsDistinct` is a
+boolean; `where` is a non-empty list of closed maps; each names a camelCase
+`property`; `is` is `null`, `"null"` or `notNull`; `equals` is a boolean, an
+integer or a string; a condition does not carry both, and no condition repeats
+verbatim. It does **not** check that a condition carries `is` or `equals` at all.
+The kit's `validate-spectral.sh` strips YAML nulls before linting, so a correct
+`is: null` reaches Spectral as a bare `{ property: revokedAt }`, and requiring
+one of the two keys would fail every such condition. The jar still refuses a
+bare `{ property }` you write by hand. Everything that needs the schema's
+properties or its `required` list, which is every code in the table above, is
+`validate`'s.
+
+### `visibility` — which rows of a tenant a caller sees (generator 0.21.0)
+
+From generator `0.21.0`, a C# project that declares `tenancy` (`Project_File.md`
+§4.1) keeps every caller inside their own tenant with a generated `Tenant` query
+filter. `visibility` narrows further, **inside** the tenant: to the caller's
+sub-tenant, or to the values of a grant the caller holds. It is enforced by
+generated C# query filters only. Python readers enforce neither filter
+(`VISIBILITY_NOT_ENFORCED`, below).
+
+```yaml
+x-entity:
+  visibility: subTenant                                   # shorthand
+  # or
+  visibility: { mode: subTenant, unscopedRows: tenantWide }
+  # or
+  visibility: { mode: grantFiltered, scope: departmentId }
+```
+
+| Mode | Who sees a row | Needs |
+|---|---|---|
+| `tenantWide` | every caller of the row's tenant. An entity without the key is already this; writing it records that the question was answered. | nothing |
+| `subTenant` | a caller of the row's sub-tenant, or one with a tenant-wide grant | a `subTenant` tier in `tenancy`, and the sub-tenant column on the entity or a `belongsTo` chain to the sub-tenant entity |
+| `grantFiltered` | a caller holding the value of `scope` the row carries | `scope`: a `format: uuid` property of the entity with a local `x-references`. Object form only. |
+
+**`unscopedRows: tenantWide | restricted`** says who sees a `subTenant` row whose
+sub-tenant is NULL (a nullable column, or an optional `belongsTo` hop whose key
+is NULL): every caller of the tenant, or only an unrestricted or tenant-wide
+caller. It is **required** wherever such a row can exist, so the shorthand works
+only where none can (`VISIBILITY_UNSCOPED_ROWS_UNDECLARED`). It means nothing on
+`grantFiltered`: a row with a NULL `scope` is seen by unrestricted callers only.
+
+**`scope`** names the property a `grantFiltered` entity is filtered by. Each
+distinct entity a `scope` references becomes a grant dimension: the generated C#
+`RecordVisibility` gains an `init` member for it (a `Department` dimension gives
+`Departments`), empty by default. A resolver written before the dimension
+existed still compiles and sees nothing through it. The tenant root and the
+sub-tenant are not valid scopes; use `subTenant` for the second.
+
+**Inheritance.** An entity with no `visibility` of its own follows the
+strictest narrowing among the nearest declaring ancestors on each `belongsTo`
+route. An entity under both a `subTenant` and a `grantFiltered` ancestor must
+satisfy both. An entity that carries the sub-tenant column itself filters on its
+own column, whatever its ancestors say. A child may not declare `tenantWide`
+under a narrowed ancestor (`VISIBILITY_WIDER_THAN_ANCESTOR`).
+
+#### A hidden row answers 404, not 403
+
+**This is a behaviour change at `0.21.0` for every entity that declares or
+inherits a narrowing.** A row the `Visibility` filter hides is not found: the
+generated get, update and delete of another sub-tenant's row (or a row outside
+the caller's grant) answer `404`, and a list's `TotalItems` counts only the rows
+the caller can see. Before, a sub-tenant miss could answer `403`. Update any
+client, contract or scenario that asserts `403` for a row outside the caller's
+sub-tenant. A hand-written `ITenantResourceCheck` that answers `403` for a
+sub-tenant mismatch keeps answering `403`, because that is your code, not the
+generated path.
+
+**What else stops seeing rows, and what does not.** The generated uniqueness
+pre-check and the outbox lookup ignore `Visibility`, so a duplicate in another
+sub-tenant is still a `409`. `DeleteWithCascade` deletes nothing when the caller
+cannot see the root. A held `Read{Entity}` replica of a narrowed entity is
+**not** filtered. `tenancy.enforcement: route` suppresses `Tenant` only;
+`Visibility` stays on.
+
+#### What lint checks, and what only the generator can
+
+`specfuse-xentity-shape` checks the shape and mirrors the spec-level ERRORs: the
+mode set, `mode` present in the object form, `scope` present and not blank on
+`grantFiltered` (so the scalar `visibility: grantFiltered` is rejected), the
+`unscopedRows` set, and no other key. It accepts `scope` on `tenantWide` or
+`subTenant` and `unscopedRows` on `grantFiltered`, because the jar only warns on
+those. Everything that needs `tenancy` or the ownership graph is generator-only;
+run `validate` on the project file, not a bare bundle, to see it.
+
+| Code | Severity | Fires when |
+|---|---|---|
+| `VISIBILITY_UNKNOWN_MODE` | ERROR | the mode is absent or not `tenantWide` / `subTenant` / `grantFiltered`. Spec-level. |
+| `VISIBILITY_SCOPE_MISSING` | ERROR | `grantFiltered` with no `scope`, or a blank one; the scalar form always. Spec-level. |
+| `VISIBILITY_UNKNOWN_UNSCOPED_ROWS` | ERROR | `unscopedRows` is not `tenantWide` / `restricted`. Spec-level. |
+| `VISIBILITY_SCOPE_INVALID` | ERROR | a `grantFiltered` `scope` is not a property of the entity, is not a uuid, has no local `x-references` (absent, `none` or `resolve: remote`), or references the tenant root or the sub-tenant |
+| `VISIBILITY_ON_GLOBAL_ENTITY` | ERROR | a narrowing on an entity no ownership path ties to the tenant, or in a project with no `tenancy` |
+| `VISIBILITY_SUBTENANT_NOT_SCOPED` | ERROR | `subTenant` on an entity with neither the sub-tenant column nor a `belongsTo` chain to the sub-tenant |
+| `VISIBILITY_UNSCOPED_ROWS_UNDECLARED` | ERROR | `subTenant` reaches the sub-tenant through a nullable column or an optional hop and states no `unscopedRows` |
+| `VISIBILITY_WIDER_THAN_ANCESTOR` | ERROR | `tenantWide` declared under a `subTenant` or `grantFiltered` ancestor. Compares `mode` only. |
+| `VISIBILITY_UNSCOPED_ROWS_UNUSED` | WARNING | a key with no effect: `unscopedRows` where no row can be unscoped or on `grantFiltered`, or `scope` on a mode other than `grantFiltered` |
+| `VISIBILITY_NOT_ENFORCED` | WARNING | a Python group reads a tenant-owned table through `repository` or `aiRepository`. Its readers return rows the C# filters hide. |
+
+An unknown key under `visibility` is `INVALID_EXTENSION_VALUE` (ERROR). The
+generator matches the object's keys case-insensitively; the kit accepts the
+documented spelling only, as it does for `delete` and `concurrency`.
+
+> **On a jar older than `0.21.0` the key does nothing.** `0.20.0` and `0.19.0` do
+> not know `visibility`: they report `ENTITY_SHAPE_UNKNOWN_PROPERTY` (a WARNING)
+> and generate no narrowing, so every caller of the tenant sees every row. Lint
+> accepts the key whatever the pin, so check `generator.lock` before you rely on
+> it.
 
 ### 1.1.1 aiAccess (within x-entity)
 
@@ -1381,6 +1609,7 @@ email:
 | `mode` | `randomized` \| `deterministic` | `deterministic` parses and is then refused: `PROTECTION_MODE_UNSUPPORTED` ("declared but unsupported in v1"). Only `randomized` is implemented. |
 | `blindIndex` | `{ equality, prefix, normalization[], scope }` | `scope` is `tenant` \| `global`. How an encrypted value stays searchable. |
 | `masking` | `{ first, last }` on a plain string, or `{ reveal: [...] }` on a `format: date` string (generator `0.19.0`) | `first` / `last`: how many leading and trailing characters survive masking. `reveal`: which of `year`, `month`, `day` stay visible on a date. **Applied on the wire from generator `0.14.0`** by a C# API group registering `apiMapper`; an `atRest: encrypted` string or date declaring none gets a default. Any other target is `MASKING_NON_STRING` (ERROR). See "Masking on the wire, and `x-unmask`" and "Masking a date" below. |
+| `unmask` | `{ roles, holder }` (generator `0.20.0`) | **Who may read this masked field in the clear** when an operation's `x-unmask` parameter asks for it. `roles`: a role name or a list; any caller holding one, **on the row's own tenant**, is granted. `holder: { property, caller }`: the caller whose `caller.userId` (or `caller.<name>`, the same sources as `x-populate-from`) equals the row's `property` is granted. The two are OR-ed. No other key is accepted, `scopes` included. Only on a masked field (`UNMASK_WITHOUT_MASKING`). See "`x-protection.unmask` — who may unmask" below. |
 | `unbounded` | boolean | **The property has no `maxLength`, and that is deliberate.** It asserts that the value's length is genuinely unbounded, so no bounded ciphertext column can be sized for it and the storage falls back to the target's large-object form. Treat it as a review signal rather than a storage switch: at generator `0.12.0` its only consumer is the data-protection audit's protection matrix (`Project_File.md` §11.5, section 2), where `unbounded: true` on an encrypted property is the row an assessor is meant to question. Wherever the value does have a real bound, declare `maxLength` instead — and note that **a `pattern` is not a bound**: `pattern: '^[0-9]{5}$'` pins the length exactly and still leaves the property unbounded as far as any sizing is concerned. |
 | `rationale` | string | **Required when `atRest: none`.** |
 | `reviewedOn` / `reviewedBy` | date / string | Who signed the decision off, and when. From generator 0.9.0 a `reviewedOn` older than **18 months** is reported as a stale review in the data-protection audit — a finding, never a build failure. |
@@ -1502,7 +1731,7 @@ Customer:
 
 ##### `x-unmask` — asking for a masked field in the clear
 
-`x-unmask: true` on a **query parameter** of a **single-resource GET** lets a caller ask for named masked fields unmasked. It is a parameter extension, not an `x-entity` key, so `extensions --format json` does not list it.
+`x-unmask: true` on a **query parameter** of a **single-resource GET** lets a caller ask for named masked fields unmasked. From generator `0.20.0` it may also sit on a **PUT or PATCH** whose success response is not a list, where it means something else: see "`x-unmask` on a PUT or PATCH" below. It is a parameter extension, not an `x-entity` key, so `extensions --format json` does not list it.
 
 ```yaml
 /customers/{customerId}:
@@ -1524,11 +1753,18 @@ What the generated C# controller does, measured on a generated fixture:
 
 1. **Normalises** the values — each split on commas, trimmed, empties and duplicates dropped. An empty `unmask` is the same as none: every field stays masked.
 2. **Refuses an unknown name with `400`** *before* the service call. Names are the wire names in the enum, matched case-sensitively.
-3. Loads the resource, then asks **`IFieldUnmaskPolicy.CanUnmaskAsync(principal, entity, fields)`** for the subset the caller may see.
+3. Loads the resource, then asks who may see which field: a host-registered **`IFieldUnmaskPolicy.CanUnmaskAsync(principal, entity, fields)`** if there is one, otherwise (from generator `0.20.0`) the decision generated from `x-protection.unmask`. See "Deny by default" below.
 4. **If any requested field is denied, the whole request is a `403`** — there is no partial grant. The error's `type` is `unmaskForbidden` when the spec's `ErrorType` enum declares that value, otherwise the generic forbidden type (`insufficientPrivileges`).
 5. On a full grant, calls **`RecordUnmaskAsync`** with the granted fields, sets **`Cache-Control: no-store`**, and maps the response with only those fields in the clear.
 
-**Deny by default.** The policy is resolved from DI; a host that registers none gets the generated `DenyAllFieldUnmaskPolicy`, so every unmask request is refused until someone writes the policy. `RecordUnmaskAsync` is where the host writes its audit trail of who saw what. The parameter never reaches a service signature, and a create, update or list response never unmasks.
+**Deny by default, unless the spec says who may unmask.** The decision is resolved in this order, from generator `0.20.0`:
+
+1. A host-registered `IFieldUnmaskPolicy` wins, and keeps its own `RecordUnmaskAsync`.
+2. Otherwise a host-registered `IFieldUnmaskDecision`.
+3. Otherwise, **in a project where some property declares `x-protection.unmask`**, the generated `SpecFieldUnmaskDecision`, which grants what those declarations say. A field whose property declares no rule is still denied to everyone.
+4. Otherwise the generated `DenyAllFieldUnmaskPolicy`: every unmask request is refused. Through `0.19.0` this was the only default, so a host that wrote no policy refused every request.
+
+A spec-decided grant is audited through the generated `IUnmaskAuditSink`; its default, `LoggingUnmaskAuditSink`, writes one log line naming the caller, the entity and the field names, never a value. Register your own sink to write a real audit trail. The parameter never reaches a service signature, and a create, update or list response never unmasks.
 
 **Generated with every `apiMapper` group, `x-unmask` or not:** `FieldMask`, `IFieldUnmaskPolicy`, `DenyAllFieldUnmaskPolicy` (in `{apiPackage}.Mappers`). A hand-written type of any of those names collides. Registering a policy in a group whose GETs declare no `x-unmask` changes nothing — the controller is the only caller. Dart and TypeScript clients send the values comma-separated and omit the key when empty; TypeScript types it as a literal union of the enum.
 
@@ -1536,7 +1772,7 @@ What the generated C# controller does, measured on a generated fixture:
 
 | code | severity | fires on |
 |---|---|---|
-| `UNMASK_PARAMETER_ON_LIST` | **ERROR** | `x-unmask` on a non-GET operation, or on a GET whose response is a bare `type: array` or, from generator `0.15.0`, a `{Resource}List` wrapper |
+| `UNMASK_PARAMETER_ON_LIST` | **ERROR** | `x-unmask` on a POST, a DELETE or another verb, on a GET whose response is a bare `type: array` or, from generator `0.15.0`, a `{Resource}List` wrapper, or on a PUT/PATCH whose success response is a list. Through `0.19.0` it fired on **every** non-GET, PUT and PATCH included. |
 | `UNMASK_VALUE_NOT_MASKED` | **ERROR** | an enum value that is not a **top-level** masked field of the response entity — a field masked only inside a nested DTO counts as not masked |
 | `UNMASK_FORBIDDEN_TYPE_NOT_DECLARED` | WARNING | the spec declares `x-unmask`, its `Error.type` is typed by an `ErrorType` enum, and that enum lacks `unmaskForbidden` |
 | `UNMASK_UNDECLARED` | INFO (printed as `SUGGESTION`) | a single-resource GET returns masked fields and declares no `x-unmask` — legitimate when the fields must never be revealed there |
@@ -1544,6 +1780,113 @@ What the generated C# controller does, measured on a generated fixture:
 The parameter is exempt from `OPERATION_NON_SEARCHABLE_QUERY_PARAM`.
 
 > **On a list GET returning `{Resource}List`, `0.14.0` reports the wrong code.** `x-unmask` on `GET /tenants/{tenantId}/customers` returning `CustomerList` is not `UNMASK_PARAMETER_ON_LIST` but `UNMASK_VALUE_NOT_MASKED` for every enum value (*"masked: []"*), because the validator sees the response with its `$ref` already resolved and cannot recognise the paginated wrapper. From generator `0.15.0` it is `UNMASK_PARAMETER_ON_LIST` (`clabonte/generator#2370`), measured on a build of generator main. Either way the spec is refused, and the fix is the same — move the parameter to the single-resource GET. See `compatibility.md` §42.
+
+##### `x-protection.unmask` — who may unmask (generator `0.20.0`)
+
+`x-unmask` lets a caller **ask**. `x-protection.unmask`, on the masked property,
+says **who is granted**. Without it, a field listed in an `x-unmask` enum is
+denied to everyone, which is easy to ship by accident: the generated tests check
+the masked default, the `400` and the `403`, and deny-all satisfies all three.
+
+```yaml
+Employee:
+  type: object
+  x-entity: { domain: staff, type: aggregate, concurrency: optimistic }
+  properties:                       # createdAt, unavailableProperties, maskedProperties… omitted
+    id: { type: string, format: uuid }
+    dateOfBirth:
+      type: string
+      format: date
+      x-classification: [pii]
+      x-protection:
+        atRest: encrypted
+        masking: { reveal: [year] }
+        unmask:
+          roles: [Admin]                                 # any of these roles, on this row's tenant
+          holder: { property: id, caller: caller.userId } # or the employee themselves
+```
+
+- **`roles`** grants a caller holding a listed role **on the row's own tenant**.
+  A role declared `superuser: true` in `info.x-roles` (§3.1) grants whenever the caller claims it. Any
+  other role grants only when the generated controller verified it against the
+  request's own resource, through `RoleAuthorizationHandler.VerifyRolesAsync`
+  and your `ITenantResourceCheck`. A role held at another tenant grants nothing.
+  A caller with no such verification (a worker, a non-HTTP caller, a group with
+  no `ITenantResourceCheck`) is denied every non-superuser role rule.
+- **`holder`** grants the caller whose identity equals the row's `property`.
+  `caller` is `caller.userId`, or `caller.<name>` resolved through
+  `ICallerFieldResolver`, the same sources as `x-populate-from` (§1.11).
+  `property` must be a uuid or plain-string property of the same schema. A NULL
+  holder value denies. A holder rule still grants when there is no tenant
+  verification.
+- The two are **OR-ed**. `unmask: {}` declares a rule that grants nobody.
+- `scopes` is **not** accepted yet; it is `UNKNOWN_PROTECTION_SUBKEY`.
+
+**A masked field in no `x-unmask` enum** cannot be revealed by any request, and
+no diagnostic says so: `UNMASK_RULE_UNDECLARED` only judges fields an enum lists.
+Whether that is by design or an omission shows only in the data-protection
+audit, which from `0.20.0` reports each masked field's rule (`roles`, `holder`,
+or `denied`).
+
+**What the C# Domain group gains** when any property declares a rule:
+`IFieldUnmaskDecision`, `SpecFieldUnmaskDecision`, `IUnmaskAuditSink` and
+`LoggingUnmaskAuditSink`, in `Models/` beside `CallerContext`. A spec that
+declares no rule generates exactly what it did before. The generated functional
+tests gain a grant case (a listed role reads the clear value) and a deny case
+for a role the operation admits but the rule omits. A holder-only rule gets no
+generated grant case.
+
+| code | severity | fires on |
+|---|---|---|
+| `UNMASK_RULE_UNDECLARED` | WARNING | a field an `x-unmask` enum lists whose property declares no `unmask`: nobody can reveal it. Legitimate when it must never be revealed; then remove it from the enum. |
+| `UNMASK_ROLE_UNREACHABLE` | WARNING | a role in `unmask.roles` that is in none of the `x-roles` of the operations listing the field, that is missing from `info.x-roles` when that registry exists, or whose field no `x-unmask` enum lists. An operation with no `x-roles` admits any role and is not judged. |
+| `UNMASK_HOLDER_INVALID` | **ERROR** | `holder` missing `property` or `caller`, a `property` that is not a uuid or plain-string property of the schema, a `caller` that is not `caller.userId` / `caller.<identifier>`, or a `caller.<name>` already typed the other way by an `x-populate-from` |
+| `UNMASK_WITHOUT_MASKING` | **ERROR** | `unmask` on a property that is not masked (a plain string with no mask, a `writeOnly` field, a non-string) |
+
+**Lint checks the shape only.** `specfuse-xprotection-shape` accepts `unmask`
+with `roles` (a string or a list) and `holder`, rejects any other key at either
+level, and requires `holder` to carry both members with a `caller` of the form
+`caller.<identifier>`. Those mirror `UNKNOWN_PROTECTION_SUBKEY` and the shape half
+of `UNMASK_HOLDER_INVALID`. Whether the field is masked, whether `holder.property`
+exists with the right type, and both WARNINGs need the schema and the operations,
+so they are `validate`'s. The jar also parses `unmask` inside a value object's
+usage-site `protection` (§2.1), because the sub-key set is shared; the kit has no
+measured case of it doing anything there.
+
+> **Pin before you declare.** A jar older than `0.20.0` does not know `unmask`:
+> it reports `UNKNOWN_PROTECTION_SUBKEY` (ERROR), so `validate` fails on every
+> property that declares it. At `0.19.0` the rest of the block still parses. Lint
+> accepts the key whatever the pin.
+
+##### `x-unmask` on a PUT or PATCH (generator `0.20.0`)
+
+On a write, `?unmask=<field>` means **"the value I send for this field is
+real"**, not "return it in the clear". It exists for masked dates: from `0.19.0`
+a PUT or PATCH whose body carries exactly the masked rendering of the stored
+date keeps the stored date (`API_Handbook.md` §1.4.1), so a caller who
+genuinely means that value has to say so.
+
+- The controller normalises the names and answers `400` for an unknown one, as
+  on a GET.
+- The service loads the row and calls `UnmaskGrant.Require(context, entity)`
+  **before anything changes**. If the caller may not unmask a named field, the
+  request is `403` (`unmaskForbidden` when the spec's `ErrorType` declares it),
+  whether or not the body carries the field, and nothing is written.
+- For a granted masked date, the echo guard is skipped and the value is stored
+  as sent. Every other field keeps the guard. A string mask has no echo guard,
+  so on a string field the parameter is checked and changes nothing else.
+- **The response stays masked**, carries no `Cache-Control: no-store`, and no
+  audit record is written: the request discloses nothing.
+- **A host `IFieldUnmaskPolicy` is not consulted on a write.** It is typed on
+  `ClaimsPrincipal`, which the Domain service cannot call. A write is decided by
+  a host `IFieldUnmaskDecision`, else by `SpecFieldUnmaskDecision`. So a field
+  whose read your policy grants, but whose property declares no `unmask`, is
+  `403` on a write.
+- **An application operation** (`x-operation: category: coordination`) gets the
+  normalisation, the `400` and the request carried on `CallerContext`, but **your
+  application service must call `UnmaskGrant.Require` itself**, and then
+  `Entity.Update(dto, unmasked)`. The generator writes no `403` for code it does
+  not generate, and nothing reports a missing call.
 
 #### `unavailableProperties` — every encrypting entity owes a poisoned-read surface
 
@@ -1708,6 +2051,7 @@ The two sides split cleanly, and the split is the generator's own: `PiiClassific
 | 7 | A property the validator reads as PII MUST declare `x-classification` (see "Where it is required" above). | generator — `PII_FIELD_MISSING_CLASSIFICATION` (error); mirrored in the editor by kit `specfuse-classification-pii-required` |
 | 15 | An entity declaring `x-protection.atRest: encrypted` on one of its own properties MUST expose a `readOnly` string array `unavailableProperties`. Generator `0.13.0`; **breaks specs that validated on `0.12.0`**. From generator `0.14.0` this includes an encrypted value-object usage site stored `flatten`; from `0.16.0`, also when `flatten` is inherited from `defaultStorage`. `single_json` is exempt. | generator — `UNAVAILABLE_PROPERTIES_NOT_DECLARED` (error); mirrored by kit `specfuse-xprotection-unavailable-properties-required` |
 | 16 | A `type: string` property of an `x-entity` schema whose name ends in `hash` or `digest` (case-insensitive; `api_key_hash` counts) MUST declare `x-protection`, whether or not it is classified. `atRest: hashed` is the expected answer for a stored digest (with `x-internal-only`, rule 13), `atRest: none` with a rationale for a public content digest. Presence only — any `x-protection` silences it. Out of scope: a `$ref`-typed or `allOf`-wrapped property, a non-string, and a non-entity schema. **No temporal exclusion**, unlike `SENSITIVE_FIELD_IN_RESPONSE`: a `format: date-time` property named `*Hash` fires. Generator `0.15.0`; **opens at ERROR, so it can break a spec that validated on `0.14.0`** — `x-internal-only` or `writeOnly` alone used to be enough for such a property. | generator — `PROTECTION_DIGEST_UNDECLARED` (error); mirrored by kit `specfuse-xprotection-digest-undeclared` |
+| 17 | `x-protection.unmask` (generator `0.20.0`) sits only on a masked field, and its `holder` names a uuid or plain-string property of the schema and a `caller.userId` / `caller.<identifier>` source. A listed field with no rule, and a rule role no operation listing the field admits, are WARNINGs. See "`x-protection.unmask` — who may unmask". | generator — `UNMASK_WITHOUT_MASKING` / `UNMASK_HOLDER_INVALID` (error), `UNMASK_RULE_UNDECLARED` / `UNMASK_ROLE_UNREACHABLE` (warning); the shape (closed keys, both `holder` members, the `caller` form) mirrored by kit `specfuse-xprotection-shape` (error) |
 
 Rules 5 and 6 were documented here for some time and enforced by **nothing** on either side — rule 5 even named a finding id (`CLASSIFICATION_EXPOSED_CONTRADICTION`) that exists in neither the kit nor the jar. They are kit Spectral rules now. Rule 2 warns rather than fails: a refused target generates, in plaintext, so read the warning as a protection decision that did not happen.
 
@@ -3847,7 +4191,7 @@ x-worker:
 
 **`name` (optional, kebab-case):** overrides the worker identity stem that the generator derives from the operation key. Affects the folder name, handler class name, worker class name, settings class name, and module/package name. Use when the operation key describes the triggering event but the worker's purpose is different — e.g., `on-customer-created` triggers the `customer-profile-setup` worker. When absent, the stem is derived by stripping the operation prefix (`on-`/`run-`/`emit-`) from the operation key.
 
-**`inboxDedup` (optional boolean, default `true`):** controls whether the generated handler base inserts an inbox-claim row keyed on `(eventId, handlerName)` before invoking the handler: the typed `Handle<Event>Async` method, or the deprecated `HandleCoreAsync` hook. Default `true` is the safe choice: at-least-once delivery + inbox dedup gives effectively-once *processing*. Set `false` only for handlers with no DB writes and no externally-visible side effects (cache invalidator, metrics emitter) where the cost of the inbox row outweighs the safety. Coherence with `idempotent` and the operation's delivery-trait `guarantee` is enforced by Spectral rule `specfuse-async-worker-inbox-dedup-coherence`.
+**`inboxDedup` (optional boolean, default `true`):** controls whether the generated handler base inserts an inbox-claim row keyed on `(eventId, handlerName)` before invoking the handler's typed `Handle<Event>Async` method (the raw-body `HandleCoreAsync` hook was removed in generator 0.20.0). Default `true` is the safe choice: at-least-once delivery + inbox dedup gives effectively-once *processing*. Set `false` only for handlers with no DB writes and no externally-visible side effects (cache invalidator, metrics emitter) where the cost of the inbox row outweighs the safety. Coherence with `idempotent` and the operation's delivery-trait `guarantee` is enforced by Spectral rule `specfuse-async-worker-inbox-dedup-coherence`.
 
 **`settingsPrefix` (optional, string):** overrides the auto-derived environment-variable prefix for the worker's generated settings class. By default, the generator takes the first letter of each kebab segment of `x-worker.name` (or the derived stem) and uppercases it (e.g., `order-enrichment` → `OE_`). Tunables are emitted as env vars under this prefix (e.g., `OE_ENRICHMENT_BATCH_SIZE=10`). Only set this when the auto-derived prefix would collide with another worker's prefix.
 
@@ -4734,7 +5078,7 @@ What follows from the table:
   Put the child's create and list operations at the child's own path, served by the child's pillar.
 - **Flattening moves parent and tenant scoping to code you own.** A nested list gets its parent scope from the URL. A flat `/orders` list does not:
   - **A parent-id query parameter narrows the list from generator `0.17.0`.** `customerId` declared on `GET /orders` and listed in `Order`'s `filterableProperties` binds as an equals filter (`API_Handbook.md` §10.3). Through `0.16.0` the generated service ignored it, and only the generic `filter` narrowed a list.
-  - **Neither is access control.** The generated query applies the value the caller sends and checks nothing about it. Every generated `HasQueryFilter` tests soft deletion only, and `I{Tenant}Scoped` stamps event envelopes and picks the per-tenant encryption key; it adds no query predicate. Row isolation between tenants is consumer code under either route shape.
+  - **Neither is access control.** The generated query applies the value the caller sends and checks nothing about it. Every generated `HasQueryFilter` tests soft deletion only, and `I{Tenant}Scoped` stamps event envelopes and picks the per-tenant encryption key; it adds no query predicate. Row isolation between tenants is consumer code under either route shape. *(True at `0.18.0`, when this was measured. From generator `0.21.0` a C# project that declares `tenancy` gets a generated `Tenant` query filter, and `x-entity.visibility` a `Visibility` one: `Project_File.md` §4.1 and §1.1 "`visibility`".)*
   - **The archived-parent cascade is lost under `resolve: remote`.** A child's soft-delete filter that also hides it when its parent is archived (`e.Parent!.DeletedAt == null`) needs the navigation. Without `belongsTo`, an archived parent's children still appear in lists.
 - **The tenancy root has two working forms** for the `I{Tenant}Scoped` marker, which is not row isolation (see the routes bullet). `belongsTo` to the tenant with a hold generates on both sides (second row), and the child carries the `I{Tenant}Scoped` marker. A `resolve: remote` reference to the tenant carries the marker with no `belongsTo` and no hold (§14.11). Measured with a `tenancy` block: under `belongsTo` and under `resolve: remote`, `Order` implemented the tenant marker. Under `x-references: Tenant` and under `x-references: none`, it did not. The generated `Order` events carried the marker in all four cases.
 - **The C# Domain no longer maps `Read{Entity}`** (`clabonte/generator#2392`). At `0.15.0` the generated C# maps through Mapperly, and no group emits an `AutoMapperProfile.g.cs`. In the measured groups, no generated file names a `Read{Entity}` except the replica's own entity and configuration and the holder's entity whose FK binds to it. Dart and TypeScript `dto` groups no longer emit a `Read{Entity}` client type. Checked with `dotnet build` on an unbound C# group of the held spec, with the domain artifacts it needs to compile (`domainValidation`, `domainExceptions`, `serviceInterface`, `service`, `repositoryInterface`, `event`, `eventRuntime`, `tenancyMarker`, `snapshot`, and a `tenancy` block). At `0.15.0` it built with 0 errors. At `0.14.0` it failed with `CS0246` on `ReadTenant`, `ReadOrder` and `ReadCustomer` in `AutoMapperProfile.g.cs`.

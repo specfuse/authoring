@@ -398,6 +398,8 @@ The predicate is evaluated by generator-emitted service code against `EntityEntr
 
 **Optional `context` field** (state-transition only): for transitions whose metadata genuinely should not persist on the entity (cancellation reason, external trigger source), a `context: { $ref: '../events/{Entity}{Action}Context.yaml' }` field may appear in the payload. When `context` is present, the message MUST declare `x-trigger-mode: explicit` and an `x-method-name` (the imperative verb for the generated service method); the generator then emits that explicit service method taking the context as a parameter and suppresses the auto-emission path for the event (see `Vendor_Extensions.md §12.2` for both extensions). `x-trigger-when` is still required — it documents the semantic transition AND prevents the auto-path from emitting `*Updated` per the mutual-exclusivity rule. The owning OpenAPI operation MUST also declare `x-context-justification` (see `Vendor_Extensions.md §6.3`).
 
+**Listing `context` in the payload's `required` has a C# cost from generator `0.20.0` (breaking).** The generated event record's member becomes `required <Context> Context`, and each generated create, update, replace and delete site that emits the event fills it by calling a protected virtual `Supply<Event>Context` hook on the `Default<Aggregate>Service`, which throws `InvalidOperationException` until the component overrides it. Through `0.19.0` the member was `<Context>? Context` and the generated site left it `null`. Leave `context` out of `required` unless every emission really carries one. An event whose `context` is optional generates as before.
+
 ### 2.3 Snapshots — One Per Entity, Reused Across All Events
 
 Each event-emitting entity has exactly one `{Entity}Snapshot` definition, **reused across all of its events** (Created/Updated/Deleted/state transitions). Snapshots live in a dedicated `events/` folder peer to `models/`:
@@ -934,13 +936,17 @@ x-worker:
 |-------|----------|------|-------------|
 | `name` | No | kebab-case string | Overrides the worker identity stem derived from the operation key. Controls folder name, handler class name, worker class name, settings class name, and module/package name. Default: when absent, the stem is derived by stripping the operation prefix (`on-`/`run-`/`emit-`) from the operation key. |
 | `idempotent` | No | boolean | Default: `true`. Whether processing the same message twice produces the same outcome. |
-| `inboxDedup` | No | boolean | Default: `true`. When `true`, the generated handler base inserts an inbox-claim row keyed on `(eventId, handlerName)` before invoking the handler: the typed `Handle<Event>Async` method, or the deprecated `HandleCoreAsync` hook. Set `false` only for handlers with no DB writes and no externally-visible side effects (cache invalidator, metrics emitter). Coherence with `idempotent` and the operation's delivery-trait `guarantee` is enforced by `specfuse-async-worker-inbox-dedup-coherence`. |
+| `inboxDedup` | No | boolean | Default: `true`. When `true`, the generated handler base inserts an inbox-claim row keyed on `(eventId, handlerName)` before invoking the handler's typed `Handle<Event>Async` method. From generator `0.20.0` the Python AI workers honour it too: an `x-ai` worker with `inboxDedup` true (the default) claims `(eventId, "ai-worker:<operationId>")` in `EventInbox` and skips a redelivered event. Set `false` only for handlers with no DB writes and no externally-visible side effects (cache invalidator, metrics emitter). Coherence with `idempotent` and the operation's delivery-trait `guarantee` is enforced by `specfuse-async-worker-inbox-dedup-coherence`. |
 | `concurrency` | No | integer | Default: `1`. Max concurrent handler instances. |
-| `timeout` | No | string (duration) | Hard execution cap (e.g., `30s`, `5m`). |
+| `timeout` | No | string (duration) | Hard execution cap (e.g., `30s`, `5m`). Default: `30s`. From generator `0.21.0`, a C# handler or scheduled job that runs past it throws `TimeoutException`, so the message is retried instead of dead-lettered on its first attempt. On Azure Functions, keep it at 240 s or less (`WORKER_TIMEOUT_EXCEEDS_FUNCTIONS_LOCK_RENEWAL`, below). |
 | `settingsPrefix` | No | string | Overrides the auto-derived environment-variable prefix for the worker's generated settings class. Default: first letter of each kebab segment of `x-worker.name` (or the derived stem), uppercased (e.g., `order-enrichment` → `OE`). Only set when the auto-derived prefix conflicts with another worker. |
 | `tunables` | No | array of objects | Worker-specific configuration fields emitted as typed fields on the generated settings class. Each field becomes an environment-variable-configurable setting prefixed with the worker's env prefix (e.g., `OE_ENRICHMENT_BATCH_SIZE=10`). See schema below. |
 
-**A C# worker receives its event as the generated record (generator `0.19.0`).** The generated handler base has one `Handle<Event>Async` method per subscribed message. It deserializes the body into the event record and dispatches by label. An unsubscribed label, a malformed body and a typed method left un-overridden are each dead-lettered as a `NonTransientException`. The old `HandleCoreAsync(EventEnvelope, JsonElement, CancellationToken)` override keeps compiling and working, with no diagnostic. It is deprecated by doc comment only, and a later release removes it, so move its logic into the typed methods. A dead-lettered message now carries a `DeadLetterReason` and `DeadLetterErrorDescription`. A worker write that supplies no `If-Match` throws `IfMatchRequiredException` (a `PreconditionFailedException`, so HTTP still answers `412`), which is dead-lettered on the first attempt instead of being retried up to `MaxDeliveryCount`.
+**A C# worker receives its event as the generated record.** The generated handler base has one `Handle<Event>Async(EventEnvelope, <Event>, CancellationToken)` method per subscribed message. It deserializes the body into the event record and dispatches by label. An unsubscribed label, a subscribed label whose body has no generated type, and a malformed body are each dead-lettered as a `NonTransientException`. A dead-lettered message carries a `DeadLetterReason` and `DeadLetterErrorDescription`. A worker write that supplies no `If-Match` throws `IfMatchRequiredException` (a `PreconditionFailedException`, so HTTP still answers `412`), which is dead-lettered on the first attempt instead of being retried up to `MaxDeliveryCount`.
+
+**From generator `0.20.0` every typed `Handle<Event>Async` is `abstract`, and `HandleCoreAsync` is removed (breaking, `clabonte/generator#2831`).** At `0.19.0` a typed method left un-overridden dead-lettered every delivery of that event at run time, and the raw-body `HandleCoreAsync(EventEnvelope, JsonElement, CancellationToken)` override still compiled and worked. Now a handler that leaves a subscribed event unhandled fails to compile (CS0534), and an `override` of `HandleCoreAsync` fails with CS0115. **Migration:** override `Handle<Event>Async` for every message in the operation's `messages:` list, and move a raw-body override's logic into those typed overrides, which receive the body already deserialized. The spec side follows: list in `messages:` only the events the worker really handles, because each one is now a method the component must write. The `TestableHandleCore(EventEnvelope, JsonElement, CancellationToken)` test seam stays and runs the same typed dispatch.
+
+**Lock renewal on Azure Functions (generator `0.21.0`).** The Functions host renews a message lock for five minutes whatever `timeout` says, and the lock lapses 60 s after its last renewal. A topic worker kept on Functions with a `timeout` above 240 s can lose its lock while its handler still runs, and the broker redelivers a message that is still being handled. Project-level `validate` reports each such worker as `WORKER_TIMEOUT_EXCEEDS_FUNCTIONS_LOCK_RENEWAL` (WARNING) whenever a C# group registers `azureFunctionTopicTrigger`. Fix it in the project file, not the spec: place the worker on `genericHost` (`Project_File.md` §17), which renews for `timeout` + 130 s, or lower the `timeout`.
 
 **`tunables[]` entry schema:**
 
@@ -1002,9 +1008,9 @@ x-subscription:
 |-------|----------|------|-------------|
 | `name` | Yes | kebab-case string | MUST equal the operation file name minus `.yaml`. Validated by `specfuse-async-subscription-name-mismatch`. |
 | `requiredHeaders` | No | object | Declarative envelope-header equality map. Each `(key, value)` becomes `AND user.{key} = '{value}'` in the generated filter. Keys must be camelCase ApplicationProperty names that the universal envelope (`tenantId`, `aggregateType`, `eventId`, etc.) or `x-envelope-promote` declarations actually publish. |
-| `filterOverride` | No | string | Raw SQL filter string. Mutually exclusive with `requiredHeaders`. Requires a `description` justification ≥ 40 chars on the operation explaining why derivation is insufficient. |
-| `maxDeliveryCount` | No | integer | Max delivery attempts before dead-lettering. Default: `10` |
-| `lockDuration` | No | string (duration) | Lock duration during processing. Default: `30s` |
+| `filterOverride` | No | string | Raw SQL filter string. Mutually exclusive with `requiredHeaders`. Requires a `description` justification ≥ 40 chars on the operation explaining why derivation is insufficient. At most 1024 characters: from generator `0.21.0` a longer one is `ASYNC_SUBSCRIPTION_FILTER_TOO_LONG` (ERROR), below. |
+| `maxDeliveryCount` | No | integer | Max delivery attempts before dead-lettering. Default: `10`. **Parsed, not applied** by the generated C# runtime (below). |
+| `lockDuration` | No | string (duration) | Lock duration during processing. Default: `30s`. **Parsed, not applied** by the generated C# runtime (below). |
 | `requiresSession` | No | boolean | Set to `true` when the referenced message has `x-partition-key`. Default: `false` |
 
 **The legacy authored `filter` field is forbidden.** Filters are derived from the operation's `messages:` list — Spectral rejects any operation declaring `filter` directly.
@@ -1014,6 +1020,10 @@ x-subscription:
 - `x-subscription` is NOT used on scheduled-trigger channels (no transport subscription)
 - The subscription name MUST equal the operation's file stem (renaming is the only remediation)
 - `requiredHeaders` and `filterOverride` are mutually exclusive
+
+**The generated C# runtime sets the delivery settings itself.** From generator `0.20.0` the generated provisioning (`ServiceBusSubscriptionProvisioner`, called by the Functions boot path and by the generic host's `provision` command) sets `MaxDeliveryCount` to 13 and `LockDuration` to 1 minute on every subscription it provisions, new or existing, whatever `maxDeliveryCount` and `lockDuration` say. The code, not the broker, dead-letters a message that exhausts its retries, after waiting its backoff (1 s up to 120 s) between attempts. Neither `0.19.0` nor `0.21.0` reads the two spec keys into generated code. Treat them as documentation of intent.
+
+**A filter longer than 1024 characters (generator `0.21.0`).** Service Bus rejects a rule whose SQL is longer than 1024 characters. A derived label filter that long is now split, in label order, into as few rules as fit (`<filterName>`, `<filterName>-2`, …), each AND-merged with `requiredHeaders`; provisioning creates, updates and deletes the split rules. A filter that fits emits exactly what it did before. A `filterOverride` is emitted verbatim and cannot be split, so one over 1024 characters is `ASYNC_SUBSCRIPTION_FILTER_TOO_LONG` (ERROR) at `validate`, and generation fails with the same code. **Fix:** shorten the override, or drop it and let the filter derive from `messages:`. Through `0.20.0` such a filter generated, and `provision` failed with "The argument 'sqlExpression' cannot exceed 1024 characters", leaving the worker on its previous rule.
 
 **Three filter modes:**
 
@@ -1138,6 +1148,7 @@ What the generator does with it:
 
 - **`validate`** warns `AI_PERSONAL_DATA_REGION_MISSING` when `personalData: true` is declared without `providerRegion`.
 - **The generated Python worker** carries the declaration as `ClassVar`s on its `*Settings` class (`personal_data`, `required_provider_region`), which no environment variable can override. `BaseWorkerSettings` gains `primary_provider_region` and `fallback_provider_region`, set at deploy time through `<PREFIX>_PRIMARY_PROVIDER_REGION` and `<PREFIX>_FALLBACK_PROVIDER_REGION`.
+- **The model is a deploy-time setting, and it is required (generator `0.20.0`, breaking at run time).** `x-ai.model` is informational, so the generated settings name no model: `primary_model` has no default and is read from `<PREFIX>_PRIMARY_MODEL`, where `<PREFIX>` is `x-worker.settingsPrefix` or its derived default. Through `0.19.0` it defaulted to `claude-sonnet-4-6`, so a deploy that forgot the variable ran a model nobody chose. A worker started without it now fails at settings construction with pydantic's `primary_model Field required`. Set it in every environment that runs the worker, local `.env.local` included.
 - **When a region is declared, the worker refuses to start** if the configured primary region is unset or differs. The same applies to the fallback region when a `fallback_model` is configured. **Set the deploy-time variables before you regenerate with a region.** Otherwise the worker that declares it stops starting.
 
 > **What this does not check.** The generator compares the configured region with the declared one. It cannot see where an endpoint actually runs, so a provider configured as `CA` that runs elsewhere passes. The declaration is evidence for a residency promise, not proof of it.
@@ -1202,7 +1213,7 @@ Consumers using `requiresSession: true` see the same prefixed session IDs. Autho
 
 #### 4.5.2 Subscription filter entity-pattern cap
 
-The effective filter on a subscription (derived from the operation's `messages:` list, plus any `requiredHeaders` / `filterOverride`) may reference **at most 10 distinct entity patterns** — counted as distinct `sys.Label = '<Entity>.'` clauses in the derived OR-chain or distinct `LIKE '<Entity>.` prefixes inside a `filterOverride`. More than 10 is a smell: the worker is probably doing too much and should be split along a natural seam. The cap also keeps filters well under the transport's filter-size limit (e.g., 2048 chars on ASB).
+The effective filter on a subscription (derived from the operation's `messages:` list, plus any `requiredHeaders` / `filterOverride`) may reference **at most 10 distinct entity patterns** — counted as distinct `sys.Label = '<Entity>.'` clauses in the derived OR-chain or distinct `LIKE '<Entity>.` prefixes inside a `filterOverride`. More than 10 is a smell: the worker is probably doing too much and should be split along a natural seam. The cap also keeps filters short. Service Bus accepts at most 1024 characters per rule; from generator `0.21.0` a longer derived filter is split across rules, and a longer `filterOverride` is an ERROR (§4.3, `x-subscription`).
 
 Recall that authors do NOT write a raw `filter` field directly (forbidden — see §4.3); the rule operates on the derived filter the generator produces.
 
@@ -1379,6 +1390,8 @@ post:
       description: Emitted when the order is submitted
 ```
 
+**A generated write emits only its own entity's events (generator `0.21.0`, breaking).** Each `x-emits` label's `x-label.entity` must be the entity the operation's generated service method writes: the aggregate for a root write, the child for a related-entity write. A label naming any other entity is `OPERATION_EMITS_FOREIGN_ENTITY` (ERROR) at `validate` and `generate`. `x-manual` operations and custom `x-operation`s are exempt, because their method is hand-written. The rule, its message and the fix are in `API_Handbook.md` §2, "`x-emits` on a write".
+
 **Order matters on a child create.** The generator reads the **first** label's entity. On a write whose body is a child entity's `New*` under a different URL aggregate, a first label naming the child makes every generated surface return the child. From generator `0.15.0`, a 2xx that declares the URL aggregate there is `OPERATION_RESPONSE_TYPE_OVERRIDDEN` (ERROR). See `Vendor_Extensions.md` §6.1.
 
 ##### Deliberately silent writes: `x-emits: []`
@@ -1485,6 +1498,8 @@ currency:
 ### 7.4 Project Configuration
 
 The Workers group in the project's generator configuration file (a JSON file at the project root, consumed by the Specfuse generator) specifies the target language and output directory. The spec itself remains language-agnostic.
+
+Which host runs each C# topic worker is project configuration too, not spec: `workerPlacement` (generator `0.20.0`) puts each `on-*` worker on Azure Functions (the default) or a generic host, and the spec does not change when a worker moves (`Project_File.md` §17). From generator `0.20.0` a project that registers `azureFunctionTopicTrigger`, `hostedTopicConsumer` or `heldEntityHydrationTrigger` must also register `eventRuntimeImpl`, or the load fails with `TRIGGER_REQUIRES_EVENT_RUNTIME_IMPL` (`Project_File.md` §10).
 
 ---
 

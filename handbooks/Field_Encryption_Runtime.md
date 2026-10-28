@@ -166,16 +166,19 @@ policy, so every unmask request is refused with a `403` and the host still boots
 masked responses. The safe failure is the default; the cost of forgetting is a feature that
 never works, not a leak.
 
-**Nothing tells you it never works.** No diagnostic reports a spec that declares `x-unmask`
-for a host that registers no policy. The generated tests cover the masked default, the `400` and
-the `403`, and deny-all satisfies all three. The grant test is left to the host. A consumer found,
-late, that every unmask request on every field was a `403`. If a GET declares `x-unmask`, write
-the policy, and write a test that a granted role reads the field in the clear. A declarative
-policy in the spec is proposed as `clabonte/generator#2768` (open at `0.19.0`).
+**Nothing at run time tells you it never works.** The generated tests cover the masked default,
+the `400` and the `403`, and deny-all satisfies all three. A consumer found, late, that every
+unmask request on every field was a `403`. The declarative policy shipped in generator `0.20.0`
+(`clabonte/generator#2768`): `x-protection.unmask` on the masked property names the roles, or
+the row's holder, that may read it in the clear, and with a host policy absent the generated
+`SpecFieldUnmaskDecision` decides from it instead of deny-all. A field with no rule is still
+denied, and `validate` warns `UNMASK_RULE_UNDECLARED` for each field an `x-unmask` lists whose
+property declares none. Declare the rule (`Vendor_Extensions.md`, `x-protection`), or register
+your own policy, and write a test that a granted role reads the field in the clear.
 
 | Contract | Who provides it | When absent |
 |---|---|---|
-| **unmask policy** — decide, then record | you, only if a GET declares `x-unmask` | deny-all: every unmask request is a `403` |
+| **unmask policy** — decide, then record | the spec's `x-protection.unmask` rules, or you, only if a GET declares `x-unmask` | where some property declares `unmask`, the generated `SpecFieldUnmaskDecision`; otherwise deny-all: every unmask request is a `403` |
 
 The record call is the audit trail — *who saw which field of which row, in the clear* — and it
 is the only place the generated code tells you that happened. A granted response also carries

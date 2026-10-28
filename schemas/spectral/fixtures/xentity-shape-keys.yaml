@@ -51,7 +51,13 @@
 #   UniqueByNoProperties          flagged: `properties` is required
 #   UniqueByEmptyProperties       flagged: a constraint over no properties
 #   UniqueByUnknownMember         flagged: unknown key inside a constraint object
+#                                 (`filter`; it used `nullsDistinct` until generator
+#                                 0.20.0 made that a real member)
 #   UniqueByBadPropertyName       flagged: property names are camelCase
+#
+# FullyDocumented also carries the generator 0.20.0 `uniqueBy` members
+# (`nullsDistinct`, `where`) and the 0.21.0 `visibility` key. Both directions of
+# those are pinned in uniqueby-visibility-unmask.yaml.
 #
 # Kit 0.19.0 documents `classification` and `protection` on a valueObjects
 # usage site (generator 0.6.0 vocabulary, published in Vendor §2.1 only now),
@@ -138,6 +144,11 @@ components:
           archiveVisibility: operational
         uniqueBy:
           - properties: [reference]
+          - properties: [reference, status]   # generator 0.20.0 members
+            nullsDistinct: false
+            where:
+              - { property: status, equals: open }
+        visibility: { mode: subTenant, unscopedRows: tenantWide }   # generator 0.21.0
         cascadeDelete: soft
         children: [OrderLine, Payment]
         valueObjects:
@@ -689,7 +700,7 @@ components:
         type: aggregate
         uniqueBy:
           - properties: [reference]
-            nullsDistinct: true           # not a documented constraint member
+            filter: "[IsActive] = 1"      # not a constraint member (`where:` is)
       properties:
         id: { type: string, format: uuid }
         reference: { type: string }
