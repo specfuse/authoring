@@ -232,6 +232,10 @@ With a Test group, the generated tests derive from and call three hand-written t
 
 The generated `TestSeed` (stable GUIDs and a pre-wired entity graph) and the `A.{Entity}()` builders point at each other; `EnsureFakeData()` is where you seed that graph into the test database. A bare `A.Order()` is not a self-contained row: it carries foreign keys to `TestSeed` ancestors, and a read through the generated query filters joins them.
 
+From generator 0.22.0, also call `TestSeed.SeedSpareParents(context)` from `EnsureFakeData()`, beside the rows you already add. It seeds a spare parent row for each `uniqueBy` tuple made only of references (one gadget per owner), so the generated create test does not collide with the seeded child and answer 409. It is emitted on every `TestSeed`, empty when no tuple needs it, so the call can stay put. Without it, the create test answers 404 on the parent lookup.
+
+Also from 0.22.0, the generated service unit tests assert what each emitted event carries and the exact set of events an update emits, including `x-trigger-when` transitions. A red service test after a regen means the service emits something other than what the spec implies, not a flaky test: fix the service, there is no opt-out. Events now carry the acting user: generated controllers and worker handler bases enter `EventActorScope`, so `EventEnvelope.UserId` is filled. Hand-written code that emits on behalf of a user outside those entry points (a hand-written endpoint, a hub, a background service) wraps the work in `using var _ = EventActorScope.Enter(userId);` with the domain user id.
+
 ## 5. Extending generated code
 
 Never edit a file under `gen-src/`. A wrong generated file is fixed in the spec or in the generator, then regenerated; an edit disappears on the next run. The one exception, a tracked patch while a generator fix is pending, is §9.1. Four patterns cover everything else, all in `src/`, all in the generated type's own namespace.

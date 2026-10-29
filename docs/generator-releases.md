@@ -24,6 +24,51 @@ Newest first. An entry is **pending** until the kit release that pins it is publ
 | **Tracked issues** | you were waiting on a fix |
 | **Kit changes** | you want to know what moved in the handbooks, rules and tooling |
 
+## 0.23.0 (with 0.22.0)
+
+**Status: pending.** Pinned by kit `v0.31.0` (jar sha256 `b906ed3f…5ffacc6`; full record in [`compatibility.md`](https://github.com/specfuse/authoring/blob/main/compatibility.md) §59). Generator release dates: 0.22.0 on 2026-10-28, 0.23.0 on 2026-10-29.
+
+The kit goes from **0.21.0 to 0.23.0**; everything below covers both releases.
+
+### Before you regenerate
+
+**Spec authors**
+
+- **Kiosk sessions are admitted per operation (0.22.0, security fix).** Flagging `GET /messages/{messageId}` with `x-kiosk-session: true` used to admit `PATCH` and `DELETE` on the same path. Now only flagged operations are reachable: flag every operation the kiosk app calls. See [`Vendor_Extensions.md`](../handbooks/Vendor_Extensions.md) §3.3.
+- **`AMBIGUOUS_LAYER_OWNER` (load failure, 0.23.0).** Two C# groups that emit the same layer (`domainProject`, `infrastructureProject` or `apiProject`) and share no `pillar` now stop the load. Give them distinct `pillar`s, or register the layer's project artifact on one group. See [`Project_File.md`](../handbooks/Project_File.md) §9.
+- **Nested `emit.expect` leaves are checked (0.22.0).** A nested leaf naming no payload member is an `ARAZZO_CROSS_SPEC_ERROR`, and an unbindable runtime expression fails generation with `ARAZZO_MATCH_EXPRESSION_UNBOUND`. See [`Arazzo_Handbook.md`](../handbooks/Arazzo_Handbook.md).
+
+**C# component repos**
+
+- **Cross-group namespaces follow each group's `basePackage` (0.23.0).** A project whose `name` differs from its groups' root used to generate `using <name>.Domain…;` and fail to build; it now names the owning group's namespace. If you wrote `using <name>.<Layer>…;` by hand, change it. Nothing moves when `name` already equals the groups' root. See [`Project_File.md`](../handbooks/Project_File.md) §8.5.
+- **Call `TestSeed.SeedSpareParents(context)` from `EnsureFakeData()` (0.22.0).** Without it, generated create tests for a reference-only `uniqueBy` answer 404. See [`csharp-component-guide.md`](csharp-component-guide.md) §4.4.
+- **Generated service tests assert events (0.22.0).** They check what each event carries and the exact set an update emits. A red test after regen means the service emits the wrong thing: fix the service.
+- **`[ScopesRequired]` needs `OperationId` (0.22.0).** In `scopes` mode the filter decides through `IOperationAuthorizer`; a hand-written `[ScopesRequired]` without a catalogued `OperationId` answers 403.
+- **`IKioskSessionPolicy` gains two members (0.22.0).** Only a hand-written implementation has to add them.
+- **Overrides with optional value-type parameters (0.23.0).** A `{Op}Core` or `manualMethod` delete override with an optional `int`/`Guid` parameter changes it to `int?`/`Guid?`.
+
+### New in the spec
+
+- **Named worker pools (0.22.0).** `workerPlacement.messages.genericHost` can be an object of pools, each its own Deployment. See [`Project_File.md`](../handbooks/Project_File.md) §17.1, and §17.2 for projects with several pillars.
+- **`IOperationAuthorizer` (0.22.0).** `authorizationRuntime` emits a transport-neutral check, so a worker or agent tool gets the decision REST makes for an `operationId`.
+- **Denial scenarios under `scopes` (0.22.0).** `ARAZZO_ACTOR_LACKS_SCOPE` skips a step asserting `$statusCode == 403`.
+- **Nested `emit.expect` maps compile (0.22.0)** under `emitAssertions: strict`, and `$setup.outputs.*` leaves bind.
+
+### Component repos
+
+- Events now name their user: generated controllers and worker handler bases enter `EventActorScope`, so `EventEnvelope.UserId`, the outbox `UserId` and the Service Bus `userId` property are filled. Code emitting on a user's behalf elsewhere wraps it in `EventActorScope.Enter(userId)`.
+- Worth knowing from the fixes: optional headers are nullable on controller actions (a GET without `If-None-Match` no longer answers 400); the outbox drainer tags `outbox.claimed` so empty runs can be dropped before export; a `null` in an Arazzo request body compiles; `WithForbiddenRole` no longer fails with "No data found" when there is no role registry.
+
+### Tracked issues
+
+None of the kit's tracked generator issues closed in this pair. Still open for the kit: FEAT-2026-0243 (one database per pillar, `workerPlacement.schedules` / `runtime`), which [`Project_File.md`](../handbooks/Project_File.md) §17.2 marks "next generator release".
+
+### Kit changes
+
+- `specfuse authoring generate` honours a project's own `.specfuse/generator.lock` (version + SHA-256), and `SPECFUSE_GENERATOR_JAR` runs a local jar as unpinned ([#169](https://github.com/specfuse/authoring/issues/169)).
+- `generate-scenario-docs.sh` runs the Markdown groups your project file declares, instead of two fixed names ([#191](https://github.com/specfuse/authoring/issues/191)).
+- Handbooks document the changes above; the C# component guide adds the new consumer steps. No Spectral change.
+
 ## 0.21.0 (with 0.20.0)
 
 **Status: published.** Pinned by kit `v0.29.0` (released 2026-10-28) (jar sha256 `a78b5ea7…27f08a94`; full record in [`compatibility.md`](https://github.com/specfuse/authoring/blob/main/compatibility.md) §58). Generator release date: 2026-10-28.
