@@ -346,7 +346,8 @@ The role values are project-specific. The project declares its closed role set i
 
 - it runs only under `authorization.mode: scopes` (`Project_File.md` §16); under the default `roles` it never runs;
 - it compares grants: a `superuser: true` role and a step whose operation declares no `x-scopes` are skipped, and a role from a sequence-form registry grants nothing, so under `scopes` every step it takes on a scoped operation fails;
-- it checks scopes, not membership. Membership is `ARAZZO_ACTOR_ROLE_NOT_PERMITTED` from generator `0.19.0`, in roles mode (above).
+- it checks scopes, not membership. Membership is `ARAZZO_ACTOR_ROLE_NOT_PERMITTED` from generator `0.19.0`, in roles mode (above);
+- from generator `0.22.0` it skips a step that asserts the refusal, `$statusCode == 403` (`clabonte/generator#3026`). Such a step runs as an under-granted actor on purpose, and the generated scope filter answers it with exactly that 403. Only 403 is exempt: a scope-lacking step asserting 401, 404 or 200 is still an ERROR. Through `0.21.0` deliberate denial scenarios under `scopes` reported one ERROR per denial step.
 
 **It fires from generator `0.15.0`, and never at `0.14.0`** (`clabonte/generator#2418`). Through `0.14.0` it looked each step's `operationId` up by exact key, while the generator keys operations PascalCased, so every step found no operation and was skipped. Measured on a mapping-form copy of `hello-orders` under `mode: scopes`, with a `Customer` whose grants miss the scenario's `order.*` scopes: `0.14.0` reports only `OPERATION_ROLE_LACKS_SCOPE` on the operations; a build of generator main adds one `ARAZZO_ACTOR_LACKS_SCOPE` per step (three). On `0.14.0`, read `OPERATION_ROLE_LACKS_SCOPE` as the check that catches an under-granted actor.
 
@@ -644,6 +645,7 @@ steps:
 **Whether the generated C# scenario test checks `emit` is a project setting.** By default (`functionalTests.emitAssertions: off`) each entry is a comment for the reviewer and nothing is asserted. Under `strict` (generator `0.21.0`, `Project_File.md` §18) each entry becomes an awaited wait for the event and the test fails when it is never published:
 
 - `expect` is a subset match: only the declared keys are compared. Enum, `uuid`, decimal, `date` and `date-time` literals are typed, and `$steps` outputs bind to the step's own locals. An `emit` without `expect` matches on the event type alone.
+- A nested map and the dotted spelling are the same from generator `0.22.0` (`clabonte/generator#3027`): `expect: { after: { punchType: clockIn } }` compares `after.punchType`, and a `$setup.outputs.*` leaf inside it binds to the setup state. Through `0.21.0` a nested map rendered one comparison against an anonymous type, which did not compile, and a `$setup` leaf stayed a string literal. `validate` resolves each nested leaf like a dotted key, so a nested leaf naming no member is an `ARAZZO_CROSS_SPEC_ERROR`. A runtime expression the predicate cannot bind (`$response.*`, `$statusCode`, `$message.*`, or one inside a list) fails generation with `ARAZZO_MATCH_EXPRESSION_UNBOUND`. The same applies to `x-async.await.match`.
 - The wait scans the outbox, so an event an **earlier** step wrote also satisfies a later `emit` of the same type. Key `expect` on something only this step produces, typically one of its own outputs (`$steps.<thisStep>.outputs.<id>`), when an earlier step can publish the same event.
 - `timeout` is the wait's limit, `PT10S` by default.
 
