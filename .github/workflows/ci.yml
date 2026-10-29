@@ -915,6 +915,69 @@ jobs:
           grep -q "nothing to advance" <<<"$out" || fail "unexpected message: $out"
           echo "==> generate.sh / advance-state.sh guards behave."
 
+      - name: generate-scenario-docs.sh runs the project file's Markdown groups (#191)
+        run: |
+          set -uo pipefail
+          P=/tmp/smoke
+          fail() { echo "::error::$1" >&2; exit 1; }
+
+          # A copy of the scaffold with bundling stubbed and a fake CLI that records
+          # each generator call, so no jar, Java or redocly is needed.
+          S=$(mktemp -d "${TMPDIR:-/tmp}/scenario-docs.XXXXXX") || fail "mktemp failed"
+          cp -R "$P" "$S/specs"
+          for b in bundle-spec.sh bundle-async-spec.sh; do
+            printf '#!/bin/sh\nexit 0\n' > "$S/specs/scripts/specfuse/$b"
+          done
+          cat > "$S/fake-cli" <<'FAKE'
+          #!/bin/sh
+          echo "$*" >> "$CALLS"
+          FAKE
+          chmod +x "$S/fake-cli"
+          export SPECFUSE_AUTHORING="$S/fake-cli" CALLS="$S/calls"
+          set_groups() {
+            python3 - "$S/specs" "$1" <<'PY'
+          import json, pathlib, sys
+          p = next(pathlib.Path(sys.argv[1]).glob("*-project.json"))
+          c = json.loads(p.read_text())
+          c["groups"] = json.loads(sys.argv[2])
+          p.write_text(json.dumps(c, indent=2))
+          PY
+          }
+          run() { : > "$CALLS"; (cd "$S/specs" && scripts/specfuse/generate-scenario-docs.sh --skip-index "$@" 2>&1); }
+
+          # The scaffold's project file declares no groups: say so, exit non-zero, never call the generator.
+          out=$(run) && fail "ran with no Markdown group: $out"
+          grep -q "No Markdown group" <<<"$out" || fail "unexpected message: $out"
+          [ ! -s "$CALLS" ] || fail "the generator was called with no Markdown group"
+
+          # The two groups the script used to hardcode: same calls, same summary sections.
+          set_groups '[{"name": "Domain", "language": "C#", "destination": "../Backend/", "artifacts": ["entity"]},
+                       {"name": "Documentation - Scenarios", "language": "markdown", "destination": "./api/docs", "artifacts": ["scenarioDocument"]},
+                       {"name": "Documentation - Technical References", "language": "markdown", "destination": "./docs/generated", "artifacts": ["docsIndex"]}]'
+          mkdir -p "$S/specs/docs/generated" && echo x > "$S/specs/docs/generated/old.md"
+          echo keep > "$S/specs/api/docs/hand-written.md"
+          out=$(run --clean) || fail "two-group run failed: $out"
+          [ "$(wc -l < "$CALLS" | tr -d ' ')" = 2 ] || fail "expected 2 generator calls: $(cat "$CALLS")"
+          grep -q -- '--group Documentation - Scenarios ' "$CALLS" || fail "Scenarios group not run: $(cat "$CALLS")"
+          grep -q -- '--group Documentation - Technical References ' "$CALLS" || fail "Technical References group not run"
+          grep -q -- '--group Domain' "$CALLS" && fail "a non-Markdown group was run"
+          [ ! -e "$S/specs/docs/generated" ] || fail "--clean left docs/generated"
+          [ -f "$S/specs/api/docs/hand-written.md" ] || fail "--clean removed a destination holding the scenario specs"
+          grep -q "Total: 0 scenario doc(s) generated." <<<"$out" || fail "scenario summary missing: $out"
+          grep -q "Generated Documentation - Scenarios docs" <<<"$out" && fail "the scenario destination was listed as a whole: $out"
+
+          # The handbook's single Documentation group: that group, that folder.
+          set_groups '[{"name": "Documentation", "language": "markdown", "destination": "./docs/reference", "artifacts": ["docsIndex"]}]'
+          mkdir -p "$S/specs/docs/reference" && echo x > "$S/specs/docs/reference/a.md"
+          out=$(run) || fail "single-group run failed: $out"
+          [ "$(cat "$CALLS")" = "generate generate --progress --group Documentation $(cd "$S/specs" && ls "$PWD"/*-project.json)" ] \
+            || fail "unexpected generator call: $(cat "$CALLS")"
+          grep -q "Generated Documentation docs (./docs/reference)" <<<"$out" || fail "destination not summarised: $out"
+          grep -q "Total: 1 Documentation doc(s) generated." <<<"$out" || fail "destination not counted: $out"
+          out=$(run --clean) || fail "single-group clean failed: $out"
+          [ ! -e "$S/specs/docs/reference/a.md" ] || fail "--clean ignored the project file's destination"
+          echo "==> generate-scenario-docs.sh runs the project file's Markdown groups."
+
       - name: Scaffolded project validates with its own scripts
         run: |
           set -euo pipefail

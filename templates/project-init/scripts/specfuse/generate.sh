@@ -54,45 +54,12 @@ RUN_GENERATOR=("${SPECFUSE_CLI[@]}" generate)
 
 die() { echo "❌ $1" >&2; exit 1; }
 
-CONFIG=""
-for candidate in "$ROOT_DIR"/*-project.json; do
-    if [ -f "$candidate" ]; then
-        CONFIG="$candidate"
-        break
-    fi
-done
+# shellcheck source=project-file.sh
+. "$SCRIPT_DIR/project-file.sh"
+
+CONFIG="$(find_project_file "$ROOT_DIR")"
 [ -n "$CONFIG" ] || die "Project file not found: expected <name>-project.json in $ROOT_DIR"
 command -v python3 &> /dev/null || die "python3 not found (needed to read the project file)."
-
-# groups_tsv — one line per group: name<TAB>language<TAB>destination<TAB>basePackage.
-# python3 rather than jq: no extra dependency, and no CRLF output on Windows.
-groups_tsv() {
-    python3 - "$CONFIG" <<'PY'
-import json, sys
-for g in json.load(open(sys.argv[1], encoding="utf-8")).get("groups", []):
-    print("\t".join(str(g.get(k) or "") for k in ("name", "language", "destination", "basePackage")))
-PY
-}
-config_value() {
-    python3 - "$CONFIG" "$1" <<'PY'
-import json, sys
-print(json.load(open(sys.argv[1], encoding="utf-8")).get(sys.argv[2]) or "")
-PY
-}
-
-lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
-
-# Language aliases, matched case-insensitively against each group's `language`.
-canon_lang() {
-    case "$(lower "$1")" in
-        c#|cs|csharp|dotnet) echo "c#" ;;
-        py|python)           echo "python" ;;
-        dart|flutter)        echo "dart" ;;
-        ts|typescript)       echo "typescript" ;;
-        md|markdown|docs)    echo "markdown" ;;
-        *)                   lower "$1" ;;
-    esac
-}
 
 usage() { sed -n '4,15p' "$0" | sed 's/^# \{0,1\}//'; }
 
