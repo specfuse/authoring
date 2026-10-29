@@ -14,7 +14,7 @@ Generate code and documentation artifacts from the API specifications, one artif
 
 ## Prerequisites — verify before running
 
-1. `specfuse` is on PATH (`pipx install specfuse`, or `uv tool install specfuse`). The generator itself is not a file in the project — the CLI resolves and checksum-verifies the version pinned in `generator.lock` on demand. On a standalone kit install the deprecated flat `specfuse-authoring` command still works; drop the `specfuse ` prefix from the commands below.
+1. `specfuse` is on PATH (`pipx install specfuse`, or `uv tool install specfuse`). The generator itself is not a file in the project — the CLI resolves and checksum-verifies the version pinned in `generator.lock` (or the project's `.specfuse/generator.lock`, which takes precedence) on demand. On a standalone kit install the deprecated flat `specfuse-authoring` command still works; drop the `specfuse ` prefix from the commands below.
 2. The project config file (typically `<project>-project.json`) exists in the project root
 3. Specifications are valid — if not recently validated, run `/validate` first
 

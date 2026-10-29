@@ -1148,3 +1148,32 @@ jobs:
           KIT=$(python -c "import json;print(json.load(open('generator.lock'))['kit_version'])")
           echo "pyproject=$PKG __version__=$INIT generator.lock=$KIT"
           test "$PKG" = "$INIT" && test "$PKG" = "$KIT" || { echo "::error::version sources disagree"; exit 1; }
+
+      - name: Project generator pin is found, validated and bounded (regression, #169)
+        run: |
+          set -uo pipefail
+          CLI=/tmp/ci/bin/specfuse-authoring
+          fail() { echo "::error::$1" >&2; exit 1; }
+          B=$(mktemp -d) || fail "mktemp failed"
+          P=$B/proj && mkdir -p "$P/.specfuse" "$P/sub" && git -C "$P" init -q || fail "scratch repo setup failed"
+
+          # An incomplete project pin is refused, from a subdirectory too.
+          echo '{"generator":{"version":"0.19.0"}}' > "$P/.specfuse/generator.lock"
+          out=$(cd "$P/sub" && "$CLI" generate --version 2>&1) && fail "incomplete project pin was accepted"
+          grep -q "must set generator.version and generator.sha256" <<<"$out" || fail "unexpected message: $out"
+
+          # Malformed JSON is named, not a traceback.
+          echo '{' > "$P/.specfuse/generator.lock"
+          out=$(cd "$P/sub" && "$CLI" generate --version 2>&1) && fail "malformed project pin was accepted"
+          grep -q "is not valid JSON" <<<"$out" || fail "unexpected message: $out"
+
+          # A pin above the repo root never applies: the search stops at .git.
+          rm "$P/.specfuse/generator.lock"
+          mkdir -p "$B/.specfuse" && echo '{' > "$B/.specfuse/generator.lock"
+          out=$(cd "$P/sub" && "$CLI" generate --version 2>&1) || true  # falls back to the kit pin, whose download may fail; only the message matters
+          grep -q "is not valid JSON" <<<"$out" && fail "a pin outside the repo was read"
+
+          # A missing local jar fails before any download.
+          out=$(cd "$P" && SPECFUSE_GENERATOR_JAR=/nope.jar "$CLI" generate --version 2>&1) && fail "missing SPECFUSE_GENERATOR_JAR was accepted"
+          grep -q "SPECFUSE_GENERATOR_JAR=/nope.jar is not a file" <<<"$out" || fail "unexpected message: $out"
+          echo "==> project pin lookup and validation behave."

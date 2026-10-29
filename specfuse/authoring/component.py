@@ -32,6 +32,7 @@ import sys
 from pathlib import Path
 
 from . import kit_root
+from .generator import find_project_lock
 
 LANGUAGES = ("csharp", "python")
 
@@ -138,9 +139,10 @@ def _find_project_file(spec_dir: Path, explicit: Path | None) -> Path:
 def _generator_version(spec_dir: Path) -> tuple[str, str | None]:
     """(kit-pinned version, project-pinned version or None)."""
     kit = json.loads((kit_root() / "generator.lock").read_text())["generator"]["version"]
-    project_lock = spec_dir / ".specfuse" / "generator.lock"
+    # Same lookup `specfuse authoring generate` uses, so the warning names the pin it will run.
+    project_lock = find_project_lock(spec_dir)
     project = None
-    if project_lock.is_file():
+    if project_lock is not None:
         try:
             project = json.loads(project_lock.read_text()).get("generator", {}).get("version")
         except json.JSONDecodeError:
