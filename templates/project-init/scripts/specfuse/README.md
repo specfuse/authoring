@@ -99,10 +99,11 @@ yet exits 0.
 | `dedupe-async-bundle.py` | Dedup helper — called by `bundle-async-spec.sh`. |
 | `serve-docs.sh` | Redocly preview server for the OpenAPI docs (default port 8081). |
 | `serve-async-docs.sh` | Preview server for the AsyncAPI docs. |
-| `generate-scenario-docs.sh` | Bundle, then generate scenario + technical-reference docs. |
+| `generate-scenario-docs.sh` | Bundle, then generate every Markdown group in the project file, plus scenario cross-links and the index. |
 | `generate.sh` | Bundle once, then generate the project file's groups one at a time: by name, `--lang`, or `all`; `--list`, `--dry-run`. Refuses destination repos with uncommitted changes. |
 | `advance-state.sh` | After a regen PR merges in a destination repo, advance that group's `stateDir` baseline from the merged code. |
-| `generate-scenario-index.sh` | Build the scenario index — called by the above. |
+| `generate-scenario-index.sh` | Build the scenario index — called by `generate-scenario-docs.sh`. |
+| `project-file.sh` | Project-file reader sourced by `generate.sh` and `generate-scenario-docs.sh`. Not run directly. |
 | `build-prompt-index.sh` | Reverse index of `api/docs/implementation-prompts/`, for `/prepare-handoff`. |
 
 `generate-scenario-docs.sh` drives the generator through
