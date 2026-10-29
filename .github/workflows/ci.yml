@@ -1170,7 +1170,7 @@ jobs:
           # A pin above the repo root never applies: the search stops at .git.
           rm "$P/.specfuse/generator.lock"
           mkdir -p "$B/.specfuse" && echo '{' > "$B/.specfuse/generator.lock"
-          out=$(cd "$P/sub" && "$CLI" generate --version 2>&1)
+          out=$(cd "$P/sub" && "$CLI" generate --version 2>&1) || true  # falls back to the kit pin, whose download may fail; only the message matters
           grep -q "is not valid JSON" <<<"$out" && fail "a pin outside the repo was read"
 
           # A missing local jar fails before any download.
