@@ -72,6 +72,7 @@ Language-coupling column: ✱ means the field is honoured only for a specific la
 | `workerPlacement` | object | optional | ✱ C# workers | **From generator `0.20.0`.** Which host runs each topic worker: `azureFunctions` (default) or `genericHost`. See §17. |
 | `workerPlacement.messages.default` | enum | optional | ✱ | `azureFunctions` (default) \| `genericHost`. |
 | `workerPlacement.messages.azureFunctions[]` / `.genericHost[]` | array<string> | optional | ✱ | AsyncAPI operation names placed on that host, whatever the default. |
+| `workerPlacement.messages.genericHost` (pools) | object<string, array<string>> | optional | ✱ | **From generator `0.22.0`.** Pool name → operation names; each pool deploys as its own unit. See §17.1. |
 | `groups[]` | array<object> | yes for generation | — | One artifact group per output tree. |
 | `groups[].name` | string | recommended | — | Human-readable group label; used by `--group` and diagnostics. |
 | `groups[].description` | string | optional | — | Free-form description. |
@@ -954,6 +955,8 @@ A group generates every domain in the bundle unless it says otherwise. These two
 
 **Declare `pillar` even in a split-bundle topology, where the domain filter is redundant.** The identity is not redundant: resolving a reference to a held entity asks *"is this target held by **this group's** pillar"*, and a per-pillar bundle that preserves the whole registry for ownership context has more than one candidate to choose from.
 
+**Worker host groups are per pillar too.** A host group (`azureFunctionTopicTrigger`, `hostedTopicConsumer`) emits only the workers in its own pillar's scope, while `workerPlacement` is project-wide. A project with several pillars gives each pillar its own host groups. §17.2 covers this and two placements `validate` does not catch.
+
 ---
 
 ## 9. Validation Rules
@@ -999,7 +1002,9 @@ The OpenAPI / AsyncAPI / Arazzo spec contents are validated separately by the pe
 | `WORKER_PLACEMENT_UNKNOWN_WORKER` | ERROR | `0.20.0` | A name under `workerPlacement.messages` matches no AsyncAPI operation. | Spell it as the operation key under `operations`, or remove the line. |
 | `WORKER_PLACEMENT_NOT_A_TOPIC_WORKER` | ERROR | `0.20.0` | The name is a scheduled job, a publisher or an `x-ai` worker. | Remove it. Only a topic worker can be placed. |
 | `WORKER_PLACEMENT_NO_HOST_GROUP` | ERROR | `0.20.0` | A topic worker is placed on a host whose artifact (`azureFunctionTopicTrigger` or `hostedTopicConsumer`) no C# group registers, so nothing emits it. | Register the host artifact, or place the worker elsewhere. |
-| `WORKER_PLACEMENT_CONFLICT` | ERROR | `0.20.0` | An operation is listed under both hosts, or one C# group registers both `azureFunctionTopicTrigger` and `hostedTopicConsumer`. | List it once; give each host artifact its own group. |
+| `WORKER_PLACEMENT_CONFLICT` | ERROR | `0.20.0` | An operation is listed under both hosts, or (from `0.22.0`) in two pools of `genericHost`, or one C# group registers both `azureFunctionTopicTrigger` and `hostedTopicConsumer`. | List it once; give each host artifact its own group. |
+| `WORKER_PLACEMENT_POOL_NAME_INVALID` | ERROR | `0.22.0` | A pool name under `genericHost` is not a DNS-1123 label of at most 20 characters, so it cannot name a Deployment. | Use lowercase letters, digits and `-`, starting and ending with a letter or digit (§17.1). |
+| `WORKER_PLACEMENT_POOL_EMPTY` | ERROR | `0.22.0` | A pool under `genericHost` lists no worker, so it would deploy nothing. | Add its workers, or remove the pool. |
 | `WORKER_K8S_NAME_COLLISION` | ERROR (generation) | `0.20.0` | In a group registering `hostedTopicConsumer`, two topic workers derive the same `k8sName` for `workers.json` (kebab-case of the operation id, at most 52 characters). Generation fails. | Rename one operation. |
 | `WORKER_TIMEOUT_EXCEEDS_FUNCTIONS_LOCK_RENEWAL` | WARNING | `0.21.0` | A topic worker on `azureFunctions` declares an `x-worker.timeout` above 240 s, while a C# group registers `azureFunctionTopicTrigger` (`AsyncAPI_Handbook.md` §4.3). | Place it on `genericHost` (§17), or lower its timeout to 240 s or less. |
 | `PROJECT_AUTHORIZATION_RUNTIME_MISSING` | WARNING | `0.20.0` | A C# group registers `apiController`, some operation declares `x-roles` or `x-scopes`, and no C# group with the same `basePackage` registers `authorizationRuntime`. The generated controllers then fail `dotnet build` (CS0246 / CS0234) on `[RoleRequired]` / `[ScopesRequired]`. | Register `authorizationRuntime` in that group or a same-`basePackage` group (§11.1). Ignore it only if you hand-write those types. The operation scan covers the whole spec, whatever the group's `pillar` or `domains`. |
@@ -1050,7 +1055,7 @@ Three opt-in C# ids, none in the snapshot list above. Each emits only when regis
 
 | Id | From | Group | What it emits | Conditions |
 |---|---|---|---|---|
-| `hostedTopicConsumer` | `0.20.0` | A C# group of its own (the generic host), beside `asyncEventHandler`, `asyncConsumerRegistration` and `event` | One `<Handler>TopicConsumer` per topic worker placed on `genericHost` (§17), each reading the worker's subscription through one `ServiceBusProcessor` and calling the same `I<Handler>` the Functions trigger calls; the `HostedTopicConsumer` base and `WorkerHostContext`; `services.AddGeneratedWorkers()` (hosted services, graceful SIGTERM stop, `live` / `ready` health checks); `workers.json` and `WorkerManifest` listing every topic worker and its host; `WorkerProvisioning` for a `provision` command. No `Program.cs`. | Registering it beside `azureFunctionTopicTrigger` in one group is `WORKER_PLACEMENT_CONFLICT`. Needs `eventRuntimeImpl` in the project (`TRIGGER_REQUIRES_EVENT_RUNTIME_IMPL`). Scheduled jobs stay in the Functions group. With no `workerPlacement`, it emits no consumer. |
+| `hostedTopicConsumer` | `0.20.0` | A C# group of its own (the generic host), beside `asyncEventHandler`, `asyncConsumerRegistration` and `event` | One `<Handler>TopicConsumer` per topic worker placed on `genericHost` (§17), each reading the worker's subscription through one `ServiceBusProcessor` and calling the same `I<Handler>` the Functions trigger calls; the `HostedTopicConsumer` base and `WorkerHostContext`; `services.AddGeneratedWorkers()` (hosted services, graceful SIGTERM stop, `live` / `ready` health checks), and from `0.22.0` `builder.AddGeneratedWorkers()`, which selects a pool by `Workers:Pool` (§17.1); `workers.json` and `WorkerManifest` listing every topic worker and its host; `WorkerProvisioning` for a `provision` command. No `Program.cs`. | Registering it beside `azureFunctionTopicTrigger` in one group is `WORKER_PLACEMENT_CONFLICT`. Needs `eventRuntimeImpl` in the project (`TRIGGER_REQUIRES_EVENT_RUNTIME_IMPL`). Scheduled jobs stay in the Functions group. With no `workerPlacement`, it emits no consumer. |
 | `tenantIsolationTest` | `0.21.0` | Test | `Generated/Unit/Infrastructure/TenantIsolationTests.g.cs`: per tenant-owned entity, a list never returns the foreign tenant's rows, a get, update or delete of a foreign row answers not found, `Unrestricted` sees both tenants, an empty visibility sees nothing, the model carries the `Tenant` filter. Adds the within-tenant facts for entities that declare `x-entity.visibility`. `TestSeed` gains the foreign tenant's graph. | Needs a `tenancy` block. Emits nothing unless a `Tenant` or `Visibility` filter is declared. The Test project must reference Infrastructure. Runs in memory under the unit-test step, not under the functional suite. |
 | `bareIgnoreSourceScanTest` | `0.21.0` | Test | `Generated/Unit/Infrastructure/BareIgnoreSourceScanTest.g.cs`: fails when hand-written C# calls `IgnoreQueryFilters()` with no argument, which drops the `Tenant` filter too, unless the call is listed in `bare-ignore-query-filters.baseline` at the solution root. | Needs a `tenancy` block and `tenancy.enforcement` unset; otherwise it emits nothing. The baseline is yours, never generated, and only shrinks: a missing file reads as empty, and a line for a call that is gone fails as stale. |
 
@@ -1486,7 +1491,7 @@ All three fail `Project.Load`. The CLI prints the message, not the code (`Valida
 |---|---|---|
 | `messages.default` | `azureFunctions` | The host of every topic worker no list names. |
 | `messages.azureFunctions[]` | none | Operations placed on Azure Functions whatever the default. Use it when `default` is `genericHost`. |
-| `messages.genericHost[]` | none | Operations placed on the generic host whatever the default. |
+| `messages.genericHost[]` | none | Operations placed on the generic host whatever the default. From generator `0.22.0` it may also be an object of named pools (§17.1). |
 
 Any other key under `messages`, or a `default` that names no host, fails the load with `UNKNOWN_WORKER_HOST`. Without that check a misspelt host would leave the worker silently on Azure Functions.
 
@@ -1494,9 +1499,46 @@ Any other key under `messages`, or a `default` that names no host, fails the loa
 
 **Absent, every topic worker runs on Azure Functions**, and output is byte-identical to `0.19.0`. Generator `0.19.0` drops the key without a word.
 
-The four `WORKER_PLACEMENT_*` codes (ERROR, §9) catch a name that matches no worker, a name that is not a topic worker, a worker placed on a host no group emits, and a worker listed twice or a group registering both host artifacts. They are silent for a project with no `workerPlacement`.
+The `WORKER_PLACEMENT_*` codes (ERROR, §9) catch a name that matches no worker, a name that is not a topic worker, a worker placed on a host no group emits, and a worker listed twice or a group registering both host artifacts. From generator `0.22.0` two more catch an invalid or empty pool (§17.1). They are silent for a project with no `workerPlacement`. They check the project as a whole, not each pillar: see §17.2 for the two placements they miss.
 
 **When to move a worker to `genericHost`.** The Functions host renews a message lock for five minutes whatever the worker's `x-worker.timeout`, and a lock lapses 60 s after its last renewal. A worker kept on Functions whose timeout is above 240 s can lose its lock while its handler still runs, and the broker redelivers the message. From generator `0.21.0` `validate` reports it as `WORKER_TIMEOUT_EXCEEDS_FUNCTIONS_LOCK_RENEWAL` (WARNING), with or without a `workerPlacement`. The generic host renews each worker's lock for its own timeout plus 130 s, so long-running workers belong there.
+
+### 17.1 Named pools
+
+**From generator `0.22.0`.** `genericHost` is either the flat array above or an object that maps a pool name to operation names. A pool is a set of generic-host workers that deploys as its own unit, with its own shutdown budget. That way a slow handler's termination grace period does not hold a fast one's pod.
+
+```json
+{
+  "workerPlacement": {
+    "messages": {
+      "default": "azureFunctions",
+      "genericHost": {
+        "fast": ["onAccountCreated"],
+        "slow": ["onCompanyCreated"]
+      }
+    }
+  }
+}
+```
+
+- **The flat array is one pool, named `default`.** A worker that reaches `genericHost` through `"default": "genericHost"` belongs to pool `default` too. `azureFunctions` keeps the array form only.
+- **A pool name is a DNS-1123 label of at most 20 characters**, so it fits a chart-prefixed Deployment name. Otherwise `validate` reports `WORKER_PLACEMENT_POOL_NAME_INVALID`. An empty pool is `WORKER_PLACEMENT_POOL_EMPTY`, and a worker listed in two pools is `WORKER_PLACEMENT_CONFLICT`.
+- **`workers.json` gains a `pool` per entry and a top-level `pools` array**, mirrored by `WorkerManifest.Pools`. Each pool entry carries `name`, `k8sName`, `workers`, `subscriptions`, `shutdownTimeoutSeconds`, `terminationGracePeriodSeconds` (`shutdownTimeoutSeconds` + 30), `concurrencyTotal` and `criticality`: the fields a Helm chart needs for one Deployment per pool. `k8sName` is the pool name as-is. Any release or app prefix is the chart's to add. The new fields are additive, and `schemaVersion` stays `1`.
+- **One image serves every pool; `Workers:Pool` picks which one a process runs.** Unset, it serves every pool. An unknown name fails at startup. The setting is read by `builder.AddGeneratedWorkers()` on the host builder. A project that declares a pool other than `default` has only that form, so a leftover `builder.Services.AddGeneratedWorkers()` stops compiling. A flat-array project keeps the `IServiceCollection` form.
+- **`provision` still covers every worker**, whatever its pool. Run it once, not once per pool.
+
+### 17.2 Several pillars
+
+`workerPlacement` is project-level and keyed by operation name, but each host group renders only the workers in its own pillar's scope (§8.13.2). The `WORKER_PLACEMENT_*` codes check the project as a whole. So, in a project with more than one pillar:
+
+1. **Give each pillar its own host groups.** Each pillar that has topic workers needs a group registering `azureFunctionTopicTrigger` and, if any of its workers are placed on `genericHost`, a group registering `hostedTopicConsumer`. Each group gets its own `pillar` and `destination`.
+   - Why: a worker placed on a host its own pillar has no group for is emitted nowhere, and `validate` does not report it. `WORKER_PLACEMENT_NO_HOST_GROUP` is satisfied by a group in *any* pillar. The worker's Functions group drops it because it is placed elsewhere, and the other pillar's host group never sees it. Its subscription then has no consumer, and nothing fails. The per-pillar split is the shape the generator supports.
+2. **Deploy each pillar as its own release or namespace, or prefix Deployment names per pillar in the chart.**
+   - Why: from generator `0.22.0`, `pools[].k8sName` is the bare pool name. A flat `genericHost` array is pool `default` in every pillar, so two pillars deployed into one namespace under one prefix both declare a Deployment named `default`.
+3. **A named pool lists workers of one pillar only.** Use per-pillar pool names, such as `a-fast` and `b-fast`.
+   - Why: a pool that names workers from two pillars becomes two Deployments with the same name. Each one has half the workers and half the concurrency, and `validate` does not flag it.
+4. **One database per pillar** (from the next generator release, which ships C# timer workers on the generic host).
+   - Why: the generated scheduled-job lock and the `ScheduledJobRun` watermark are keyed by job name. The three runtime functions, `EventOutboxDrainerFunction`, `EventOutboxRetentionFunction` and `EventInboxRetentionFunction`, have the same name in every pillar. Two pillars sharing one SQL database would contend for one lock and one watermark row, and each would see the other's runs as skipped.
 
 ---
 
