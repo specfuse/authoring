@@ -112,7 +112,7 @@ specfuse authoring generate generate --group "<group name>" <project>-project.js
 
 Everything after `specfuse authoring generate` goes to the generator unchanged, so name the generator's own command (`generate`, `validate`, `baseline`, …) first. Its `--group` takes one group per run.
 
-On first run the CLI resolves the generator pinned for your kit version (see [`generator.lock`](../generator.lock)), downloads it, **verifies its SHA-256**, caches it under `~/.specfuse/jars/`, and runs it. Subsequent runs use the cache.
+On first run the CLI resolves the generator pinned for your kit version (see [`generator.lock`](../generator.lock)), or the project's own `.specfuse/generator.lock` when it has one ([generator access](generator-access.md)), downloads it, **verifies its SHA-256**, caches it under `~/.specfuse/jars/`, and runs it. Subsequent runs use the cache.
 
 Generated code lands in the component repos named by each group's `destination`. See [Setting up component repos](component-repos.md) for the layout, commit policy, and regen flow.
 
