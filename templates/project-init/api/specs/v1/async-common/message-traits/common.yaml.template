@@ -5,6 +5,11 @@
 # `auditableEvent` trait stamps the canonical envelope fields on every
 # event message; `commonHeaders` is for scheduled-job messages that do
 # not need the full event envelope.
+#
+# Once the project declares `tenancy`, events of an aggregate outside the
+# tenant need their own trait that does not require the tenant header, and a
+# tenant header named other than the tenancy foreign key needs
+# `x-envelope: tenant`. See AsyncAPI Handbook §2.1.
 
 auditableEvent:
   name: auditableEvent

@@ -158,7 +158,7 @@ Where:
 - `{Entity}` is the PascalCase aggregate/entity name from `x-label.entity` — MUST match a schema with `x-entity` in OpenAPI
 - `{Action}` is the PascalCase past-tense action verb from `x-label.action`
 
-**Tenancy lives in the envelope, not the label.** `tenantId` and any other tenant routing fields are stamped as ApplicationProperties (headers) on every event by the producer pipeline (see the universal envelope contract documented in the project's event-contract overlay; defaults emit `eventId`, `correlationId`, `aggregateId`, `aggregateType`, `eventVersion`, `producedAt`, and `tenantId`). Tenant-scoped subscribers AND-merge `user.tenantId = '<guid>'` into the derived label filter via `x-subscription.requiredHeaders` (see §4.3).
+**Tenancy lives in the envelope, not the label.** `tenantId` and any other tenant routing fields are stamped as ApplicationProperties (headers) on every event by the producer pipeline (see the universal envelope contract documented in the project's event-contract overlay; defaults emit `eventId`, `correlationId`, `aggregateId`, `aggregateType`, `eventVersion`, `producedAt`, and, on a tenant-scoped event, `tenantId`; §2.1 covers global events and a tenant header with another name). Tenant-scoped subscribers AND-merge `user.tenantId = '<guid>'` into the derived label filter via `x-subscription.requiredHeaders` (see §4.3).
 
 **The envelope travels in broker metadata, never in the body, in every runtime.** The spec already says so: the `auditableEvent` trait declares the envelope as message `headers`, and the message body is the `payload`, nothing else. The rule binds both sides:
 - a producer never wraps the payload in an `{eventType, envelope, body}` object, not even on a direct send that skips the outbox;
@@ -392,21 +392,31 @@ The generator reads each message's merged `traits[]` headers and works out which
 auditableEvent:            # tenant-scoped: the tenant is required
   headers:
     type: object
-    required: [eventId, correlationId, producedAt, accountId]
+    required: [eventId, correlationId, aggregateId, aggregateType, eventVersion, producedAt, accountId]
     properties: &envelopeHeaders
       eventId: { type: string, format: uuid }
       correlationId: { type: string, format: uuid }
-      producedAt: { type: string, format: date-time, x-envelope: producedAt }
+      aggregateId: { type: string, format: uuid }
+      aggregateType: { type: string }
+      eventVersion: { type: integer }
+      producedAt: { type: string, format: date-time }
       accountId: { type: string, format: uuid, x-envelope: tenant }
 
 globalAuditableEvent:      # no tenant: declared and marked, not required
   headers:
     type: object
-    required: [eventId, correlationId, producedAt]
+    required: [eventId, correlationId, aggregateId, aggregateType, eventVersion, producedAt]
     properties: *envelopeHeaders
 ```
 
 Neither trait layers on the other: AsyncAPI applies traits as JSON Merge Patch and replaces `required` arrays, while the generator unions them, so a layered pair means different things to the two readers. Measured on `0.24.0`, adding a `tenancy` block to a project whose one trait requires the tenant reports `ASYNC_TENANT_HEADER_ON_GLOBAL_EVENT` on the events of an entity not under the tenant. Dropping the tenant header instead reports `ASYNC_ENVELOPE_HEADER_MISSING` on the scoped ones.
+
+The Spectral rule `specfuse-async-auditable-event-envelope-shape` accepts both traits. It requires every envelope field above except the tenant, finds each by `x-envelope` or canonical name, and leaves the tenant to the generator, which knows the aggregates.
+
+**Check an event before moving it to the global trait; two generator gaps at `0.24.0` make a wrong move pass.**
+
+- The check that reports `ASYNC_TENANT_HEADER_ON_GLOBAL_EVENT` looks only at the aggregate's direct links to the tenant. It does not follow a `belongsTo` chain, although the generated tenant query filter does. Measured: with `OrderLine` under `Order` and `Order` under the tenant, `OrderLineCreated` is reported as not under the tenant. That event is tenant-owned, so the finding does not show it is global. Whether its producer stamps the tenant was not measured, so confirm that before a subscriber filters on it.
+- Neither plane checks that a scoped event requires its tenant. The generator only checks that a header is bound, so an event directly under the tenant passes when pointed at the global trait.
 
 **The legacy header names go away in the next minor release.** A bound name now replaces `companyId`, `restaurantId` and `producedAt` on the wire. For `0.24.0` only, the C# producer also writes those literals when the bound name differs, and the C# and Python readers try the bound name and then the literal. A subscriber outside the generated code that reads `companyId` off the application properties must read the bound name before the next minor release. A message that declares no headers is unchanged.
 
