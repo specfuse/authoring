@@ -1061,7 +1061,7 @@ rules:
   # ===========================================================================
 
   specfuse-async-auditable-event-envelope-shape:
-    description: "auditableEvent message trait must carry the canonical envelope (eventId, correlationId, aggregateId, aggregateType, eventVersion, producedAt required; causationId/traceparent/tenantId/aggregateVersion/userId optional). See AsyncAPI Handbook (event-contract envelope section)."
+    description: "auditableEvent message trait must carry the canonical envelope (eventId, correlationId, aggregateId, aggregateType, eventVersion, producedAt required; causationId/traceparent/tenant/aggregateVersion/userId optional), each bound by `x-envelope` or its canonical name. Which events must carry the tenant is the generator's check. See AsyncAPI Handbook §0.8 and §2.1."
     message: "{{error}}"
     severity: error
     given: $.channels[*].messages[*].traits[*]

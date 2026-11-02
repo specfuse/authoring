@@ -1,0 +1,156 @@
+# =============================================================================
+# Regression fixture: specfuse-async-auditable-event-envelope-shape
+# =============================================================================
+# The two-trait split in AsyncAPI Handbook §2.1 must pass, under any tenant
+# header name, and a header bound with `x-envelope` must count as its role.
+# hello-orders declares no `tenancy`, so nothing else in the corpus covers this.
+#
+# Every `good*` message must stay clear of this rule and every `bad*` message
+# must be flagged; .github/workflows/ci.yml asserts both. Other rules are free
+# to fire: this is not a conformance fixture.
+# =============================================================================
+asyncapi: 3.0.0
+
+info:
+  title: Auditable event envelope fixture
+  version: "1.0.0"
+
+x-envelope-fields:
+  base: &base
+    correlationId: { type: string, format: uuid }
+    aggregateId: { type: string, format: uuid }
+    aggregateType: { type: string }
+    eventVersion: { type: integer }
+
+channels:
+  events:
+    address: fixture.events
+    messages:
+      goodScoped:
+        traits:
+          - headers:
+              type: object
+              required: [eventId, correlationId, aggregateId, aggregateType, eventVersion, producedAt, tenantId]
+              properties:
+                <<: *base
+                eventId: { type: string, format: uuid }
+                producedAt: { type: string, format: date-time }
+                tenantId: { type: string, format: uuid, x-envelope: tenant }
+      goodGlobal:
+        traits:
+          - headers:
+              type: object
+              required: [eventId, correlationId, aggregateId, aggregateType, eventVersion, producedAt]
+              properties:
+                <<: *base
+                eventId: { type: string, format: uuid }
+                producedAt: { type: string, format: date-time }
+                tenantId: { type: string, format: uuid, x-envelope: tenant }
+      goodGlobalNoTenantHeader:
+        traits:
+          - headers:
+              type: object
+              required: [eventId, correlationId, aggregateId, aggregateType, eventVersion, producedAt]
+              properties:
+                <<: *base
+                eventId: { type: string, format: uuid }
+                producedAt: { type: string, format: date-time }
+      goodMarkedTenant:
+        traits:
+          - headers:
+              type: object
+              required: [eventId, correlationId, aggregateId, aggregateType, eventVersion, producedAt, accountId]
+              properties:
+                <<: *base
+                eventId: { type: string, format: uuid }
+                producedAt: { type: string, format: date-time }
+                accountId: { type: string, format: uuid, x-envelope: tenant }
+      goodMarkedTenantGlobal:
+        traits:
+          - headers:
+              type: object
+              required: [eventId, correlationId, aggregateId, aggregateType, eventVersion, producedAt]
+              properties:
+                <<: *base
+                eventId: { type: string, format: uuid }
+                producedAt: { type: string, format: date-time }
+                accountId: { type: string, format: uuid, x-envelope: tenant }
+      goodRenamedEventId:
+        traits:
+          - headers:
+              type: object
+              required: [messageId, correlationId, aggregateId, aggregateType, eventVersion, producedAt]
+              properties:
+                <<: *base
+                messageId: { type: string, format: uuid, x-envelope: eventId }
+                producedAt: { type: string, format: date-time }
+      goodRenamedProducedAt:
+        traits:
+          - headers:
+              type: object
+              required: [eventId, correlationId, aggregateId, aggregateType, eventVersion, occurredAt]
+              properties:
+                <<: *base
+                eventId: { type: string, format: uuid }
+                occurredAt: { type: string, format: date-time, x-envelope: producedAt }
+      badMissingAggregateId:
+        traits:
+          - headers:
+              type: object
+              required: [eventId, correlationId, aggregateType, eventVersion, producedAt]
+              properties:
+                eventId: { type: string, format: uuid }
+                correlationId: { type: string, format: uuid }
+                aggregateType: { type: string }
+                eventVersion: { type: integer }
+                producedAt: { type: string, format: date-time }
+      badRenamedEventIdMissingAggregateId:
+        traits:
+          - headers:
+              type: object
+              required: [messageId, correlationId, aggregateType, eventVersion, producedAt]
+              properties:
+                messageId: { type: string, format: uuid, x-envelope: eventId }
+                correlationId: { type: string, format: uuid }
+                aggregateType: { type: string }
+                eventVersion: { type: integer }
+                producedAt: { type: string, format: date-time }
+      badRenamedProducedAtNotRequired:
+        traits:
+          - headers:
+              type: object
+              required: [eventId, correlationId, aggregateId, aggregateType, eventVersion]
+              properties:
+                <<: *base
+                eventId: { type: string, format: uuid }
+                occurredAt: { type: string, format: date-time, x-envelope: producedAt }
+      badTenantFormat:
+        traits:
+          - headers:
+              type: object
+              required: [eventId, correlationId, aggregateId, aggregateType, eventVersion, producedAt]
+              properties:
+                <<: *base
+                eventId: { type: string, format: uuid }
+                producedAt: { type: string, format: date-time }
+                tenantId: { type: string }
+      badMarkedTenantFormat:
+        traits:
+          - headers:
+              type: object
+              required: [eventId, correlationId, aggregateId, aggregateType, eventVersion, producedAt]
+              properties:
+                <<: *base
+                eventId: { type: string, format: uuid }
+                producedAt: { type: string, format: date-time }
+                accountId: { type: string, x-envelope: tenant }
+      badLegacyTimestamp:
+        traits:
+          - headers:
+              type: object
+              required: [eventId, correlationId, aggregateId, aggregateType, eventVersion, producedAt]
+              properties:
+                <<: *base
+                eventId: { type: string, format: uuid }
+                producedAt: { type: string, format: date-time }
+                timestamp: { type: string, format: date-time }

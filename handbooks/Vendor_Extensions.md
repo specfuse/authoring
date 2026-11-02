@@ -4219,7 +4219,7 @@ x-method-name: CancelOrder        # imperative form of OrderCancelled
 ```yaml
 headers:
   type: object
-  required: [eventId, accountId]
+  required: [eventId, accountId]   # plus the rest of the envelope, AsyncAPI_Handbook.md §2.1
   properties:
     eventId: { type: string, format: uuid }
     accountId:
