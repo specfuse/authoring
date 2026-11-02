@@ -24,9 +24,73 @@ Newest first. An entry is **pending** until the kit release that pins it is publ
 | **Tracked issues** | you were waiting on a fix |
 | **Kit changes** | you want to know what moved in the handbooks, rules and tooling |
 
+## 0.24.0
+
+**Status: pending.** Pinned by kit `v0.32.0` (jar sha256 `85d1496e…c088902e7`; full record in [`compatibility.md`](https://github.com/specfuse/authoring/blob/main/compatibility.md) §60). Generator release date: 2026-11-02.
+
+### Do not use yet
+
+**Do not register `mcpHost` or `mcpEvalHarness` on a real manifest at this pin.** They are verified on fixtures only. On a real manifest the generated tools fail to compile, some composite tools advertise required ids a caller cannot obtain, and **a preview tool commits instead of rolling back, so a preview performs the real action with no confirmation.** A group that does not register these artifacts is unaffected. `mcpServerResources`, `validate` and the `MCP_*` findings work as documented.
+
+### Before you regenerate
+
+**Spec authors**
+
+- **`aiAccess` is required (ERROR).** An `x-entity` without it fails `validate` and `generate` with `ENTITY_AIACCESS_MISSING`. To grant nothing, add `aiAccess: { operations: [], reason: "Tier 0 — no AI access" }`. `ENTITY_FIELDSETS_AI_ACCESS_MISSING` no longer exists.
+- **Event headers must bind the envelope (ERROR).** A message that declares headers and binds no `eventId`, or no tenant or sub-tenant on a scoped event, fails with `ASYNC_ENVELOPE_HEADER_MISSING`. A global event whose headers require the tenant fails with `ASYNC_TENANT_HEADER_ON_GLOBAL_EVENT`. Mark the headers with `x-envelope`, and split a shared trait into a tenant-scoped trait and a tenant-optional one. Neither may layer on the other.
+- **Only `application/json` events (ERROR).** Any other resolved content type fails with `ASYNC_CONTENT_TYPE_UNSUPPORTED`. A message declaring none is unaffected.
+- **`outboxDialect: postgres` is removed.** It fails the load, and the message names the removal. Remove the key.
+- **Arazzo `x-mcp` is retired.** Each document declaring it gets the warning `X_MCP_RETIRED`, and nothing reads the block. Delete it. Tool exposure moves to the MCP manifest, and `safeForAutoInvoke` to `x-effects`.
+- **`MCP_OPERATION_CLOSURE_NOT_READABLE` is an ERROR** for a project that sets `mcpManifests`.
+
+**API clients (C#)**
+
+- **`filter` accepts only what the spec lists.** That means `filterableProperties`, plus `Id`, `CreatedAt` and `UpdatedAt`. Searchable properties, foreign keys and properties named `status` are no longer implicitly filterable, and a clause on one answers 400. Add the property to `filterableProperties` to keep it.
+- **Enum values match exactly.** A wrong-case value, or `unknown` on an enum that neither declares it nor is `x-extensible`, answers 400.
+- **Writes outside the caller's visibility are refused.** In a project declaring `tenancy`, a write outside it answers 403, and a body reference outside it answers 404.
+
+**C# component repos**
+
+Author the EF migrations before you deploy. [`csharp-component-guide.md`](csharp-component-guide.md) has the steps and the order.
+
+- **`AggregateVersion`** is a new column on every entity that is the subject of an event. On an entity without optimistic concurrency it is also the concurrency token, so hand-written writes can now see `DbUpdateConcurrencyException`, and two concurrent child creates can answer 409.
+- **`EventOutbox.Status` holds names, not ordinals.** Write this migration by hand, because the scaffolded `AlterColumn` leaves existing rows holding `'0'`. Raw SQL and dashboards reading `Status = 0` must change.
+- **`ScheduledJobRun` is a new table.** Without its migration, every timer tick fails.
+- **Other migrations:** `EventOutbox` tenancy columns follow `tenancy` when your names are not `CompanyId` / `RestaurantId`. Under a `dbColumn` override, optional scalars, audit columns and the concurrency token are renamed: check that EF renames them rather than dropping and re-adding.
+- **Compile breaks:** the runtime functions' constructors gain `heartbeatLogger` and `guard` (CS7036 in a test that builds one). `I{Tag}ApplicationService` gains `filter`, `sort`, `page` or `pageSize` on a non-queryable operation that declares them (CS0535, CS0115).
+- **Events:** a tenancy member the payload does not declare leaves the outbox body, so read the envelope header. `BufferedEventCollector.Add` throws on a tenant-scoped body with no tenant. The legacy `companyId` / `restaurantId` / `producedAt` headers are written for this release only.
+
+**Python components**
+
+- A tenant-scoped `emit_*` requires `company_id`; omitting it is a `TypeError` and `None` is a `ValueError`. Grep your call sites.
+- A Tier 0 aggregate no longer gets an AI repository. Delete the stale file if a hand-written module used it.
+- `EventOutbox.Status` needs its migration first: Python from this release must not run before it is applied. The legacy header names are read for this release only.
+
+### New in the spec
+
+- **`x-entity.fieldSets`:** named subsets of an entity's properties, checked against `aiAccess`.
+- **`x-classification: untrusted`:** states provenance, not protection. `x-protection.atRest` is still required beside it.
+- **`x-envelope`:** binds an AsyncAPI message header to an envelope role.
+- **`x-effects`:** an operation's reversibility, external effects and compensation.
+- **`mcpManifests`:** MCP server manifests as a validated input. See the warning above before registering the host artifacts. `server` is a closed list at this pin: `admin`, `compliance`, `inbound`, `ops`, `scheduling`, `workforce`.
+- **`workerPlacement.schedules` and `workerPlacement.runtime`:** place scheduled jobs and the event runtime on the generic host, through the new `hostedScheduledJob` and `eventRuntimeHosted` artifacts. A job placed `inProcess` needs the `Cronos` package.
+
+### Tracked issues
+
+FEAT-2026-0243 shipped, so [`Project_File.md`](../handbooks/Project_File.md) §17.2 point 4 (one database per pillar) now applies. MCP repair is open as FEAT-GEN-2026-0259.
+
+### Kit changes
+
+- The OpenAPI ruleset accepts `fieldSets` and `untrusted`. The Arazzo ruleset warns on `x-mcp` instead of checking its shape; `validate-arazzo.sh` drops its `toolName` uniqueness check.
+- `hello-orders`, the samples and the scenario agents and skills no longer write `x-mcp`. The agents used to call it required and add it automatically; they now delete it.
+- `AsyncAPI_Handbook.md` states where `x-trigger-when` gates emission: not on explicit or hand-written paths.
+- `Vendor_Extensions.md` adds author guidance for `x-effects`, the rule for marking a field `untrusted`, and a warning that a client-writable reference to a global entity gets no tenant check.
+- `check-extension-vocabulary.py` reads the jar's vocabulary correctly when a surface has no keyed entries.
+- Handbooks and the C# component guide document the changes above.
+
 ## 0.23.0 (with 0.22.0)
 
-**Status: pending.** Pinned by kit `v0.31.0` (jar sha256 `b906ed3f…5ffacc6`; full record in [`compatibility.md`](https://github.com/specfuse/authoring/blob/main/compatibility.md) §59). Generator release dates: 0.22.0 on 2026-10-28, 0.23.0 on 2026-10-29.
+**Status: published.** Pinned by kit `v0.31.0` (jar sha256 `b906ed3f…5ffacc6`; full record in [`compatibility.md`](https://github.com/specfuse/authoring/blob/main/compatibility.md) §59). Generator release dates: 0.22.0 on 2026-10-28, 0.23.0 on 2026-10-29.
 
 The kit goes from **0.21.0 to 0.23.0**; everything below covers both releases.
 

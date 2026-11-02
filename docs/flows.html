@@ -1612,7 +1612,7 @@ table.surf th { font-size: 12px; color: var(--muted); text-transform: uppercase;
     {"label": "AsyncAPI structure", "script": "validate-async-structure.sh", "what": "The root asyncapi.yaml only $refs channels and operations; async-common and domain async folders are laid out as required."},
     {"label": "AsyncAPI Spectral lint", "script": "validate-async-spectral.sh", "what": "Channel, message and operation shape: domains, addresses, names, categories, snapshot guardrails."},
     {"label": "Arazzo structure", "script": "validate-arazzo.sh", "what": "14 checks: file placement and naming, operationId and event resolution, recipe chains (depth, cycles), step overlap, unique MCP tool names."},
-    {"label": "Arazzo Spectral lint", "script": "validate-arazzo-spectral.sh", "what": "Extension shapes: x-version, x-domain, x-actors, x-as, x-async, x-recipe, x-mcp."},
+    {"label": "Arazzo Spectral lint", "script": "validate-arazzo-spectral.sh", "what": "Extension shapes: x-version, x-domain, x-actors, x-as, x-async, x-recipe."},
     {"label": "Generator validation (OpenAPI DDD + async cross-spec + source-tree)", "script": "validate-generator.sh", "what": "Bundles, checks source-tree rules the bundle erases, then validates the project file: the DDD ruleset and the ASYNC_* cross-spec rules. Runs last, as the cross-spec gate."}
   ],
 

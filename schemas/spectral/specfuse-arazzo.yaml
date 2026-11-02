@@ -6,7 +6,7 @@
 #
 # This ruleset validates:
 #   - Document-level extensions (x-version, x-domain, x-emits guard)
-#   - Workflow-level extensions (x-actors, x-setup, x-mcp, x-recipe)
+#   - Workflow-level extensions (x-actors, x-setup, x-recipe)
 #   - Step-level extensions (x-as, x-async, x-ui)
 #   - Cross-concern rules (recipe/scenario exclusion, file homogeneity)
 #
@@ -168,45 +168,20 @@ rules:
       field: recipe
       function: truthy
 
-  specfuse-arazzo-mcp-exposed-required:
-    description: "When x-mcp is present, the 'exposed' field is required"
-    message: "x-mcp is missing 'exposed'. Set exposed: true to expose as an MCP tool, or exposed: false to opt out. See Arazzo Handbook §4.8."
-    severity: error
+  # Generator 0.24.0 retired Arazzo x-mcp: the jar raises X_MCP_RETIRED once per
+  # document and reads nothing, even when the block is malformed. A warning, so
+  # this rule stays level with the jar. The three shape rules it replaces would
+  # have failed lint on a block nothing reads.
+  specfuse-arazzo-x-mcp-retired:
+    description: "x-mcp is retired (generator 0.24.0): nothing reads it"
+    message: "x-mcp is retired and exposes no tool. Delete it; tool exposure moves to the MCP manifest and safeForAutoInvoke to x-effects. See Arazzo Handbook §4.8."
+    severity: warn
     given: $.x-mcp
     then:
-      field: exposed
       function: defined
 
-  specfuse-arazzo-mcp-fields-when-exposed:
-    description: "When x-mcp.exposed is true, toolName and description are required"
-    message: "x-mcp.exposed is true but 'toolName' and/or 'description' are missing. Both are required when a scenario is exposed as an MCP tool. See Arazzo Handbook §4.8."
-    severity: error
-    given: $.x-mcp
-    then:
-      function: schema
-      functionOptions:
-        schema:
-          if:
-            properties:
-              exposed:
-                const: true
-          then:
-            required:
-              - toolName
-              - description
-
-  specfuse-arazzo-mcp-toolname-format:
-    description: "x-mcp.toolName must be kebab-case"
-    message: "x-mcp.toolName '{{value}}' must be kebab-case (e.g., 'place-order', 'get-order-status')."
-    severity: error
-    given: $.x-mcp.toolName
-    then:
-      function: pattern
-      functionOptions:
-        match: "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
-
   specfuse-arazzo-recipe-scenario-exclusion:
-    description: "x-recipe must not coexist with scenario-only extensions (x-actors, x-mcp, x-setup, x-ui)"
+    description: "x-recipe must not coexist with scenario-only extensions (x-actors, x-setup, x-ui)"
     message: "{{error}}"
     severity: error
     given: $

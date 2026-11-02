@@ -68,6 +68,15 @@
 #   ValueObjectProtectionUnknownSubKey   flagged: typo'd sub-key matches neither shape
 #   ValueObjectProtectionMemberNotObject flagged: a member's value must be a declaration
 #
+# Generator 0.24.0 adds `fieldSets` and the `untrusted` classification token:
+#
+#   FieldSetsDeclared            no finding — named sets, dotted entry allowed
+#   ValueObjectClassifiedUntrusted  no finding — `untrusted` at the usage site
+#   FieldSetsEmpty               flagged: an empty block (ENTITY_FIELDSETS_SHAPE_INVALID)
+#   FieldSetBadName              flagged: name outside the jar's pattern
+#   FieldSetNotAList             flagged: a set is a list of property names
+#   FieldSetNoEntries            flagged: a set with no entries
+#
 # And, by `specfuse-xentity-concurrency-unprotected-needs-reason` only — these
 # two must NOT appear in any specfuse-xentity-shape finding:
 #
@@ -339,6 +348,62 @@ components:
     # additionalProperties: false, so each shape the jar accepts and the kit
     # does not is a spec that lints clean nowhere and generates fine.
     # See handbooks/Vendor_Extensions.md §2.1.
+    FieldSetsDeclared:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        fieldSets:
+          summary: [id, title.en]
+      properties:
+        id: { type: string, format: uuid }
+    ValueObjectClassifiedUntrusted:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        valueObjects:
+          residenceAddress:
+            storage: 'flatten'
+            queryable: []
+            classification: [untrusted]
+      properties:
+        id: { type: string, format: uuid }
+    FieldSetsEmpty:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        fieldSets: {}
+      properties:
+        id: { type: string, format: uuid }
+    FieldSetBadName:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        fieldSets:
+          Summary: [id]
+      properties:
+        id: { type: string, format: uuid }
+    FieldSetNotAList:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        fieldSets:
+          summary: id
+      properties:
+        id: { type: string, format: uuid }
+    FieldSetNoEntries:
+      type: object
+      x-entity:
+        domain: orders
+        type: aggregate
+        fieldSets:
+          summary: []
+      properties:
+        id: { type: string, format: uuid }
     ValueObjectProtectionScalar:
       type: object
       x-entity:

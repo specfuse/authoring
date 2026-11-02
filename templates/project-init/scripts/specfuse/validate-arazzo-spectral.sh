@@ -115,7 +115,7 @@ if [ $FAILED_FILES -eq 0 ]; then
     echo ""
     echo "All files comply with:"
     echo "  - Document-level extensions (x-version, x-domain)"
-    echo "  - Workflow-level extensions (x-actors, x-setup, x-mcp, x-recipe)"
+    echo "  - Workflow-level extensions (x-actors, x-setup, x-recipe)"
     echo "  - Step-level extensions (x-as, x-async, x-ui)"
     echo "  - Recipe/scenario exclusion rules"
     echo "  - File homogeneity rules"

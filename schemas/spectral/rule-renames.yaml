@@ -346,7 +346,7 @@ rulesets:
   arazzo:
     kit: schemas/spectral/specfuse-arazzo.yaml
 
-    # 22 pure prefix swaps + 0 non-mechanical = 22 mapped; 2 retained.
+    # 19 pure prefix swaps + 0 non-mechanical = 19 mapped; 2 retained; 3 retired.
     renames:
       rm-arazzo-as-actor-exists: specfuse-arazzo-as-actor-exists
       rm-arazzo-as-format: specfuse-arazzo-as-format
@@ -356,9 +356,6 @@ rulesets:
       rm-arazzo-domain-required: specfuse-arazzo-domain-required
       rm-arazzo-emits-forbidden: specfuse-arazzo-emits-forbidden
       rm-arazzo-file-homogeneity: specfuse-arazzo-file-homogeneity
-      rm-arazzo-mcp-exposed-required: specfuse-arazzo-mcp-exposed-required
-      rm-arazzo-mcp-fields-when-exposed: specfuse-arazzo-mcp-fields-when-exposed
-      rm-arazzo-mcp-toolname-format: specfuse-arazzo-mcp-toolname-format
       rm-arazzo-recipe-purpose-enum: specfuse-arazzo-recipe-purpose-enum
       rm-arazzo-recipe-scenario-exclusion: specfuse-arazzo-recipe-scenario-exclusion
       rm-arazzo-recipe-scope-enum: specfuse-arazzo-recipe-scope-enum
@@ -385,4 +382,12 @@ rulesets:
           is the project's.
 
     # No rule has been deleted without a successor on this surface yet.
-    retired: []
+    retired:
+      rm-arazzo-mcp-exposed-required: &x-mcp-retired
+        note: >-
+          Generator 0.24.0 retired Arazzo x-mcp and reads nothing in the block,
+          so no shape rule survives it. `specfuse-arazzo-x-mcp-retired` warns on
+          any x-mcp block, but is no successor: it fires on a block these rules
+          passed.
+      rm-arazzo-mcp-fields-when-exposed: *x-mcp-retired
+      rm-arazzo-mcp-toolname-format: *x-mcp-retired

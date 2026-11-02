@@ -269,8 +269,12 @@ def published_vocabulary(doc: dict) -> dict[str, set[str]] | None:
             for member in entry.get("members") or []:
                 if isinstance(member, dict) and isinstance(member.get("key"), str):
                     keys.update(member["key"].split("."))
+        # A surface with no keyed entries is not this comparison's. Generator
+        # 0.24.0's `mcp-manifest` prints `{"toolKeys": [...]}` groups for a file
+        # no guard covers; voiding the whole document over it dropped x-entity
+        # to the constant-pool scan and blamed the jar for predating `extensions`.
         if not keys:
-            return None
+            continue
         out[surface] = keys
     return out or None
 

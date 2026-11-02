@@ -60,7 +60,7 @@ aiAccess:
 
 ### 2.3 Tier 2 — Collaborative (`ownedBy: shared`)
 
-Both AI and humans may write. Conflicts are resolved last-writer-wins with audit trail.
+Both AI and humans may write. Conflicts are resolved last-writer-wins with audit trail, except on an entity that is the subject of an event: from generator `0.24.0` (C#) a generated write on such an entity without `concurrency: optimistic` answers a lost race with `409` (`Vendor_Extensions.md` §1.1.1).
 
 ```yaml
 aiAccess:
@@ -332,7 +332,7 @@ The flowchart is biased toward restriction by design.
 | `x-entity.encryptedProperties` | **Retired, generator 0.7.0** — fails with `ENTITY_INVALID_CONFIG`. Held the exclusion role through 0.6.0. |
 | `x-classification: [encrypted]` | **Retired, generator 0.7.0** — rejected with `INVALID_EXTENSION_VALUE`, and by kit `specfuse-classification-encrypted-superseded` (error). |
 | `x-classification: [pii \| sensitive]` | PII/sensitive fields are not auto-excluded from AI read, but they trigger snapshot acknowledgement rules (`x-snapshot-pii-acknowledged`) when included in event snapshots. See `AsyncAPI_Handbook.md §2.3`. |
-| `x-ai-safe` (operations) | **Read by nothing — do not gate on it.** It was intended to operate at the HTTP operation level (may an AI agent invoke this endpoint without approval) where `aiAccess` operates at the entity/repository level, but no generated code and no lint rule enforces it. `aiAccess` is enforced; `x-ai-safe` is documentation. The live per-tool control is `x-mcp.safeForAutoInvoke` on an Arazzo scenario (`Arazzo_Handbook.md` §4.8). See `Vendor_Extensions.md` §4.1 and `compatibility.md` §25. |
+| `x-ai-safe` (operations) | **Read by nothing — do not gate on it.** It was intended to operate at the HTTP operation level (may an AI agent invoke this endpoint without approval) where `aiAccess` operates at the entity/repository level, but no generated code and no lint rule enforces it. `aiAccess` is enforced; `x-ai-safe` is documentation. The per-operation control is `x-effects`, from which the generator derives whether a call needs confirmation (`Vendor_Extensions.md` §4.7); `x-mcp.safeForAutoInvoke` is retired from generator `0.24.0`. See `Vendor_Extensions.md` §4.1 and `compatibility.md` §25. |
 | `x-ai.entities` (AsyncAPI workers) | When an AsyncAPI worker declares `x-ai.entities.{reads,creates,updates,deletes}`, every listed entity MUST have a matching `aiAccess` block granting the corresponding operation. The cross-spec validator enforces this. See `AsyncAPI_Handbook.md §4.3`. |
 | `x-ai.dataHandling` (AsyncAPI workers) | Declares whether the worker sends personal data to its LLM provider (`personalData`) and the country that provider must run in (`providerRegion`). Generator `0.16.0`: the generated Python worker refuses to start when the configured provider region differs. It checks configuration, not where the endpoint actually runs. Complementary to `aiAccess`: `aiAccess` decides which data an agent may touch, `dataHandling` where that data may go. See `AsyncAPI_Handbook.md §4.3`. |
 | `filterableProperties` / `searchableProperties` | Govern HTTP query surfaces, not AI repository methods. AI filtering/search allow-lists are derived separately from `readableProperties`. |

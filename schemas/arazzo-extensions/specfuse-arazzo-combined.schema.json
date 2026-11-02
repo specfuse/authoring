@@ -20,7 +20,8 @@
     },
     "x-mcp": {
       "$ref": "x-mcp.schema.json",
-      "description": "MCP tool exposure declaration. Only valid on scenario documents."
+      "deprecated": true,
+      "description": "Retired at generator 0.24.0 (X_MCP_RETIRED): nothing reads it. Delete it."
     },
     "x-actors": {
       "$ref": "x-actors.schema.json",
@@ -74,12 +75,11 @@
       "description": "Reference to an actor defined in x-actors, using the $actorName convention"
     },
     "recipeDocumentRules": {
-      "description": "Rules for recipe documents: x-actors, x-setup, and x-mcp are forbidden. Steps must not use x-as or x-ui.",
+      "description": "Rules for recipe documents: x-actors and x-setup are forbidden. Steps must not use x-as or x-ui.",
       "not": {
         "anyOf": [
           { "required": ["x-actors"] },
-          { "required": ["x-setup"] },
-          { "required": ["x-mcp"] }
+          { "required": ["x-setup"] }
         ]
       },
       "properties": {

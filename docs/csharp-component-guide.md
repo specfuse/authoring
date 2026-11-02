@@ -113,6 +113,8 @@ The references are the Clean Architecture layering made compile-time: Domain ref
 
 Two libraries are deliberately **not** on the list: AutoMapper and FluentAssertions. Both became commercially licensed; generated code maps through Mapperly and asserts through AwesomeAssertions (the Apache-2.0 fork with the same `.Should()` API). Referencing FluentAssertions beside AwesomeAssertions makes every assertion ambiguous.
 
+Two more packages depend on what you register, from generator 0.24. Add `Cronos` to the generic-host project when it registers `hostedScheduledJob` for an `inProcess` job (a `cronJob`-only host does not need it). A host registering `mcpHost` references `ModelContextProtocol.AspNetCore` at 2.3.0, because concurrent first tool creation can build a wrong input schema on 2.1.0 and 2.2.0. Keep `mcpHost` off a real manifest at 0.24 ([`Project_File.md` §1.5](../handbooks/Project_File.md)).
+
 ### 2.3 Solution, SDK pin and git
 
 - `HelloOrders.slnx` (or `.sln`) lists every project; `global.json` pins the SDK (`"version": "10.0.100", "rollForward": "feature"`).
@@ -421,6 +423,49 @@ A `FAILED` patch exits non-zero and stops the run, so a regen never finishes wit
 - The regen's `CHANGELOG.md` is written before the patch goes back on, while the baseline `advance-state.sh` captures comes from your merged, patched code. A patch that changes a tracked surface (a Domain entity, value object or service signature) therefore shows up in every regen's `CHANGELOG.md`. Say so in the PR rather than chasing it.
 
 **Retiring one.** When the issue is fixed and the generator the spec repo runs (the kit's pin, or the project's `.specfuse/generator.lock`) reaches that release, regenerate and expect `already present`. Confirm the output is right without the patch, delete the patch file, move its row to **Retired**, and remove its expectations entry and any `src/` workaround tied to it. Review the index at every pin bump: a patch whose issue is closed but that still reports `applied` means the fix did not cover your case, so comment on or reopen the issue.
+
+### 9.2 Upgrading to generator 0.24
+
+Every C# consumer of `eventRuntime` authors migrations at this regen, and some must be applied **before** the new code runs. [`generator-releases.md`](generator-releases.md) has the full account; this is the order of work in this repo.
+
+**Migrations.** One regen can carry all of these in order:
+
+| Migration | Who needs it | What to write |
+|---|---|---|
+| `EventOutbox.Status` holds names | Every consumer of `eventRuntime` | **Write it by hand**, see below. `dotnet ef migrations add` scaffolds only the `AlterColumn`, which leaves existing rows holding `'0'`. |
+| `AggregateVersion` and `SessionKey` | Every consumer of `eventRuntime` | `dotnet ef migrations add` produces it: an `int` `AggregateVersion` (default 0) on each table of an entity that is an event's subject, and `EventOutbox.SessionKey` with its filtered index. It goes after the `Status` migration, because the index filter names the new status values. |
+| `ScheduledJobRun` | Every C# consumer | `dotnet ef migrations add`. Without it every timer tick fails. |
+| Outbox tenancy columns | Tenancy not named `CompanyId` / `RestaurantId` | A `RenameColumn` for a renamed tier, or a `DropColumn` for an undeclared sub-tenant. Check that column is `NULL` everywhere first if a Python producer writes into the table. |
+| `dbColumn` renames | A `namingOverrides.dbColumn` whose result differs from the C# name, such as `snake_case` | `CreatedAt`, `UpdatedAt`, `ConcurrencyToken` and optional scalars take the override. **Check the migration says `RenameColumn`**: a drop and add loses the data, so edit it if EF chose that. |
+
+```csharp
+// EventOutbox.Status: ordinals to names. Run the UPDATE between the AlterColumn and the CreateIndex.
+migrationBuilder.DropIndex(name: "IX_EventOutbox_Status_CreatedAt", table: "EventOutbox");
+migrationBuilder.DropIndex(name: "IX_EventOutbox_Status_NextRetryAt", table: "EventOutbox");
+migrationBuilder.AlterColumn<string>(name: "Status", table: "EventOutbox", type: "nvarchar(32)", maxLength: 32, nullable: false, oldClrType: typeof(int), oldType: "int");
+migrationBuilder.Sql("UPDATE EventOutbox SET Status = CASE Status WHEN '0' THEN 'Pending' WHEN '1' THEN 'Sent' WHEN '2' THEN 'Failed' WHEN '3' THEN 'Poisoned' ELSE Status END");
+migrationBuilder.CreateIndex(name: "IX_EventOutbox_Status_CreatedAt", table: "EventOutbox", columns: new[] { "Status", "CreatedAt" });
+migrationBuilder.CreateIndex(name: "IX_EventOutbox_Status_NextRetryAt", table: "EventOutbox", columns: new[] { "Status", "NextRetryAt" });
+```
+
+Raw SQL or a dashboard reading `Status = 0` must change. Code using `OutboxStatus.Pending` does not.
+
+**Deploy order, in one release:**
+
+1. Apply the migrations. C# and Python from this release both fail against the old `Status` column. The old C# hosts cannot read the new one either, so their drainer fails until step 3; rows wait in the table and none is lost.
+2. Add `ScheduleHeartbeat.LogCategory` to the log-floor exemption in `OpenTelemetryBuilderExtensions.cs`, or the heartbeat is dropped.
+3. Deploy the C# hosts.
+4. Deploy Python workers. A Python worker from before this release keeps working after the migration, for this release only.
+
+**Hand-written code that stops compiling or behaves differently:**
+
+- **CS7036 on a runtime function.** `EventOutboxDrainerFunction`, `EventOutboxRetentionFunction` and `EventInboxRetentionFunction` gain `ILogger<ScheduleHeartbeat> heartbeatLogger` and `IScheduledJobGuard guard` after `logger`. A test that constructs one directly passes both.
+- **CS0535 or CS0115 on an application service.** A `filter`, `sort`, `page` or `pageSize` parameter on a non-queryable application GET now reaches `I{Tag}ApplicationService` as a trailing parameter with no default, such as `string? filter`. Add it to the interface method, or to the `…Core` override and any `…Authorize` override, and apply it there. Drop any workaround that read the value off `HttpContext`.
+- **`DbUpdateConcurrencyException` where the last writer used to win.** On an entity that is an event's subject and is not `concurrency: optimistic`, `AggregateVersion` is the concurrency token, and a generated service answers `409`. A detached instance passed to `Update` must carry the version it read, and two concurrent child creates on such a parent can answer `409`. A hand-written `ExecuteUpdate` or raw SQL moves nothing, so move the version in that statement.
+- **`InvalidOperationException` at `BufferedEventCollector.Add`.** A test or producer adding a tenant-scoped event with no tenant now fails there.
+- **A wire reader looking for the tenant in the body.** A tenancy member the payload does not declare is no longer in the outbox body; read the envelope header.
+- **A `400` where the client used to succeed.** `filter` accepts only `filterableProperties` plus `Id`, `CreatedAt` and `UpdatedAt`, and an enum value in a request must match the spec exactly, case included, with `"unknown"` refused unless the enum declares it or is `x-extensible`. Stored enum data is unaffected.
+- **A `403` or `404` on a write.** A project declaring `tenancy` gets a write guard: a write outside the caller's visibility answers `403`, and a body reference outside it `404`, where a missing id used to be a `500` and another tenant's id was accepted.
 
 ## 10. The audit checklist
 
