@@ -17,7 +17,7 @@
 # Schema:    schemas/arazzo-extensions/specfuse-arazzo-combined.schema.json
 #
 # Extensions covered in this file:
-#   x-version, x-domain, x-doc, x-mcp, x-actors, x-setup, x-as,
+#   x-version, x-domain, x-doc, x-actors, x-setup, x-as,
 #   x-async (emit, await, poll), x-ui, x-recipe
 #
 # Extensions that DO NOT exist as standalone — by design:
@@ -129,24 +129,6 @@ x-doc:
   businessOutcome: >-
     Self-service refund initiation reduces support burden while
     maintaining oversight and constraint validation.
-
-# ---------------------------------------------------------------------------
-# x-mcp (optional, scenario workflows only) — See handbook §4.8 / §11
-# ---------------------------------------------------------------------------
-# Declares whether this scenario is exposed as an MCP tool for AI
-# orchestrators. Explicit opt-in; default is false.
-#
-# Fields:
-#   exposed            — boolean (required). Must be explicitly set.
-#   toolName           — kebab-case, globally unique across all scenarios
-#   description        — MCP-facing description
-#   requiresActorAuth  — whether actor auth context is needed (default: true)
-#   safeForAutoInvoke  — can AI invoke without human confirmation? (default: false)
-#
-# Inputs/outputs are DERIVED from the workflow's inputs/outputs —
-# never redeclared in x-mcp.
-x-mcp:
-  exposed: false                         # Explicit opt-out for this sample
 
 # ---------------------------------------------------------------------------
 # x-actors (REQUIRED on scenario workflows, forbidden on recipes)
@@ -526,9 +508,6 @@ x-doc:
     Self-service refund initiation reduces support burden while
     maintaining constraint validation and management oversight.
 
-x-mcp:
-  exposed: false
-
 x-actors:
   customer:
     role: Customer
@@ -716,7 +695,7 @@ workflows:
 #   - x-actors (required on scenario documents)
 #   - workflows with at least one step using x-as
 #
-# Everything else (x-doc, x-mcp, x-setup, x-ui, x-async, tags,
+# Everything else (x-doc, x-setup, x-ui, x-async, tags,
 # onFailure) is optional and can be added incrementally.
 # =============================================================================
 ---
@@ -831,9 +810,6 @@ x-doc:
     - system
   businessOutcome: >-
     Prevents clutter from abandoned draft orders.
-
-x-mcp:
-  exposed: false
 
 # Scheduled-job scenarios: the actor is an OBSERVER, not an initiator.
 # The job runs as the system. The observer verifies results.
@@ -950,9 +926,6 @@ x-setup:
   recipe: basic-orders
   inputs:
     orderPlacedDate: "@today-1d"
-
-x-mcp:
-  exposed: false
 
 workflows:
 
@@ -1094,7 +1067,6 @@ workflows:
 #   - x-actors FORBIDDEN (recipes run as implicit $system mapped to the project's
 #     highest-privileged role)
 #   - x-setup FORBIDDEN (recipes compose via 'extends', not $setup)
-#   - x-mcp FORBIDDEN (recipes are infrastructure, not user-facing tools)
 #   - x-as FORBIDDEN on steps (every step runs as $system)
 #   - x-ui FORBIDDEN on steps (no user-facing interactions)
 #

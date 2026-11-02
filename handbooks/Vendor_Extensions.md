@@ -57,7 +57,8 @@ x-entity:
   uniqueBy: object[]             # Optional: uniqueness constraints, each { name?, properties[], nullsDistinct?, where[]? }
   visibility: string | object    # Optional: "tenantWide" | "subTenant", or { mode, scope, unscopedRows } (generator 0.21.0)
   valueObjects: object           # Optional: Value object storage configuration
-  aiAccess: object               # Optional: AI agent access policy (see 1.1.1). Absent = no AI access.
+  fieldSets: object              # Optional: named property lists for a read, inside aiAccess (generator 0.24.0)
+  aiAccess: object               # Required from generator 0.24.0: AI agent access policy (see 1.1.1). Absent is ENTITY_AIACCESS_MISSING (ERROR)
 ```
 
 **`domain` (required, leads the block).** Every entity is assigned to exactly one domain. The value is a kebab-case name that **MUST** be a key in the project's domain registry `info.x-domains` (see `API_Handbook.md §0.1` and the new-project scaffold's `openapi.yaml`). The registry is a **closed universe**: an entity may only name a registered domain, and the validator rejects an `x-entity.domain` that has no matching `info.x-domains` key (`ENTITY_DOMAIN_UNREGISTERED`, ERROR). The value also matches the entity's `domains/{domain}/` folder and lines up 1:1 with the AsyncAPI channel `x-domain` (§12.1) and Arazzo workflow `x-domain` (§13.1) — one domain vocabulary shared across all three specs. Author it first so the entity's home is unambiguous before any relationship or access metadata is read.
@@ -1081,13 +1082,45 @@ documented spelling only, as it does for `delete` and `concurrency`.
 > accepts the key whatever the pin, so check `generator.lock` before you rely on
 > it.
 
+### `fieldSets` — named reads of an entity (generator `0.24.0`)
+
+`x-entity.fieldSets` maps a set name to the properties a read returns. An MCP tool names one with `fieldSet` (`Project_File.md` §1.5).
+
+```yaml
+x-entity:
+  fieldSets:
+    summary: [id, status, title.en]
+  aiAccess:
+    operations: [read]
+    readableProperties: [id, status, title]
+    reason: Agents list these to pick one to open.
+```
+
+An entry may be dotted. Each segment is checked: the first against the entity's own properties, each later one against the schema the previous one resolves to, through a `$ref` where there is one.
+
+**A field set cannot widen `aiAccess`.** An entry must be inside the effective `readableProperties`: the explicit list verbatim, or, when that is omitted, every top-level property minus the `atRest: encrypted` ones. A dotted entry is readable when it or a parent path is. A **sensitive** entry has to be listed explicitly, so the implicit expansion is not enough for it. Sensitive means `x-protection.atRest: encrypted` or any `x-classification` token except `exposed` and `untrusted`, so `pii` counts, and a dotted entry is sensitive when any segment is. Measured on `0.24.0`: `fieldSets: {summary: [id, firstName]}` with a `pii` `firstName` and no `readableProperties` fails, and passes once `readableProperties` lists `firstName`.
+
+| Code (all ERROR) | Fires when |
+|---|---|
+| `ENTITY_FIELDSETS_SHAPE_INVALID` | `fieldSets` is not a mapping, or is empty |
+| `ENTITY_FIELDSET_NAME_INVALID` | A set name is outside `^[a-z][A-Za-z0-9]*$` |
+| `ENTITY_FIELDSET_VALUE_INVALID` | A set is not a list of strings |
+| `ENTITY_FIELDSET_EMPTY` | A set lists nothing |
+| `ENTITY_FIELDSET_PROPERTY_DUPLICATE` | A set lists a property twice |
+| `ENTITY_FIELDSET_PROPERTY_NAME_INVALID` | An entry is not a valid property name or path |
+| `ENTITY_FIELDSET_PROPERTY_UNKNOWN` | A segment names no property |
+| `ENTITY_FIELDSET_PROPERTY_NOT_READABLE` | An entry is outside the effective `readableProperties` |
+| `ENTITY_FIELDSET_PROPERTY_SENSITIVE_UNLISTED` | A sensitive entry is not listed explicitly in `readableProperties` |
+
+An entity with `fieldSets` and no `aiAccess` reports the single `ENTITY_AIACCESS_MISSING`; the older `ENTITY_FIELDSETS_AI_ACCESS_MISSING` no longer exists.
+
 ### 1.1.1 aiAccess (within x-entity)
 
 **Purpose**: Declares the access policy that generated repositories and service layers must enforce for AI agents interacting with this entity. Consumed by the code generator to emit AI-scoped repository methods, field allow-lists, and audit hooks.
 
 **Scope**: Required on every `x-entity` block (main resource schemas — aggregates and entities). Tier 0 entities (those the AI must not touch) use the explicit empty-operations form (see below) rather than omitting the block.
 
-**Semantic default when absent**: No AI access — agents cannot read, create, update, or delete the entity through any generated AI-facing surface. However, **absence is a validator warning** (`ENTITY_AIACCESS_MISSING`), because it cannot be distinguished from authoring oversight. Every entity must make the AI-access decision explicit by declaring an `aiAccess` block. For entities the AI must not touch, use the canonical Tier 0 form: `operations: []` with `reason`.
+**Semantic default when absent**: No AI access — agents cannot read, create, update, or delete the entity through any generated AI-facing surface. However, **absence is a validator error from generator `0.24.0`** (`ENTITY_AIACCESS_MISSING`, a warning before that), because it cannot be distinguished from authoring oversight: `validate` and `generate` both fail. Every entity must make the AI-access decision explicit by declaring an `aiAccess` block. For entities the AI must not touch, use the canonical Tier 0 form: `operations: []` with `reason`.
 
 **Schema**:
 ```yaml
@@ -1107,14 +1140,14 @@ aiAccess:
 - **`writableProperties`** — must reference top-level properties of the entity. Write access is always an explicit allow-list; there is no "all fields" shortcut for writes. Required whenever `operations` includes any of `create`, `update`, `delete`.
 - **`immutableOnUpdate`** — subset of `writableProperties`. Fields the agent may supply on create but never modify on update (e.g., foreign keys, tenant scope).
 - **`ownedBy`** — records the system of record when both AI and backend can write:
-  - `shared` (default): either side may write; last-writer-wins with audit
+  - `shared` (default): either side may write; last-writer-wins with audit. From generator `0.24.0` (C#), an entity that is the subject of an event and is not `concurrency: optimistic` carries `AggregateVersion` as its concurrency token, so a generated write that loses a race answers `409` instead of winning last, with no ETag and no `If-Match`
   - `ai`: the AI agent is authoritative; backend writes are reconciled against AI state
   - `backend`: the backend is authoritative; AI writes are advisory and may be overridden
 - **`reason`** — required in two cases: (a) `operations` is empty (the Tier 0 justification — why this entity is intentionally outside the AI surface), and (b) `operations` contains any write verb (the audit justification for granting writes). Free-text surfaced in generated doc-comments and the AI manifest. Should not reference the target programming language — describe the business need.
 
 **Validation rules** (enforced by Spectral + DDD validator):
 
-1. `aiAccess` is required on every `x-entity` block. Absence triggers a WARN-level finding (`ENTITY_AIACCESS_MISSING`) — present-but-empty `operations` is the canonical Tier 0 declaration.
+1. `aiAccess` is required on every `x-entity` block. Absence is an ERROR from generator `0.24.0` (`ENTITY_AIACCESS_MISSING`) — present-but-empty `operations` is the canonical Tier 0 declaration.
 2. `operations` must be present. An empty array (`[]`) is valid and signals deliberate Tier 0 / explicit no-access. When `operations` is empty, `reason` is required.
 3. If `operations` contains any of `create`/`update`/`delete`, then `writableProperties` (non-empty) and `reason` (non-empty) are required.
 4. `readableProperties`, `writableProperties`, and `immutableOnUpdate` must reference top-level properties that exist on the entity schema (BilingualText subfields like `title.en` allowed).
@@ -1484,7 +1517,7 @@ ShipmentCarrier:
 Two things about that list are deliberate and worth knowing before you argue with it:
 
 - **It is exact-match, not substring.** An `emails` array on an `Inbox` schema does not trigger it. The narrowness is the point — a substring heuristic flags collections and unrelated fields, and a rule that fires on those gets switched off.
-- **The check is presence, not correctness.** Any non-empty classification satisfies it, including `[exposed]`. Choosing the *right* member is your judgement; the validator only refuses silence. (`[exposed]` on a `dateOfBirth` therefore passes — see `compatibility.md` §26.)
+- **The check is presence, not correctness.** Any non-empty classification satisfies it, including `[exposed]`, but not `[untrusted]` alone from generator `0.24.0`. Choosing the *right* member is your judgement; the validator only refuses silence. (`[exposed]` on a `dateOfBirth` therefore passes — see `compatibility.md` §26.)
 
 **Derivatives are exempt.** The rule runs on `x-entity` schemas only; `New*` / `Update*` / `Basic*` project the same fields and would double-flag every PII property.
 
@@ -1508,6 +1541,7 @@ x-classification:
 | `credential` | Secrets that authenticate a principal | Never safe to return. MUST NOT co-occur with `exposed`. |
 | `cardholder` | Cardholder data (PAN and equivalents) | Never safe to return. MUST NOT co-occur with `exposed`. |
 | `sad` | PCI Sensitive Authentication Data (CVV, track, PIN block) | Never safe to return, and MUST NOT be retained after authorisation. MUST NOT co-occur with `exposed`. |
+| `untrusted` | **From generator `0.24.0`.** Authored outside the tenant's authenticated principals, such as free text a customer typed | **Mark a field when ANY ingestion path can fill it with text written outside the tenant's signed-in users**: an inbound email's subject, an uploaded file's name. Text your own staff type does not qualify, even free text. Most entities have a `notes` field, so that reading would make every write tool confirm, and a gate that always fires gets switched off. States provenance, nothing about protection. It does not satisfy `PII_FIELD_MISSING_CLASSIFICATION`: an `email` classified only `[untrusted]` is still reported, so write `[pii, untrusted]`. `PROTECTION_ATREST_REQUIRED` still applies, so declare `x-protection.atRest` beside it. It triggers no snapshot acknowledgement and no retention requirement on its own (`[pii, untrusted]` still does). Inherited by a derived DTO like any token, and also accepted at `x-entity.valueObjects.<p>.classification`. |
 | ~~`encrypted`~~ | **RETIRED — generator 0.7.0.** | Rejected with `INVALID_EXTENSION_VALUE` at both the property level and the `x-value-object.classification` usage site. Declare `x-protection: {atRest: encrypted}` on the property instead; that is the axis the generator reads, and it is REQUIRED on every classified property regardless. The closed set is now the eight values above. |
 | `exposed` | Secret-shaped name, human-reviewed, safe to expose | Escape hatch for the `SENSITIVE_FIELD_IN_RESPONSE` validator (see below). Asserts a reviewer confirmed the field is safe on a response despite a secret-shaped name. **Grants no access** on its own; carries no encryption/masking obligation. Contradictory with `sensitive` and `confidential`, and with an `x-protection.atRest` of `encrypted` or `hashed` — MUST NOT co-occur with any of them (`PROTECTION_EXPOSED_MUTEX`). May co-occur with `pii`, `financial` or `cardholder`, which the generator accepts. Requires a `description` justifying why exposure is safe. |
 
@@ -2166,6 +2200,8 @@ Article:
 **Scope**: Applied to a `type: string, format: uuid` property inside a main resource (`x-entity`).
 
 **Optional**: Yes, but see "Every FK-shaped property must be classified" below — in practice an unclassified uuid property is a spec defect, not a default.
+
+> **A client-writable reference to a global entity gets no tenant check.** From generator `0.24.0` the save-time write guard resolves a reference to a tenant-owned entity, and `TENANT_REFERENCE_NOT_WRITE_CHECKED` warns on one it cannot check. Neither covers a target with no `belongsTo` path to a tenancy root, such as a global `User`. A request body carrying any existing id of that entity passes, so a task can be assigned to a stranger, and the difference between an error and success reveals that the record exists. Until the generator has a way to declare the membership that scopes such an entity, check it in hand-written code on every write path, and answer the same way whether the record is unknown or foreign. Fields the server fills from the caller (`x-populate-from`) are not exposed to this.
 
 **Schema**:
 
@@ -2995,9 +3031,9 @@ The second rule is **armed by `authorization.kioskSession.role`** in the project
 
 > **⚠ Nothing reads this extension. Do not gate anything on it.**
 >
-> `x-ai-safe` appears nowhere in the generator: zero occurrences of the key and zero of any `aiSafe` identifier across the source, against controls in the same search that find `x-public` and `x-manual` in three files each and `x-mcp` in five. No kit Spectral rule enforces it either. **An operation marked `x-ai-safe: true` is not gated by anything** — declaring it produces a document that reads like a safety control and is not one, which is worse than declaring nothing.
+> `x-ai-safe` appears nowhere in the generator: zero occurrences of the key and zero of any `aiSafe` identifier across the source, against controls in the same search that find `x-public` and `x-manual` in three files each. No kit Spectral rule enforces it either. **An operation marked `x-ai-safe: true` is not gated by anything** — declaring it produces a document that reads like a safety control and is not one, which is worse than declaring nothing.
 >
-> The live mechanism for the same question is **`x-mcp.safeForAutoInvoke`** on an Arazzo scenario workflow (`Arazzo_Handbook.md` §4.8, parsed into the generator's `McpConfig`), which declares whether an AI agent may invoke a tool without human confirmation. It sits on the *workflow* rather than the operation, which is a real difference and a known open question — see `compatibility.md` §25.
+> The live mechanism for the same question is **`x-effects`** (§4.7), from generator `0.24.0`. It sits on the operation, and the generator derives from it whether a call needs a human's confirmation. It replaces `x-mcp.safeForAutoInvoke`, which is retired (`Arazzo_Handbook.md` §4.8).
 >
 > The key is documented here rather than deleted because retiring an extension is the generator's call, not the kit's (`compatibility.md` §23). Until that answer arrives, treat this section as a record of what the key was meant to mean.
 
@@ -3108,6 +3144,60 @@ enum: [active, inactive, suspended]
 Outside enum schemas, prefer the standard `default` keyword on its own. Use `x-default` alone for cases the standard keyword does not cover — e.g. a value the generator should use for test data without declaring it as a schema-level default.
 
 **What `default` means next to `required`** — including the `readOnly` case, where it becomes a persistence default rather than a client-side suggestion — is `API_Handbook.md` §1.9. The three diagnostics above are the enum-specific enforcement of that rule.
+
+
+### 4.7 x-effects
+
+**Purpose**: Declares what a write does beyond its own row, so the generator can derive whether a call needs a human's confirmation and how far it reaches. From generator `0.24.0`.
+
+**Scope**: A write operation. On a GET it is an error (`X_EFFECTS_ON_READ`): a read has no effects to declare.
+
+**Required**: No, but a write declaring none fails closed: it requires confirmation and is `destructiveHint: true`.
+
+```yaml
+patch:
+  operationId: cancelBooking
+  x-effects:
+    reversibility: compensable
+    externalEffects: [email]
+    compensatedBy: reinstateBooking
+```
+
+| Key | Required | Values |
+|---|---|---|
+| `reversibility` | Yes | `reversible`, `compensable`, `irreversible` |
+| `externalEffects` | Yes, `[]` when there are none | `dataExport`, `email`, `inAppNotification`, `payment`, `physicalDevice`, `push`, `sms`, `thirdParty` |
+| `compensatedBy` | On `compensable` only | The `operationId` that undoes this one |
+| `requiresConfirmation` | No | Only `true`. It can add a confirmation, never remove one. |
+
+**These facts hold for any caller**, whether an agent, a worker or a person in the app. That is why they live on the operation and not in the MCP manifest: enforcement inputs belong on the operation, presentation inputs in the manifest.
+
+**Getting the values right:**
+
+- **`reversibility` describes the business effect, not the database row.** A soft-deleted row that already sent notifications is `irreversible`. An update that changes one row and notifies every assignee is not low risk, whatever its structure suggests.
+- **For an operation that starts an asynchronous job (a `202`), classify the job's eventual effect**, not the acknowledgment. Authors often get this case wrong.
+- **`compensatedBy` is caller-relative.** It says an inverse exists in the system, not that this caller may invoke it. Where the caller cannot, the operation counts as `irreversible` for them. This only ever escalates.
+- **`externalEffects: []` is a statement; leaving the key out is not.** The empty list is the reviewable "no effects" declaration, like `aiAccess: { operations: [] }`. `inAppNotification` stays inside your system. Everything else cannot be recalled, including `physicalDevice`: a corrective push may never reach an offline device.
+- **Do not recompute the derivation in another consumer.** That is how an advertised hint and an enforced gate drift apart. Spectral does not check `x-effects` either; the generator owns it.
+
+**What the generator derives** (C#, rendered on each `OperationDescriptor` when a group registers `authorizationRuntime`):
+
+- `RequiresConfirmation`: `requiresConfirmation: true`, or `irreversible`, or any external effect other than `inAppNotification`, or `compensable` beyond `self`, or a write with no `x-effects`.
+- `BlastRadius`: `self` for a `/me/` segment or `x-self-scoped`; otherwise the `tenancy` tier the target entity is or reaches through `belongsTo`, the widest when it reaches both; otherwise `platform`, including when the project declares no `tenancy`.
+- `ReadOnlyHint` (GET), `DestructiveHint` (false for a GET and for a `reversible` write with `externalEffects: []`, true for every other write) and `IdempotentHint` (GET, PUT, DELETE).
+
+| Code (all ERROR) | Fires when |
+|---|---|
+| `X_EFFECTS_UNKNOWN_KEY` | A key outside the table above |
+| `X_EFFECTS_REVERSIBILITY_INVALID` | Absent, or outside the three values |
+| `X_EFFECTS_EXTERNAL_EFFECTS_MISSING` | `externalEffects` is absent |
+| `X_EFFECTS_EXTERNAL_EFFECT_UNKNOWN` / `X_EFFECTS_EXTERNAL_EFFECT_DUPLICATE` | A value outside the set, or listed twice |
+| `X_EFFECTS_COMPENSATED_BY_MISSING` | `compensable` without `compensatedBy` |
+| `X_EFFECTS_COMPENSATED_BY_FORBIDDEN` | `compensatedBy` on an operation that is not `compensable` |
+| `X_EFFECTS_COMPENSATED_BY_UNRESOLVED` | It names no `operationId` in the spec |
+| `X_EFFECTS_REVERSIBLE_ESCAPING_EFFECT` | `reversible` with an effect other than `inAppNotification` |
+| `X_EFFECTS_REQUIRES_CONFIRMATION_NOT_TRUE` | `requiresConfirmation` is anything but `true` |
+| `X_EFFECTS_ON_READ` | Declared on a GET |
 
 ---
 
@@ -4059,7 +4149,7 @@ When present, the receiving operation's `x-subscription` should set `requiresSes
 x-trigger-when: "After.status == 'archived' && Before.status != 'archived'"
 ```
 
-**Why**: The action class of an event is inferred from its name suffix. State-transition events (anything not `*Created`/`*Updated`/`*Deleted`) need a declarative predicate so the generator-emitted service code knows *when* to emit the event during a save. The predicate is evaluated against `EntityEntry.OriginalValues` (Before) and `EntityEntry.CurrentValues` (After) before `SaveChangesAsync`. When matched, the transition event fires AND the corresponding `*Updated` is suppressed (mutual exclusivity).
+**Why**: The action class of an event is inferred from its name suffix. State-transition events (anything not `*Created`/`*Updated`/`*Deleted`) need a declarative predicate so the generator-emitted service code knows *when* to emit the event during a save. On the generated C# update and replace paths, the predicate is evaluated against `EntityEntry.OriginalValues` (Before) and `EntityEntry.CurrentValues` (After) before `SaveChangesAsync`; on an explicit or hand-written path it is the caller's precondition (`AsyncAPI_Handbook.md`, `x-trigger-when`). When matched, the transition event fires AND the corresponding `*Updated` is suppressed (mutual exclusivity).
 
 **Predicate grammar (authoritative):**
 
@@ -4117,6 +4207,28 @@ payload:
 x-trigger-mode: explicit
 x-method-name: CancelOrder        # imperative form of OrderCancelled
 ```
+
+#### x-envelope
+
+**Purpose**: Binds a message header to an event-envelope role, so the generated runtime reads and writes that role under the name your trait declares. From generator `0.24.0`.
+
+**Scope**: A header property in a message's `headers`, usually through a trait. Traits apply in order, and the message's own `headers` win.
+
+**Roles** (closed): `eventId`, `eventVersion`, `messageType`, `correlationId`, `causationId`, `traceparent`, `userId`, `tenant`, `subTenant`, `aggregateId`, `aggregateType`, `aggregateVersion`, `producedAt`.
+
+```yaml
+headers:
+  type: object
+  required: [eventId, accountId]
+  properties:
+    eventId: { type: string, format: uuid }
+    accountId:
+      type: string
+      format: uuid
+      x-envelope: tenant
+```
+
+A header with no marker binds a role when its name is the role's canonical name, which for `tenant` and `subTenant` is the camelCased `tenancy.*.foreignKey`. The findings and the migration for an older trait are in `AsyncAPI_Handbook.md` §2.1.
 
 #### x-envelope-promote
 **Purpose**: Marks a snapshot field that should also be stamped as an envelope ApplicationProperty so subscription filters can target it without inspecting the payload.
@@ -4492,39 +4604,7 @@ x-domain: order
 
 #### x-mcp
 
-**Purpose**: Declares whether a scenario workflow is exposed as an MCP (Model Context Protocol) tool for AI orchestrators. Inputs and outputs are derived from the workflow — not redeclared in `x-mcp`.
-
-**Scope**: Arazzo workflow (scenario only)
-
-**Required**: No (default: not exposed)
-
-**Schema**: `schemas/arazzo-extensions/x-mcp.schema.json`
-
-**Shape**:
-```yaml
-x-mcp:
-  exposed: true
-  toolName: request-refund
-  description: "Request a refund for a completed order"
-  requiresActorAuth: true
-  safeForAutoInvoke: false
-```
-
-| Field | Required | Type | Description |
-|-------|----------|------|-------------|
-| `exposed` | Yes | boolean | Explicit opt-in for MCP tool exposure. Default: `false` |
-| `toolName` | When exposed | string | kebab-case tool name, globally unique across all scenarios |
-| `description` | When exposed | string | MCP-facing description of what the tool does |
-| `requiresActorAuth` | No | boolean | Whether the tool requires actor authentication context. Default: `true` |
-| `safeForAutoInvoke` | No | boolean | Whether an AI agent can invoke without human confirmation. Default: `false` |
-
-**Rules**:
-- When `exposed: true`, both `toolName` and `description` become required
-- `toolName` must be globally unique across all scenarios in the repository (Spectral-enforced)
-- `safeForAutoInvoke: true` should only be set for read-only, low-risk scenarios
-- Forbidden on recipe workflows — recipes are infrastructure, not user-facing tools
-
-**Rationale**: MCP tools allow AI orchestrators to discover and execute multi-step API workflows. Explicit opt-in (`exposed: false` default) prevents accidental exposure. Global `toolName` uniqueness is enforced from Phase 0 to prevent conflict accumulation before the MCP runtime ships (Phase 7).
+**Retired, generator `0.24.0`. Delete the block.** Nothing reads it, and a document that still declares it gets one `X_MCP_RETIRED` warning (`specfuse-arazzo-x-mcp-retired` in the kit's Spectral). Tool exposure moves to the MCP manifest (`Project_File.md` §1.5), `safeForAutoInvoke` to `x-effects` (§4.7), and `requiresActorAuth` is derived from `x-actors`.
 
 **See also**: `Arazzo_Handbook.md §4.8`, `Arazzo_Handbook.md §11`
 
@@ -4561,7 +4641,7 @@ x-recipe:
 - Recipe composition via `extends` has a max chain depth of 6
 - No cycles in the `extends` chain
 - No output namespace collisions between parent and child recipes
-- Recipes must not declare `x-actors`, `x-as`, `x-setup`, or `x-mcp`
+- Recipes must not declare `x-actors`, `x-as`, or `x-setup`
 
 **Rationale**: Recipes provide the foundation for reproducible test execution — they provision the entities, relationships, and state that scenarios exercise. The discriminator-by-presence pattern avoids a separate `x-category` enum and lets file paths confirm classification visually.
 

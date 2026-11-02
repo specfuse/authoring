@@ -1226,7 +1226,7 @@ rules:
                     uniqueItems: true
                     items:
                       type: string
-                      enum: [pii, sensitive, confidential, exposed, financial, credential, cardholder, sad]
+                      enum: [pii, sensitive, confidential, exposed, financial, credential, cardholder, sad, untrusted]
                   # Anchored at its first use in document order and aliased
                   # by `specfuse-xprotection-shape` below. One definition, two
                   # call sites — a YAML alias cannot drift the way two
@@ -1529,6 +1529,22 @@ rules:
             # forbidden characters `" \ :`, and `where` on an encrypted
             # property. Those are generator `validate` and build-time checks;
             # Vendor_Extensions.md lists them.
+            # Generator 0.24.0: a read sub-key naming the subsets of properties
+            # an MCP tool may return. The jar resolves each entry and checks it
+            # against aiAccess; this guard holds the shape it also rejects
+            # (ENTITY_FIELDSETS_SHAPE_INVALID, ENTITY_FIELDSET_NAME_INVALID,
+            # ENTITY_FIELDSET_VALUE_INVALID, ENTITY_FIELDSET_EMPTY,
+            # ENTITY_FIELDSET_PROPERTY_DUPLICATE).
+            fieldSets:
+              type: object
+              minProperties: 1
+              additionalProperties: false
+              patternProperties:
+                "^[a-z][A-Za-z0-9]*$":
+                  type: array
+                  minItems: 1
+                  uniqueItems: true
+                  items: { type: string }
             uniqueBy:
               type: array
               uniqueItems: true
@@ -2457,7 +2473,7 @@ rules:
   specfuse-classification-values:
     description: >-
       x-classification must be a non-empty array drawn from [pii, sensitive,
-      confidential, exposed, financial, credential, cardholder, sad].
+      confidential, exposed, financial, credential, cardholder, sad, untrusted].
     # Not scoped to x-entity schemas: a stray x-classification on a DTO or a
     # value object is still a typo worth naming, and the value set is the same
     # wherever it is written.
@@ -2502,6 +2518,9 @@ rules:
               - credential
               - cardholder
               - sad
+              # Generator 0.24.0. Provenance, not protection: the jar raises no
+              # snapshot acknowledgement or retention finding for it alone.
+              - untrusted
 
   # ===== x-protection (generator 0.6.0) ====================================
   #

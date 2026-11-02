@@ -1511,11 +1511,11 @@ All write operations (POST/PUT/PATCH/DELETE) must support the `validateOnly` que
 - Assistant may infer cardinality from `hasOne` / `hasMany` / `belongsTo`, but asks if in doubt.
 - One-sided declarations are allowed; assistants warn on likely mismatches.
 - `filterableProperties` / `searchableProperties` must reference existing **top-level** fields (no nested paths, except for BilingualText subfields like `title.en`).
-- **CRITICAL (filterableProperties)**: All fields usable in OData `filter` expressions MUST be declared in `filterableProperties` (except generic parameters: page, pageSize, sort, search, filter, expand, validateOnly).
+- **CRITICAL (filterableProperties)**: All fields usable in OData `filter` expressions MUST be declared in `filterableProperties` (except generic parameters: page, pageSize, sort, search, filter, expand, validateOnly). From generator `0.24.0` the generated C# enforces this: `filter` accepts only those properties plus `Id`, `CreatedAt` and `UpdatedAt`, and a clause on anything else answers `400`.
 - **CRITICAL (searchableProperties)**: All fields included in free-text `search` MUST be declared in `searchableProperties`. For BilingualText fields, reference subfields (e.g., `title.en`, `title.fr`).
 - Encryption is declared **per property**, not in `x-entity`: `x-protection: {atRest: encrypted}` on the property schema, with `x-protection.masking: {first, last}` for how many characters survive masking on reads. `x-entity.encryptedProperties` was retired in generator 0.7.0 and fails with `ENTITY_INVALID_CONFIG`. See `Vendor_Extensions.md` §1.5.
 - Writes accept plaintext. From generator `0.14.0` a C# API group registering `apiMapper` returns every masked field masked, on every response; an `atRest: encrypted` string with no declared `masking` reads back as `****` plus its last four characters, and, from `0.19.0`, an encrypted `format: date` with no `masking` reads back as `0004-01-01`. A read returns a field in the clear only through a declared `x-unmask` query parameter on the single-resource GET, behind a deny-by-default policy the host implements. See `Vendor_Extensions.md` §1.5, "Masking on the wire, and `x-unmask`", and §1.4.1 above for what a PUT does with a field it read masked.
-- `aiAccess` (required on every `x-entity`): declares the AI agent access policy enforced by generated repositories. Absence triggers a validator WARN (`ENTITY_AIACCESS_MISSING`); for entities the AI must not touch, use the canonical Tier 0 form `operations: []` with `reason`. `operations` lists allowed verbs from `[read, create, update, delete]`; an empty array is the Tier 0 declaration. Write verbs require `writableProperties` and a `reason`. Fields declaring `x-protection: {atRest: encrypted}` are excluded from implicit read access and must be listed explicitly in `readableProperties` to be AI-readable. Full schema and examples: see `Vendor_Extensions.md` §1.1.1.
+- `aiAccess` (required on every `x-entity`): declares the AI agent access policy enforced by generated repositories. Absence is a validator ERROR from generator `0.24.0` (`ENTITY_AIACCESS_MISSING`), so `validate` and `generate` fail; for entities the AI must not touch, use the canonical Tier 0 form `operations: []` with `reason`. `operations` lists allowed verbs from `[read, create, update, delete]`; an empty array is the Tier 0 declaration. Write verbs require `writableProperties` and a `reason`. Fields declaring `x-protection: {atRest: encrypted}` are excluded from implicit read access and must be listed explicitly in `readableProperties` to be AI-readable. Full schema and examples: see `Vendor_Extensions.md` §1.1.1.
 
 ---
 
@@ -2014,6 +2014,8 @@ genericParameters:
 #### **filterableProperties**
 Fields that support **structured OData filtering** via the `filter` query parameter.
 
+> **The list is exact from generator `0.24.0` (C#).** `filter` accepts the properties listed here, plus `Id`, `CreatedAt` and `UpdatedAt`. Any other clause answers `400` ("Property '…' is not filterable"). Before `0.24.0` three implicit sources also made a property filterable: every `searchableProperties` entry, every property named `status`, and every foreign key. If a client filters on one of those, add it here. Sorting, lookup indexes, the named list parameters below and the Python finders did not change.
+
 **Purpose**: Enable precise, field-specific queries with operators (`eq`, `ne`, `gt`, `lt`, `and`, `or`)
 
 **Example**:
@@ -2088,6 +2090,8 @@ GET /tasks?search=inventory&filter=status eq 'pending' and priority eq 'high'
 | `{field}After` / `{field}Before` | `?expiresAfter=` | `>` / `<` (boundary excluded) |
 | `{field}From` / `{field}To`, `{field}Min` / `{field}Max` | `?capacityMin=` | `>=` / `<=` (boundary included) |
 | repeated value on a scalar property | `?status=a&status=b` | any of the values |
+
+This table is about **named** query parameters. The `filter` parameter is narrower and accepts only what §10.2 lists, so a foreign key can bind as `?customerId=` and still answer `400` in `filter=customerId eq '…'` unless `filterableProperties` lists it.
 | repeated value on a plain array property (`array<string>`) | `?tags=a&tags=b` | the row's array holds any of them |
 
 - An omitted parameter adds nothing. Parameters combine with `filter` and `search` (all apply).

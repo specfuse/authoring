@@ -47,7 +47,7 @@ Language-coupling column: ✱ means the field is honoured only for a specific la
 | `broker` | object | optional | ✱ C# event-runtime only | Messaging-broker dialect / topology settings. |
 | `broker.type` | enum | optional | ✱ | `azureServiceBus` (only working value). |
 | `broker.topology` | enum | optional | ✱ | `runtime` (default) \| `bicep` (experimental — emits stub). |
-| `broker.outboxDialect` | enum | optional | ✱ | `sqlServer` (default) \| `postgres` (experimental — emits stub). |
+| `broker.outboxDialect` | enum | optional | ✱ | `sqlServer` (default). `postgres` was **removed in generator `0.24.0`** and fails the load. |
 | `persistence` | object | optional | **⚠ not implemented** | Multi-backend persistence configuration. **Read by nothing today — declaring it changes nothing and raises no diagnostic.** Design of record; see the banner on §6 and `compatibility.md` §27. Every `persistence.*` row below carries the same caveat. |
 | `persistence.connections` | object<name, conn> | yes (when `persistence` set) | — | Named connection descriptors. Every referenced connection must be declared here. |
 | `persistence.connections.<name>.provider` | enum | yes | — | `sqlServer` \| `postgres` \| `mySql` \| `cosmos` \| `azureBlob`. Must match the `kind` of any descriptor referencing this connection. |
@@ -70,9 +70,12 @@ Language-coupling column: ✱ means the field is honoured only for a specific la
 | `functionalTests.emitAssertions` | enum | optional | ✱ C# scenario tests | **From generator `0.21.0`.** `off` (default) \| `strict`. `strict` makes a scenario step's `x-async.emit` an awaited assertion the test fails on. See §18. |
 | `generateUserHelper` | boolean | optional | ✱ C# only | **From generator `0.20.0`.** Default `false`. `true` makes `authorizationRuntime` emit `Utils/UserHelper.g.cs`. See §16. |
 | `workerPlacement` | object | optional | ✱ C# workers | **From generator `0.20.0`.** Which host runs each topic worker: `azureFunctions` (default) or `genericHost`. See §17. |
+| `mcpManifests` | string (path) | optional | validation; ✱ C# MCP artifacts | **From generator `0.24.0`.** A file, or a directory of `*.mcp.yaml` files. See §1.5, including its warning. |
 | `workerPlacement.messages.default` | enum | optional | ✱ | `azureFunctions` (default) \| `genericHost`. |
 | `workerPlacement.messages.azureFunctions[]` / `.genericHost[]` | array<string> | optional | ✱ | AsyncAPI operation names placed on that host, whatever the default. |
 | `workerPlacement.messages.genericHost` (pools) | object<string, array<string>> | optional | ✱ | **From generator `0.22.0`.** Pool name → operation names; each pool deploys as its own unit. See §17.1. |
+| `workerPlacement.schedules` | object | optional | ✱ C# workers | **From generator `0.24.0`.** `default`, `inProcess` (array or pools), `cronJob`. Places scheduled jobs. See §17.3. |
+| `workerPlacement.runtime` | object | optional | ✱ C# workers | **From generator `0.24.0`.** `host`, `pool`. Places the outbox drainer and both retention jobs together. See §17.3. |
 | `groups[]` | array<object> | yes for generation | — | One artifact group per output tree. |
 | `groups[].name` | string | recommended | — | Human-readable group label; used by `--group` and diagnostics. |
 | `groups[].description` | string | optional | — | Free-form description. |
@@ -187,6 +190,47 @@ The three spec-path fields tell the generator where to find the bundled inputs.
 ```json
 { "asyncSourceRoot": "./api/specs/v3" }
 ```
+
+### 1.5 `mcpManifests` (generator `0.24.0`)
+
+> **⚠ Do not register `mcpHost` or `mcpEvalHarness` on a real manifest at `0.24.0`.** They are verified on fixtures only. On a real manifest the generated tools fail to compile, five composite tools advertise required ids a caller cannot obtain, and **a preview tool commits instead of rolling back, so a `preview-*` tool performs the real write with no confirmation**. A group that does not register these two is unaffected. `mcpServerResources`, `validate` and the `MCP_*` findings work as documented.
+
+**Purpose**: A file, or a directory of `*.mcp.yaml` files, resolved against the project file's directory like `arazzoSpecifications`. A manifest declares one MCP server's tools, prompts and resources.
+
+**Required**: Optional. A project that does not set it is unchanged.
+
+```yaml
+server: ops
+budget: 20
+tools:
+  - toolName: get-order-status
+    title: Get order status
+    description: Check the current status of a customer's order
+    kind: tool
+    source: { type: operation, operationId: getOrder }
+```
+
+| Level | Keys |
+|---|---|
+| Manifest | `server`, `tools`, `budget`, `tokenBudget`, `evalThreshold`, `resources` |
+| Tool | `toolName`, `kind` (`tool`, `prompt`), `source`, `title`, `description`, `entities`, `fieldSet`, `responseFields`, `previewTool`, `requiresConfirmation`, `maxPageSize`, `examples`, `x-version` |
+| `source.type` | `operation`, `workflow`, `composite` |
+| Resource | `name`, `enum`, `schema` |
+
+**`server` is a closed list on `0.24.0`**: `admin`, `compliance`, `inbound`, `ops`, `scheduling`, `workforce`. Anything else is `MCP_MANIFEST_SHAPE_INVALID`. `budget` takes 1 to 40, `maxPageSize` 1 to 100.
+
+**What `validate` checks**, all ERROR unless marked (`java -jar <jar> extensions` prints the current vocabulary):
+
+| Finding | Meaning |
+|---|---|
+| `MCP_MANIFEST_PARSE_ERROR`, `MCP_MANIFEST_SHAPE_INVALID` | The file cannot be read, or breaks the shape rules above |
+| `MCP_RESOURCES_WITHOUT_MANIFESTS` | A group registers `mcpServerResources` and the project sets no `mcpManifests`. Each group that lists the artifact gets the files; a group that does not gets nothing |
+| `MCP_SOURCE_UNRESOLVED` and the other reference codes | A manifest reference names nothing |
+| `MCP_VERB_NOT_PERMITTED` and the other permission codes | A tool does more than the touched entities' `aiAccess` allows |
+| `MCP_OPERATION_CLOSURE_NOT_READABLE` | A tool's response reaches an entity whose `aiAccess` does not grant `read`. Grant `read` on that entity on its own merits, or narrow `fieldSet` / `responseFields` |
+| `MCP_INPUT_NOT_PRODUCIBLE` | A required input that no tool on the server produces and the caller cannot supply |
+| `MCP_ADVERTISED_SIZE` (SUGGESTION) | The server's size in tokens, one finding per server. **`generate --fail-on-findings=suggestion` therefore fails every project with a manifest**: use `warning` |
+| `MCP_ADVERTISED_SIZE_EXCEEDED` (WARNING) | The measured size is over `tokenBudget` |
 
 ---
 
@@ -437,7 +481,7 @@ The broker block is meaningful only for projects that emit the event-runtime art
 |-------|------|---------|----------------|
 | `type` | enum | `azureServiceBus` | `azureServiceBus` |
 | `topology` | enum | `runtime` | `runtime` \| `bicep` (experimental — emits stub) |
-| `outboxDialect` | enum | `sqlServer` | `sqlServer` \| `postgres` (experimental — emits a `NotImplementedException` stub in the drainer) |
+| `outboxDialect` | enum | `sqlServer` | `sqlServer`. `postgres` was removed in generator `0.24.0`: it only ever generated a drainer and a job lock that threw at run time, and now fails the load with a message naming the removal (exit 2). Remove the key. |
 
 **Validation**: Unknown values fail the load with a Levenshtein-based "did you mean" suggestion.
 
@@ -976,10 +1020,10 @@ The project file fails to load when any of the following conditions hold. All er
 | `PROJECT_TENANCY_FK_NOT_ID` | Tier `foreignKey` does not end in `Id`. |
 | `PROJECT_TENANCY_MARKER_NOT_INTERFACE` | Tier `marker` does not match `^I[A-Z][A-Za-z0-9]*$`. |
 | `PROJECT_TENANCY_ENFORCEMENT_UNKNOWN` | **From generator `0.21.0`.** `tenancy.enforcement` is set to anything but `route` (§4.1). |
-| `UNKNOWN_WORKER_HOST` | **From generator `0.20.0`.** `workerPlacement.messages.default`, or a key under `messages`, names neither `azureFunctions` nor `genericHost` (§17). |
+| `UNKNOWN_WORKER_HOST` | **From generator `0.20.0`.** `workerPlacement.messages.default`, or a key under `messages`, names neither `azureFunctions` nor `genericHost` (§17). From `0.24.0` this also covers a misspelled `schedules` or `runtime` host or key. |
 | `UNKNOWN_EMIT_ASSERTIONS` | **From generator `0.21.0`.** `functionalTests.emitAssertions` is neither `off` nor `strict` (§18). |
 | `TRIGGER_REQUIRES_EVENT_RUNTIME_IMPL` | **From generator `0.20.0`, breaking.** A group registers `azureFunctionTopicTrigger`, `hostedTopicConsumer` or `heldEntityHydrationTrigger`, and no group of the same language registers `eventRuntimeImpl` (§10). |
-| `PROJECT_BROKER_TYPE_UNKNOWN` / `PROJECT_BROKER_TOPOLOGY_UNKNOWN` / `PROJECT_BROKER_DIALECT_UNKNOWN` | `broker.type` / `broker.topology` / `broker.outboxDialect` set to an unrecognised value. |
+| `PROJECT_BROKER_TYPE_UNKNOWN` / `PROJECT_BROKER_TOPOLOGY_UNKNOWN` / `PROJECT_BROKER_DIALECT_UNKNOWN` | `broker.type` / `broker.topology` / `broker.outboxDialect` set to an unrecognised value, which from generator `0.24.0` includes `postgres`. |
 | `INVALID_DART_GROUP_FIELD` | `unknownEnumPolicy` or `formatPolicy` outside its accepted set (Dart/Flutter groups only). |
 | `INVALID_FILTER` | `groups[].filter` malformed — multiple top-level operators, unknown operator, wrong value shape. |
 | `INVALID_DOMAIN_FILTER` | `groups[].domains` declares both `include` and `exclude` non-empty. |
@@ -1005,6 +1049,12 @@ The OpenAPI / AsyncAPI / Arazzo spec contents are validated separately by the pe
 | `WORKER_PLACEMENT_UNKNOWN_WORKER` | ERROR | `0.20.0` | A name under `workerPlacement.messages` matches no AsyncAPI operation. | Spell it as the operation key under `operations`, or remove the line. |
 | `WORKER_PLACEMENT_NOT_A_TOPIC_WORKER` | ERROR | `0.20.0` | The name is a scheduled job, a publisher or an `x-ai` worker. | Remove it. Only a topic worker can be placed. |
 | `WORKER_PLACEMENT_NO_HOST_GROUP` | ERROR | `0.20.0` | A topic worker is placed on a host whose artifact (`azureFunctionTopicTrigger` or `hostedTopicConsumer`) no C# group registers, so nothing emits it. | Register the host artifact, or place the worker elsewhere. |
+| `WORKER_PLACEMENT_SCHEDULE_UNKNOWN_JOB` / `WORKER_PLACEMENT_SCHEDULE_NOT_A_JOB` | ERROR | `0.24.0` | A name under `workerPlacement.schedules` matches no worker, or is not a scheduled job. | Spell it as the job's operation key, or remove the line. |
+| `WORKER_PLACEMENT_SCHEDULE_CONFLICT` | ERROR | `0.24.0` | A job is placed twice. | Place it once. |
+| `WORKER_PLACEMENT_CRONJOB_SUB_MINUTE` / `WORKER_PLACEMENT_CRONJOB_NOT_FIVE_FIELD` | ERROR | `0.24.0` | A job under `cronJob` has a schedule a Kubernetes CronJob cannot run. | Use a five-field cron, or `inProcess`. |
+| `WORKER_PLACEMENT_SCHEDULE_POOL_NAME_INVALID` / `WORKER_PLACEMENT_SCHEDULE_POOL_EMPTY` / `WORKER_PLACEMENT_RUNTIME_POOL_INVALID` | ERROR | `0.24.0` | A bad or empty schedule pool, or a `runtime.pool` that is not valid. | Fix the pool. |
+| `WORKER_PLACEMENT_SCHEDULE_NO_HOST_GROUP` / `WORKER_PLACEMENT_RUNTIME_NO_HOST_GROUP` | ERROR | `0.24.0` | No C# group registers `hostedScheduledJob` / `eventRuntimeHosted`, so nothing emits what you placed. | Register the artifact in the generic-host group. |
+| `WORKER_PLACEMENT_HOST_ARTIFACT_WITHOUT_CONSUMER` | ERROR | `0.24.0` | A host artifact is registered with nothing placed on it. | Place something, or remove the artifact. |
 | `WORKER_PLACEMENT_CONFLICT` | ERROR | `0.20.0` | An operation is listed under both hosts, or (from `0.22.0`) in two pools of `genericHost`, or one C# group registers both `azureFunctionTopicTrigger` and `hostedTopicConsumer`. | List it once; give each host artifact its own group. |
 | `WORKER_PLACEMENT_POOL_NAME_INVALID` | ERROR | `0.22.0` | A pool name under `genericHost` is not a DNS-1123 label of at most 20 characters, so it cannot name a Deployment. | Use lowercase letters, digits and `-`, starting and ending with a letter or digit (§17.1). |
 | `WORKER_PLACEMENT_POOL_EMPTY` | ERROR | `0.22.0` | A pool under `genericHost` lists no worker, so it would deploy nothing. | Add its workers, or remove the pool. |
@@ -1028,7 +1078,7 @@ From generator `0.16.0`, `validate` also warns `FUNCTIONAL_TEST_TAG_UNGROUPED` w
 - **`workerPlacement` ⟷ host groups (generator `0.20.0`)** — a C# group registering `azureFunctionTopicTrigger` is the Azure Functions host, one registering `hostedTopicConsumer` is the generic host, and each emits only the topic workers placed on it (§17). With no `workerPlacement`, every topic worker is on Azure Functions, so a `hostedTopicConsumer` group emits no consumer.
 - **`namingOverrides` ⟷ `x-enumCase`** — `x-enumCase: preserve` on a schema wins over a project-wide `enumValue` override.
 - **`tenancy` ⟷ `x-entity.belongsTo`** — entities whose `belongsTo` references the tenancy entities receive the corresponding `I{Tenant}Scoped` marker interface in the C# target. From generator `0.15.0`, so does an entity with a `resolve: remote` reference to the tenant entity (§4.1). The project-file loader does not validate that `tenancy.tenant.entity` resolves to a real `x-entity` schema; see §4.1 for the downstream symptoms.
-- **`broker.outboxDialect` ⟷ event-runtime functions artifact** — `postgres` emits a stub in the drainer; only `sqlServer` produces a working runtime today.
+- **`broker.outboxDialect` ⟷ event-runtime functions artifact** — `sqlServer` is the only dialect from generator `0.24.0`; `postgres` fails the load.
 - **`persistence` ⟷ `x-entity`** — every `x-entity` schema in the bundled spec must resolve to a backend descriptor (either via `persistence.entities.<EntityName>` or `persistence.default`). Unresolved entities fail the load. `x-value-object` schemas are excluded — they persist as part of their owning entity.
 - **`persistence` ⟷ `tenancy`** — orthogonal. Tenant scoping is generated against the resolved backend kind: FK column for `relational`, partition key for `document`, key prefix for `blob`, both sides for `hybrid`.
 - **`persistence` ⟷ `aiAccess`** — AI-scoped repository methods inherit the entity's backend kind. Generated AI surfaces use the same `kind`-specific template family as the production repository.
@@ -1059,6 +1109,10 @@ Three opt-in C# ids, none in the snapshot list above. Each emits only when regis
 | Id | From | Group | What it emits | Conditions |
 |---|---|---|---|---|
 | `hostedTopicConsumer` | `0.20.0` | A C# group of its own (the generic host), beside `asyncEventHandler`, `asyncConsumerRegistration` and `event` | One `<Handler>TopicConsumer` per topic worker placed on `genericHost` (§17), each reading the worker's subscription through one `ServiceBusProcessor` and calling the same `I<Handler>` the Functions trigger calls; the `HostedTopicConsumer` base and `WorkerHostContext`; `services.AddGeneratedWorkers()` (hosted services, graceful SIGTERM stop, `live` / `ready` health checks), and from `0.22.0` `builder.AddGeneratedWorkers()`, which selects a pool by `Workers:Pool` (§17.1); `workers.json` and `WorkerManifest` listing every topic worker and its host; `WorkerProvisioning` for a `provision` command. No `Program.cs`. | Registering it beside `azureFunctionTopicTrigger` in one group is `WORKER_PLACEMENT_CONFLICT`. Needs `eventRuntimeImpl` in the project (`TRIGGER_REQUIRES_EVENT_RUNTIME_IMPL`). Scheduled jobs stay in the Functions group. With no `workerPlacement`, it emits no consumer. |
+| `hostedScheduledJob` | `0.24.0` | The generic-host group | `{Job}ScheduledJob.g.cs` per job placed under `schedules.inProcess` or `schedules.cronJob`, plus `ScheduledJobRunner` for `cronJob` (§17.3). `inProcess` needs the `Cronos` package. |
+| `eventRuntimeHosted` | `0.24.0` | The generic-host group, beside `hostedTopicConsumer` | `HostedEventOutboxDrainer`, `HostedEventOutboxRetention` and `HostedEventInboxRetention`, when `runtime.host` is `genericHost` (§17.3). |
+| `mcpServerResources` | `0.24.0` | A C# group | An effects and a descriptions file per manifest server (§1.5). |
+| `mcpHost`, `mcpEvalHarness` | `0.24.0` | **Do not register on a real manifest at `0.24.0`** (§1.5) | `AddSpecfuseMcp()` and the tool, prompt and resource classes; a harness scoring a model's tool selection. |
 | `tenantIsolationTest` | `0.21.0` | Test | `Generated/Unit/Infrastructure/TenantIsolationTests.g.cs`: per tenant-owned entity, a list never returns the foreign tenant's rows, a get, update or delete of a foreign row answers not found, `Unrestricted` sees both tenants, an empty visibility sees nothing, the model carries the `Tenant` filter. Adds the within-tenant facts for entities that declare `x-entity.visibility`. `TestSeed` gains the foreign tenant's graph. | Needs a `tenancy` block. Emits nothing unless a `Tenant` or `Visibility` filter is declared. The Test project must reference Infrastructure. Runs in memory under the unit-test step, not under the functional suite. |
 | `bareIgnoreSourceScanTest` | `0.21.0` | Test | `Generated/Unit/Infrastructure/BareIgnoreSourceScanTest.g.cs`: fails when hand-written C# calls `IgnoreQueryFilters()` with no argument, which drops the `Tenant` filter too, unless the call is listed in `bare-ignore-query-filters.baseline` at the solution root. | Needs a `tenancy` block and `tenancy.enforcement` unset; otherwise it emits nothing. The baseline is yours, never generated, and only shrinks: a missing file reads as empty, and a line for a call that is gone fails as stale. |
 
@@ -1197,7 +1251,7 @@ See foot-gun #1 at the top of this document.
 
 - **No `$schema` URL, no JSON Schema shipped.** The project file does not carry a `$schema` field today, and no JSON Schema is published with the generator. Editors and CI lint tools get no completion, no field-name validation, and no shape checking — every constraint is enforced by the parser at load time. Combined with foot-gun #1 (silent ignore of unknown fields), this is the project file's largest authoring hazard. **A JSON Schema (with `additionalProperties: false`) ships with the persistence rollout — phase 1a.**
 - **`groups[].filter` is AsyncAPI-workers-only in v1.** Filtering by extension on REST operations, entities, or value objects is not supported today.
-- **`broker.topology: bicep` and `broker.outboxDialect: postgres` are placeholders.** They are accepted by the parser but emit stub code in the runtime templates.
+- **`broker.topology: bicep` is a placeholder.** It is accepted by the parser but emits stub code in the runtime templates. `broker.outboxDialect: postgres` was the other one until generator `0.24.0` removed it.
 - **Tenancy artifacts are C# only today.** Python and Dart/Flutter consume the `tenancy` block indirectly (via AsyncAPI validation rules) but do not emit marker interfaces.
 - **Cross-spec tenancy entity name is not validated.** A typo in `tenancy.tenant.entity` produces no load-time error; see §4.1 for the downstream symptoms.
 
@@ -1481,6 +1535,8 @@ All three fail `Project.Load`. The CLI prints the message, not the code (`Valida
 
 **From generator `0.20.0`.** `workerPlacement` says which host runs each C# topic worker: Azure Functions (`azureFunctions`) or a generic .NET host such as a Kubernetes pod (`genericHost`). Keys under `messages` are AsyncAPI operation names, as written under `operations`.
 
+From generator `0.24.0` it also places scheduled jobs and the event runtime (§17.3).
+
 ```json
 {
   "workerPlacement": {
@@ -1542,8 +1598,35 @@ The `WORKER_PLACEMENT_*` codes (ERROR, §9) catch a name that matches no worker,
    - Why: from generator `0.22.0`, `pools[].k8sName` is the bare pool name. A flat `genericHost` array is pool `default` in every pillar, so two pillars deployed into one namespace under one prefix both declare a Deployment named `default`.
 3. **A named pool lists workers of one pillar only.** Use per-pillar pool names, such as `a-fast` and `b-fast`.
    - Why: a pool that names workers from two pillars becomes two Deployments with the same name. Each one has half the workers and half the concurrency, and `validate` does not flag it.
-4. **One database per pillar** (from the next generator release, which ships C# timer workers on the generic host).
+4. **One database per pillar** (from generator `0.24.0`, which runs every scheduled job under a job lock, on either host).
    - Why: the generated scheduled-job lock and the `ScheduledJobRun` watermark are keyed by job name. The three runtime functions, `EventOutboxDrainerFunction`, `EventOutboxRetentionFunction` and `EventInboxRetentionFunction`, have the same name in every pillar. Two pillars sharing one SQL database would contend for one lock and one watermark row, and each would see the other's runs as skipped.
+
+### 17.3 Scheduled jobs and the event runtime
+
+**From generator `0.24.0`.** `schedules` and `runtime` put a scheduled job, and the event-runtime unit, on the generic host. A project declaring neither key keeps its jobs on Azure Functions.
+
+```json
+{
+  "workerPlacement": {
+    "schedules": {
+      "default": "azureFunctions",
+      "inProcess": { "fast": ["runSendReminders"] },
+      "cronJob": ["runNightlyExport"]
+    },
+    "runtime": { "host": "genericHost", "pool": "fast" }
+  }
+}
+```
+
+| Placement | What is emitted | Needs |
+|---|---|---|
+| `schedules.inProcess` (array, or pools as in §17.1) | `{Job}ScheduledJob.g.cs` from `hostedScheduledJob`: a hosted service that waits on the job's cron in its declared time zone, registered by `AddGeneratedWorkers` in the pool `Workers:Pool` selects. The Functions group stops emitting its timer trigger. | `hostedScheduledJob`, the `Cronos` package, an `IDbContextFactory<TContext>` |
+| `schedules.cronJob` | The same `TickAsync` as a plain class, plus `ScheduledJobRunner`, the `run-job <name>` command a Kubernetes CronJob starts on the same image. Exit code 0 ran or skipped, 1 the handler threw or was cancelled, 2 not a `cronJob` job. | `hostedScheduledJob`, a `Program` that calls `ScheduledJobRunner.IsRunJobCommand(args)` and `RunAsync(host.Services, ScheduledJobRunner.JobNameOf(args), flush)` |
+| `runtime.host: genericHost` | `HostedEventOutboxDrainer`, `HostedEventOutboxRetention` and `HostedEventInboxRetention` from `eventRuntimeHosted`. The three move together, and the Functions group emits none of them. | `eventRuntimeHosted` beside `hostedTopicConsumer`, an `IDbContextFactory<TContext>` |
+
+- **Every job runs under a lock, on either host.** From `0.24.0` each tick takes a SQL Server job lock and a `ScheduledJobRun` watermark: a held lock is a skipped tick, and a job that started less than half its minimum period ago counts as the same tick. So `ScheduledJobRun` needs a migration even if you place nothing here ([`csharp-component-guide.md` §9.2](../docs/csharp-component-guide.md)).
+- **Do not put placement on the job.** `host`, `placement` or `pool` on `x-scheduled-job` fails the parse with `ASYNC_FORBIDDEN_SCHEDULED_JOB_PLACEMENT`.
+- **`workers.json` gains a `schedules[]` array**, also in `WorkerManifest.g.cs`, listing every scheduled job on whichever host with its timer fields. A project that places nothing gets it too, so a copy of `workers.json` kept beside a chart must be refreshed.
 
 ---
 

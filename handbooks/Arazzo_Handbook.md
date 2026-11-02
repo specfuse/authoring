@@ -201,9 +201,6 @@ x-doc:
   personas: [customer, support-agent]
   businessOutcome: "Reduces friction in refund handling and provides a documented audit trail."
 
-x-mcp:
-  exposed: false
-
 x-actors:
   customer:
     role: Customer
@@ -383,30 +380,17 @@ x-setup:
 
 The recipe's `outputs` become available in the scenario via the `$setup.outputs.X` expression root.
 
-### 4.8 `x-mcp` (optional on scenario workflows)
+### 4.8 `x-mcp` (retired, generator `0.24.0`)
 
-Declares whether this scenario is exposed as an MCP tool for AI orchestrators.
+**Delete the block.** Nothing reads `x-mcp` from generator `0.24.0`: it exposes no tool and gates nothing. A document that still declares it gets one `X_MCP_RETIRED` warning (scenario or recipe), even when the block is malformed, and no other change. The kit's Spectral has one matching warning, `specfuse-arazzo-x-mcp-retired`, and no longer checks the block's shape.
 
-```yaml
-x-mcp:
-  exposed: true
-  toolName: request-refund
-  description: "Request a refund for a completed order"
-  requiresActorAuth: true
-  safeForAutoInvoke: false
-```
+| Old field | Where it went |
+|-----------|---------------|
+| `exposed`, `toolName`, `description` | The MCP manifest (`Project_File.md` §1.5). A tool with `source: {type: workflow, workflowId}` makes a workflow a tool. |
+| `safeForAutoInvoke` | `x-effects` on the operations and the confirmation predicate derived from it (`Vendor_Extensions.md` §4.7). |
+| `requiresActorAuth` | Derived from `x-actors`. |
 
-| Field | Required | Type | Description |
-|-------|----------|------|-------------|
-| `exposed` | Yes | boolean | Explicit opt-in. Default: `false` |
-| `toolName` | When exposed | string | kebab-case tool name, **globally unique** across all scenarios in the repo |
-| `description` | When exposed | string | MCP-facing description of what the tool does |
-| `requiresActorAuth` | No | boolean | Whether the tool requires actor authentication context. Default: `true` |
-| `safeForAutoInvoke` | No | boolean | Whether an AI agent can invoke this without human confirmation. Default: `false` |
-
-**Inputs and outputs are derived** from the workflow's `inputs` and `outputs` -- they are not redeclared in `x-mcp`.
-
-**Global uniqueness of `toolName`** is enforced by a Spectral rule from Phase 0 onward. This prevents conflict accumulation while the MCP runtime consumer (Phase 7) is still deferred.
+The generated scenario document no longer has a `## MCP Tool Integration` section, and the codes `ARAZZO_MCP_MISSING_TOOL_FIELDS`, `ARAZZO_MCP_TOOLNAME_FORMAT`, `ARAZZO_MCP_TOOLNAME_DUPLICATE` and `ARAZZO_RECIPE_HAS_MCP` are never raised.
 
 ---
 
@@ -976,7 +960,6 @@ This means:
 | Step graph acyclic; all inputs satisfied | Workflow steps | Internal | Error |
 | Recipe `extends` chain valid, depth <= 6, no cycles | Recipe | Other recipes | Error |
 | No output namespace collisions in recipe chains | Recipe outputs | Parent recipe outputs | Error |
-| `x-mcp.toolName` globally unique | All scenarios | All scenarios | Error |
 
 A step that deliberately sends an invalid body, to prove the server rejects it, must assert the 4xx in `successCriteria`. That assertion is what exempts it from the payload checks. A step that asserts a 2xx, or no status, is checked. A missing required property there fails `validate`, and `generate` then refuses the whole project.
 
@@ -1037,29 +1020,18 @@ The `info.version` field uses semantic versioning for the Arazzo document itself
 
 ## 11) MCP Exposure
 
-### 11.1 Contract
-
-The `x-mcp` extension on scenario workflows declares opt-in exposure as MCP tools. See Section 4.8 for the full schema.
-
-### 11.2 Design Principles
-
-- **Explicit opt-in:** `exposed: false` is the default. Scenarios are not MCP tools unless explicitly marked.
-- **Derived I/O:** MCP tool inputs and outputs are derived from the workflow's `inputs` and `outputs` -- never redeclared in `x-mcp`. This avoids drift.
-- **Global uniqueness:** `toolName` must be unique across all scenarios in the repo. Enforced by Spectral from Phase 0.
-- **Safety default:** `safeForAutoInvoke: false` means an AI agent must confirm with a human before running the tool. Only mark `true` for read-only, low-risk scenarios.
-
-### 11.3 Example
+Arazzo no longer declares MCP exposure. `x-mcp` is retired (§4.8), so a workflow becomes a tool by being named in an MCP manifest:
 
 ```yaml
-x-mcp:
-  exposed: true
-  toolName: get-order-status
-  description: "Check the current status of a customer's order"
-  requiresActorAuth: true
-  safeForAutoInvoke: true   # Read-only, safe for auto-invocation
+tools:
+  - toolName: get-order-status
+    title: Get order status
+    description: "Check the current status of a customer's order"
+    kind: tool
+    source: { type: workflow, workflowId: get-order-status }
 ```
 
-The MCP runtime (Phase 7) consumes this metadata. Phase 0 establishes the contract and uniqueness enforcement.
+`Project_File.md` §1.5 covers the `mcpManifests` setting, what `validate` checks, and the 0.24.0 warning against registering `mcpHost` on a real manifest.
 
 ---
 
@@ -1124,9 +1096,7 @@ These files are the authoritative templates for new scenarios and recipes. When 
 
 16. **Do NOT create scenarios with >= 80% step-sequence overlap.** The Spectral rule `arazzo-scenario-step-overlap` flags this as an error. Consolidate into one scenario with input parameters or workflows for variants.
 
-17. **Do NOT make `x-mcp.toolName` collide with another scenario's `toolName`.** Global uniqueness is enforced by Spectral. Choose descriptive, domain-prefixed names (e.g., `order-submit`, not `submit`).
-
-18. **Do NOT use `x-mcp` on recipe workflows.** Recipes are infrastructure, not user-facing tools.
+17. **Do NOT keep an `x-mcp` block.** Nothing reads it from generator `0.24.0`, and it reads like a safety control that is not one. Delete it (§4.8).
 
 ---
 

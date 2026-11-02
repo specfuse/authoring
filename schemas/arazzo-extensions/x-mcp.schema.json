@@ -2,7 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.specfuse.dev/arazzo/x-mcp.schema.json",
   "title": "x-mcp",
-  "description": "Declares whether an Arazzo scenario workflow is exposed as an MCP tool for AI orchestrators. Inputs and outputs are derived from the workflow — not redeclared here. Optional on scenario workflows, forbidden on recipes. See Arazzo Handbook §4.8 and §11.",
+  "deprecated": true,
+  "description": "Retired at generator 0.24.0 (X_MCP_RETIRED): nothing reads this block, and a spec declaring it gets one warning. Delete it. Tool exposure moves to the MCP manifest; safeForAutoInvoke moves to x-effects. See Arazzo Handbook §4.8.",
   "type": "object",
   "required": ["exposed"],
   "properties": {

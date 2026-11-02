@@ -24,9 +24,9 @@ sourceDescriptions:
     url: ../../openapi.yaml
     type: openapi
 
-# The x-mcp block is document-level and hello-orders declares none.
+# The retired x-mcp block is document-level and hello-orders declares none.
 x-mcp:
-  toolName: coverage-tool
+  exposed: false
 
 workflows:
   - workflowId: coverageWorkflow

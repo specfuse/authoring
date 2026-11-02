@@ -11,7 +11,6 @@
 #   C8:    Cross-spec event name resolution
 #   D9-D12: Recipe reference resolution (x-setup, extends, depth, cycles)
 #   E13:   Step overlap detection (Jaccard similarity)
-#   F14:   x-mcp.toolName global uniqueness
 
 set -euo pipefail
 
@@ -646,46 +645,6 @@ else:
     for w in e13_warnings:
         detail(f"  REVIEW: {w}")
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# GROUP F — Global uniqueness
-# ═══════════════════════════════════════════════════════════════════════════════
-
-# F14: x-mcp.toolName must be globally unique across all scenario files
-tool_names = defaultdict(list)
-for fpath in scenario_files:
-    doc = parsed.get(fpath)
-    if not doc:
-        continue
-    # Check root-level x-mcp
-    x_mcp = doc.get("x-mcp")
-    if isinstance(x_mcp, dict):
-        tn = x_mcp.get("toolName")
-        if tn:
-            tool_names[tn].append(rel(fpath))
-    # Check workflow-level x-mcp
-    workflows = doc.get("workflows", [])
-    if isinstance(workflows, list):
-        for wf in workflows:
-            if not isinstance(wf, dict):
-                continue
-            wf_mcp = wf.get("x-mcp")
-            if isinstance(wf_mcp, dict):
-                tn = wf_mcp.get("toolName")
-                if tn:
-                    tool_names[tn].append(f"{rel(fpath)}:{wf.get('workflowId', '?')}")
-
-f14_errors = []
-for name, locations in tool_names.items():
-    if len(locations) > 1:
-        f14_errors.append(f"toolName '{name}' appears in: {', '.join(locations)}")
-
-if not f14_errors:
-    emit("F14", "PASS", "x-mcp.toolName values are globally unique")
-else:
-    emit("F14", "FAIL", f"{len(f14_errors)} duplicate toolName(s)")
-    for e in f14_errors:
-        detail(f"  {e}")
-
 PYEOF
 )
 
@@ -756,7 +715,6 @@ if [ $EXIT_CODE -eq 0 ]; then
     echo "  - Event names resolved against AsyncAPI messages"
     echo "  - Recipe references and extends chains validated"
     echo "  - Step overlap within acceptable thresholds"
-    echo "  - x-mcp.toolName uniqueness confirmed"
 else
     echo -e "\033[0;31m$TOTAL checks: $PASSED passed, $FAILED failed, $WARNED warnings\033[0m"
     echo ""

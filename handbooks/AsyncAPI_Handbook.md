@@ -373,6 +373,49 @@ payload:
     after:  { $ref: '../events/OrderSnapshot.yaml' }
 ```
 
+#### Binding the envelope to headers (generator `0.24.0`)
+
+The generator reads each message's merged `traits[]` headers and works out which header carries which envelope role. A header binds a role by its canonical name, or explicitly with `x-envelope: <role>` (`Vendor_Extensions.md` §12.2). What the C# runtime writes and the C# and Python readers look up follows from that binding.
+
+| Code | Severity | Fires when |
+|---|---|---|
+| `ASYNC_ENVELOPE_HEADER_MISSING` | ERROR | A message declares headers but binds no header to `eventId`, or, on a scoped event, to the `tenant` / `subTenant` the project declares |
+| `ASYNC_TENANT_HEADER_ON_GLOBAL_EVENT` | ERROR | An event not under the tenant has headers that require the tenant header |
+| `ASYNC_ENVELOPE_ROLE_UNKNOWN` | ERROR | An `x-envelope` value outside the role vocabulary |
+| `ASYNC_ENVELOPE_ROLE_DUPLICATE` | ERROR | Two headers of one message mark the same role |
+| `ASYNC_ENVELOPE_HEADER_RECOMMENDED` | WARNING | `eventVersion`, `aggregateId`, `aggregateType`, `producedAt` or `correlationId` is unbound |
+| `ASYNC_ENVELOPE_HEADERS_UNDECLARED` | SUGGESTION | Once per spec whose messages declare no headers |
+
+**Migrating a trait that requires the tenant header: split it.** A single trait that lists the tenant in `required` cannot serve both a tenant-scoped event and a global one, and making the tenant optional would drop the missing-tenant guarantee. Write two self-contained traits, and point each tenant-less message at the second:
+
+```yaml
+auditableEvent:            # tenant-scoped: the tenant is required
+  headers:
+    type: object
+    required: [eventId, correlationId, producedAt, accountId]
+    properties: &envelopeHeaders
+      eventId: { type: string, format: uuid }
+      correlationId: { type: string, format: uuid }
+      producedAt: { type: string, format: date-time, x-envelope: producedAt }
+      accountId: { type: string, format: uuid, x-envelope: tenant }
+
+globalAuditableEvent:      # no tenant: declared and marked, not required
+  headers:
+    type: object
+    required: [eventId, correlationId, producedAt]
+    properties: *envelopeHeaders
+```
+
+Neither trait layers on the other: AsyncAPI applies traits as JSON Merge Patch and replaces `required` arrays, while the generator unions them, so a layered pair means different things to the two readers. Measured on `0.24.0`, adding a `tenancy` block to a project whose one trait requires the tenant reports `ASYNC_TENANT_HEADER_ON_GLOBAL_EVENT` on the events of an entity not under the tenant. Dropping the tenant header instead reports `ASYNC_ENVELOPE_HEADER_MISSING` on the scoped ones.
+
+**The legacy header names go away in the next minor release.** A bound name now replaces `companyId`, `restaurantId` and `producedAt` on the wire. For `0.24.0` only, the C# producer also writes those literals when the bound name differs, and the C# and Python readers try the bound name and then the literal. A subscriber outside the generated code that reads `companyId` off the application properties must read the bound name before the next minor release. A message that declares no headers is unchanged.
+
+**`aggregateVersion` travels on every event of a C# entity.** It is written as an `aggregateVersion` application property even when a message's headers do not bind it, and it moves once per save of the record. Handler bases do not drop stale events. To compare, treat a version equal to or lower than the last one you applied for that record as stale, and treat `null` as no ordering information. Two events raised in one save share a version, so compare per label if a handler treats them as distinct work. A property that maps to the C# member `AggregateVersion` is reported as `ENTITY_AGGREGATE_VERSION_RESERVED`: an error on an event's subject, a warning otherwise.
+
+**The body no longer carries an undeclared tenant (C#).** A tenancy member the payload schema does not declare is left out of the outbox body, so a reader of the wire body that looked for that key must read the envelope header. A tenant-scoped event with no tenant now fails: `BufferedEventCollector.Add` throws, and a generated handler dead-letters it. On Python, `emit_*` requires `company_id` for a tenant-scoped event, raising `TypeError` when omitted and `ValueError` on `None`.
+
+**`contentType` must be JSON.** The generated runtime only serializes JSON, so a resolved content type (message, else last trait, else `defaultContentType`) other than `application/json` is `ASYNC_CONTENT_TYPE_UNSUPPORTED` (ERROR). The comparison ignores case and allows `charset=utf-8`; a message that declares none is unaffected. Measured on `0.24.0`: `application/avro` fails, and `application/json; charset=utf-8` and `APPLICATION/JSON` pass.
+
 ### 2.2 Event Action Classes (Suffix-Driven Inference)
 
 The action class of an event is **inferred from its message-name suffix** — there is no `x-action-class` extension, and authors do not declare it. The Spectral rule `specfuse-async-event-name-action-class` validates that the suffix and payload shape align.
@@ -823,6 +866,8 @@ x-scheduled-job:
 | `overlap` | No | string | `skip`, `queue`, `cancelPrevious` | Default: `skip` |
 | `scope` | No | string | `global`, `perTenant`, project-defined narrower scopes | Default: `perTenant` |
 
+`host`, `placement` and `pool` are not keys of this block: from generator `0.24.0` they fail the parse with `ASYNC_FORBIDDEN_SCHEDULED_JOB_PLACEMENT`. Where a job runs is `workerPlacement.schedules` in the project file (`Project_File.md` §17.3).
+
 The `scope` enum is project-tunable. Generator accepts arbitrary kebab/camelCase values and emits one job instance per scope row.
 
 #### `x-partition-key` (optional, on events requiring ordered delivery)
@@ -853,7 +898,18 @@ x-partition-key:
 
 #### `x-trigger-when` (required on state-transition messages, forbidden on `*Created`/`*Updated`/`*Deleted`)
 
-Pure boolean predicate over `Before`/`After` snapshot fields. The generator-emitted service code evaluates the predicate against `EntityEntry.OriginalValues` and `EntityEntry.CurrentValues` before `SaveChangesAsync`; on a match, the transition event fires AND the corresponding `*Updated` is suppressed (mutual exclusivity).
+Pure boolean predicate over `Before`/`After` snapshot fields. On the generated C# update and replace paths, the service evaluates it against `EntityEntry.OriginalValues` and `EntityEntry.CurrentValues` before `SaveChangesAsync`; on a match, the transition event fires AND the corresponding `*Updated` is suppressed (mutual exclusivity).
+
+**The predicate gates emission only where generated code evaluates it:**
+
+| How the event is triggered | Is the predicate enforced? |
+|---|---|
+| Auto mode, generated C# update or replace | Yes |
+| `x-trigger-mode: explicit` (C#) | No. The generated method persists and emits; satisfying the predicate is the caller's precondition |
+| Hand-written lifecycle action | No. The generator emits nothing, so your code decides |
+| Generated Python `emit_<event>` | Yes. It returns `None` when the predicate is false |
+
+So do not read a predicate as a guarantee on a hand-written or explicit path. **Do not write a predicate over `updatedAt` or `createdAt`:** an audit stamp moves on nearly every write, so it says nothing about the transition. `validate` warns with `ASYNC_TRIGGER_WHEN_AUDIT_FIELD`.
 
 ```yaml
 x-trigger-when: "After.status == 'archived' && Before.status != 'archived'"

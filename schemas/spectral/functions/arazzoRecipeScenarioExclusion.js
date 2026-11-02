@@ -6,18 +6,16 @@
 // When x-recipe is present (at document root or workflow level), the following
 // must not appear:
 //   - x-actors (recipes use implicit $system actor)
-//   - x-mcp (recipes are not MCP tools)
 //   - x-setup (recipes compose via extends, not $setup)
 //   - x-ui on steps (UI hints are for scenarios only)
 //
 // Handbook: Section 3.3, 4.6, 4.8, 7.4, 13 Do NOT #6, #8, #18
 // Given: $
 
-const SCENARIO_ONLY_FIELDS = ["x-actors", "x-mcp", "x-setup"];
+const SCENARIO_ONLY_FIELDS = ["x-actors", "x-setup"];
 
 const FIELD_REASONS = {
   "x-actors": "Recipes execute as the implicit $system actor (mapped to Admin).",
-  "x-mcp": "Recipes are infrastructure, not user-facing MCP tools.",
   "x-setup": "Recipes compose via 'extends', not $setup. Only scenarios reference recipes via $setup.",
 };
 

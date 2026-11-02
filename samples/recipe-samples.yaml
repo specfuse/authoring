@@ -59,7 +59,6 @@
 #   x-actors  — recipes run as implicit $system mapped to the project's
 #               highest-privileged role
 #   x-setup   — recipes compose via 'extends', not $setup
-#   x-mcp     — recipes are infrastructure, not user-facing tools
 #   x-as      — every recipe step runs as $system (no actor binding)
 #   x-ui      — no user-facing interactions in fixture setup
 #
@@ -146,7 +145,7 @@ x-recipe:
   estimatedDurationMs: 500
   scope: scenario
 
-# NOTE: No x-actors, no x-setup, no x-mcp — these are FORBIDDEN on recipes.
+# NOTE: No x-actors, no x-setup — these are FORBIDDEN on recipes.
 # Recipes execute as the implicit $system actor mapped to the project's
 # highest-privileged role (typically Admin).
 

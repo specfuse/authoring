@@ -41,9 +41,6 @@ x-doc:
     Self-service order placement is the core happy path of the hello-orders
     example domain.
 
-x-mcp:
-  exposed: false
-
 x-actors:
   customer:
     role: Customer
