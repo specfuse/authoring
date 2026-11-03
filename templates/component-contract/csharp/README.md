@@ -37,7 +37,7 @@ cp "$KIT/.github/workflows/gen-contract.yml" .github/workflows/
 sed -i.bak 's/__Prefix__/HelloOrders/g' gen-contract.yml docs/generated-code-expectations.md && rm -f *.bak docs/*.bak
 mkdir -p gen-patches && cp "$KIT/gen-patches/README.md" gen-patches/
 chmod +x scripts/check-gen-contract.sh scripts/test-gen-contract.sh scripts/apply-gen-patches.sh
-python3 -m pip install 'specfuse-loop>=0.30'     # or: pipx install specfuse
+pipx install specfuse                            # or: uv tool install specfuse
 ./scripts/check-gen-contract.sh                  # must be green
 ./scripts/test-gen-contract.sh                   # every rule must bite
 ```
