@@ -37,6 +37,7 @@ Newest first. An entry is **pending** until the kit release that pins it is publ
 **Spec authors**
 
 - **`aiAccess` is required (ERROR).** An `x-entity` without it fails `validate` and `generate` with `ENTITY_AIACCESS_MISSING`. To grant nothing, add `aiAccess: { operations: [], reason: "Tier 0 — no AI access" }`. `ENTITY_FIELDSETS_AI_ACCESS_MISSING` no longer exists.
+- **A soft-delete parent's foreign keys stop cascading (clabonte/generator#3103).** They are `NoAction` from `0.24.0`, and a migration follows. Code that read ownership from `OnDelete` breaks without a validation error: read `belongsTo` instead (`API_Handbook.md`, "Never infer ownership from `OnDelete`").
 - **Event headers must bind the envelope (ERROR).** A message that declares headers and binds no `eventId`, or no tenant or sub-tenant on a scoped event, fails with `ASYNC_ENVELOPE_HEADER_MISSING`. A global event whose headers require the tenant fails with `ASYNC_TENANT_HEADER_ON_GLOBAL_EVENT`. Mark the headers with `x-envelope`, and split a shared trait into a tenant-scoped trait and a tenant-optional one. Neither may layer on the other.
 - **Only `application/json` events (ERROR).** Any other resolved content type fails with `ASYNC_CONTENT_TYPE_UNSUPPORTED`. A message declaring none is unaffected.
 - **`outboxDialect: postgres` is removed.** It fails the load, and the message names the removal. Remove the key.

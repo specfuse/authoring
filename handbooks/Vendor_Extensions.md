@@ -2215,7 +2215,7 @@ x-references: { entity: Customer, resolve: remote }   # resolve: local | remote,
 **Semantics**:
 
 - **Association only.** The referencing entity is *not* a member of the target's aggregate. Contrast `belongsTo`, which declares composition and aggregate membership.
-- **Delete behaviour is `NoAction`.** Deleting the target does not cascade to the referencing rows, because they are not owned. A composition FK (`belongsTo`) cascades; an association FK must not.
+- **Delete behaviour is `NoAction`.** Deleting the target does not cascade to the referencing rows, because they are not owned. An association FK never cascades; whether a composition FK (`belongsTo`) does depends on its parent and is not a sign of ownership (`API_Handbook.md`, "Never infer ownership from `OnDelete`").
 - **Nullability follows `required`.** The property is nullable unless listed in the schema's `required` array. There is no separate nullability marker.
 - Test-seed naming for the FK follows `TestSeed.<Entity>Id`.
 
@@ -2234,7 +2234,7 @@ The object form is only for a property. A `belongsTo` entry written as an object
 
 | Intent | Declaration |
 |---|---|
-| This entity is part of the target's aggregate | `belongsTo: <Target>` on `x-entity` (composition, Cascade, aggregate membership) |
+| This entity is part of the target's aggregate | `belongsTo: <Target>` on `x-entity` (composition, aggregate membership) |
 | This entity merely points at the target | `x-references: <Target>` on the property (association, NoAction, no membership) |
 | The target is owned by another pillar and read through its API, with no local copy | `x-references: { entity: <Target>, resolve: remote }` on the property (plain uuid column; generator `0.15.0`, §14.11) |
 | The uuid is not a foreign key | `x-references: none` on the property + a justifying `description` |
@@ -2306,7 +2306,7 @@ x-fk-for: Order          # target entity name (PascalCase)
 
 **Semantics**:
 
-- Composition is **preserved**: Cascade delete, aggregate membership, and every other consequence of `belongsTo` apply exactly as if the property had been named `orderId`.
+- Composition is **preserved**: ownership, aggregate membership, delete behaviour and every other consequence of `belongsTo` apply exactly as if the property had been named `orderId`.
 - It is a *binding*, not a declaration. `x-fk-for` does not create a relationship; it names which declared `belongsTo` a misnamed column satisfies.
 - Binding **consumes** the `belongsTo`. Once `x-fk-for: <Target>` has claimed it, a sibling property may carry `x-references: <Target>` as a role association without tripping the mutual-exclusion rule — see §1.7 validation rule 2.
 
@@ -2320,7 +2320,7 @@ x-fk-for: Order          # target entity name (PascalCase)
 
 ```yaml
 # The column is `parentTicketRef` for historical reasons, but it is the owning
-# FK to Ticket and must keep Cascade semantics.
+# FK to Ticket and must stay part of its aggregate.
 TicketComment:
   type: object
   x-entity:
