@@ -318,7 +318,7 @@ The kit ships a starter for C# in [`templates/component-contract/csharp/`](../te
 
 **The filesets assume the layout of §1:** project folders at the repo root, named `<Prefix>.Domain`, `<Prefix>.Infrastructure` and `<Prefix>.Api`, test projects ending in `.Test` or `Tests`. A repo laid out differently (projects under `src/`, a layer named otherwise) edits the `filesets:` block once when seeding; a scope that matches nothing reports an error rather than passing, so a wrong glob is never silent.
 
-The engine is `specfuse.loop.gen_contract` (specfuse-loop 0.30+, part of `pipx install specfuse`). The seeded `scripts/check-gen-contract.sh` runs it; `scripts/test-gen-contract.sh` is the mutation test.
+The engine is `specfuse.loop.gen_contract` (specfuse-loop 0.30+, part of `pipx install specfuse` or `uv tool install specfuse`). The seeded `scripts/check-gen-contract.sh` runs it, finding the interpreter beside the `specfuse` command; a script seeded from kit 0.32.0 or earlier does not look there, so set `SPECFUSE_PYTHON` or copy the script from the template again; `scripts/test-gen-contract.sh` is the mutation test.
 
 ```bash
 ./scripts/check-gen-contract.sh            # every rule; 0 green, 1 violations, 2 cannot run

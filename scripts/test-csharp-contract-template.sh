@@ -229,4 +229,44 @@ expect_patches 1 "no 'Generator-Issue:' line" --check
 git checkout -q -- "$PATCH"
 git reset -q --hard HEAD~1
 
+# ── The script finds the engine wherever `specfuse` is installed ───────────
+# CI pip-installs the engine into python3, the one case that always worked, so
+# python3 is stubbed here. `specfuse` refuses `gen-contract`, as the CLI does
+# until it dispatches it.
+echo "── the script finds the engine beside the specfuse command"
+REAL_PY="$(command -v "$PY")"
+TOOLS="$(mktemp -d "${TMPDIR:-/tmp}/csharp-contract-tools.XXXXXX")"
+trap 'rm -rf "$WORK" "$TOOLS"' EXIT
+stub() { mkdir -p "$(dirname "$1")"; printf '#!/bin/sh\n%s\n' "$2" > "$1"; chmod +x "$1"; }
+stub "$TOOLS/no-engine/python3" 'exit 1'
+stub "$TOOLS/env/bin/specfuse" 'exit 2'
+stub "$TOOLS/env/bin/python" "exec \"$REAL_PY\" \"\$@\""
+stub "$TOOLS/old-env/bin/specfuse" 'exit 2'
+stub "$TOOLS/old-env/bin/python" 'exit 1'
+stub "$TOOLS/no-python/specfuse" 'exit 2'
+mkdir -p "$TOOLS/shim"
+ln -s ../env/bin/specfuse "$TOOLS/shim/specfuse"
+
+expect_find() {  # <exit> <text or ""> <PATH prefix> <SPECFUSE_PYTHON>
+  local want="$1" text="$2" prefix="$3" chosen="$4" out rc=0
+  out="$(env -u SPECFUSE_PYTHON ${chosen:+SPECFUSE_PYTHON="$chosen"} PATH="$prefix:$PATH" \
+    ./scripts/check-gen-contract.sh --list 2>&1)" || rc=$?
+  if [ "$rc" -ne "$want" ] || ! grep -qF -- "$text" <<<"$out"; then
+    echo "FAIL: PATH prefix $prefix, SPECFUSE_PYTHON '$chosen': wanted exit $want and '$text', got exit $rc:" >&2
+    printf '%s\n' "$out" >&2
+    exit 1
+  fi
+}
+
+# Through a relative symlink, as pipx and uv install it; python3 has no engine.
+expect_find 0 "" "$TOOLS/shim:$TOOLS/no-engine" ""
+# Directly on PATH, as a plain virtualenv has it.
+expect_find 0 "" "$TOOLS/env/bin:$TOOLS/no-engine" ""
+# A specfuse too old to carry the engine must not hide a python3 that has it.
+expect_find 0 "" "$TOOLS/old-env/bin:$(dirname "$REAL_PY")" ""
+# Nothing beside specfuse and no engine in python3: exit 2, naming the fix.
+expect_find 2 "uv tool install specfuse" "$TOOLS/no-python:$TOOLS/no-engine" ""
+# An explicit choice is not second-guessed.
+expect_find 2 "not importable by $TOOLS/no-engine/python3" "$TOOLS/shim" "$TOOLS/no-engine/python3"
+
 echo "OK: the C# starter contract is green on a fresh seed and every rule bites."
