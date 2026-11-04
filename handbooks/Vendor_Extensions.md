@@ -2201,7 +2201,7 @@ Article:
 
 **Optional**: Yes, but see "Every FK-shaped property must be classified" below — in practice an unclassified uuid property is a spec defect, not a default.
 
-> **A client-writable reference to a global entity gets no tenant check.** From generator `0.24.0` the save-time write guard resolves a reference to a tenant-owned entity, and `TENANT_REFERENCE_NOT_WRITE_CHECKED` warns on one it cannot check. Neither covers a target with no `belongsTo` path to a tenancy root, such as a global `User`. A request body carrying any existing id of that entity passes, so a task can be assigned to a stranger, and the difference between an error and success reveals that the record exists. Until the generator has a way to declare the membership that scopes such an entity, check it in hand-written code on every write path, and answer the same way whether the record is unknown or foreign. Fields the server fills from the caller (`x-populate-from`) are not exposed to this.
+> **A client-writable reference to a global entity gets no tenant check.** From generator `0.24.0` the save-time write guard resolves a reference to a tenant-owned entity, and `TENANT_REFERENCE_NOT_WRITE_CHECKED` warns on one it cannot check. From `0.25.0` it refuses a reference into another tenant for every caller, including one under `RecordVisibility.All`, so a column meant to cross tenants must declare `x-references: none`. None of this covers a target with no `belongsTo` path to a tenancy root, such as a global `User`. A request body carrying any existing id of that entity passes, so a task can be assigned to a stranger, and the difference between an error and success reveals that the record exists. Until the generator has a way to declare the membership that scopes such an entity, check it in hand-written code on every write path, and answer the same way whether the record is unknown or foreign. Fields the server fills from the caller (`x-populate-from`) are not exposed to this.
 
 **Schema**:
 
@@ -3524,7 +3524,7 @@ properties:
 
 **Providers**:
 - **`faker`** — generates data via faker library paths. The `path` field is required and maps to a faker method (e.g., `person.firstName`, `company.name`).
-- **`fixed`** — returns a literal value from `format`. Useful for enums (weighted pick) and known constants.
+- **`fixed`** — returns a literal value from `format`. Useful for enums (weighted pick) and known constants. From generator `0.25.0`, `format: "null"` on a `nullable: true` scalar seeds null; on a property that is not nullable it stays the text.
 - **`template`** — builds a string from a format template that interpolates faker paths in `{path}` placeholders.
 
 **Rules**:

@@ -381,6 +381,7 @@ The generator reads each message's merged `traits[]` headers and works out which
 |---|---|---|
 | `ASYNC_ENVELOPE_HEADER_MISSING` | ERROR | A message declares headers but binds no header to `eventId`, or, on a scoped event, to the `tenant` / `subTenant` the project declares |
 | `ASYNC_TENANT_HEADER_ON_GLOBAL_EVENT` | ERROR | An event not under the tenant has headers that require the tenant header |
+| `ASYNC_TENANT_HEADER_NOT_REQUIRED` | ERROR | From generator `0.25.0`. An event under the tenant has headers that do not require the tenant header. A nullable tenant foreign key and the sub-tenant are not reported |
 | `ASYNC_ENVELOPE_ROLE_UNKNOWN` | ERROR | An `x-envelope` value outside the role vocabulary |
 | `ASYNC_ENVELOPE_ROLE_DUPLICATE` | ERROR | Two headers of one message mark the same role |
 | `ASYNC_ENVELOPE_HEADER_RECOMMENDED` | WARNING | `eventVersion`, `aggregateId`, `aggregateType`, `producedAt` or `correlationId` is unbound |
@@ -413,12 +414,14 @@ Neither trait layers on the other: AsyncAPI applies traits as JSON Merge Patch a
 
 The Spectral rule `specfuse-async-auditable-event-envelope-shape` accepts both traits. It requires every envelope field above except the tenant, finds each by `x-envelope` or canonical name, and leaves the tenant to the generator, which knows the aggregates.
 
-**Check an event before moving it to the global trait; two generator gaps at `0.24.0` make a wrong move pass.**
+**An event below the tenant through a `belongsTo` chain still counts as global (generator `0.25.0`).** The tenant checks look only at the aggregate's direct links to the tenant. They do not follow a `belongsTo` chain, although the generated tenant query filter does. Measured: with `OrderLine` under `Order` and `Order` under the tenant, `OrderLineCreated` on the tenant-required trait reports `ASYNC_TENANT_HEADER_ON_GLOBAL_EVENT`, and on the global trait it passes. So an event on a chain-owned entity has to use the global trait for now.
 
-- The check that reports `ASYNC_TENANT_HEADER_ON_GLOBAL_EVENT` looks only at the aggregate's direct links to the tenant. It does not follow a `belongsTo` chain, although the generated tenant query filter does. Measured: with `OrderLine` under `Order` and `Order` under the tenant, `OrderLineCreated` is reported as not under the tenant. That event is tenant-owned, so the finding does not show it is global. Whether its producer stamps the tenant was not measured, so confirm that before a subscriber filters on it.
-- Neither plane checks that a scoped event requires its tenant. The generator only checks that a header is bound, so an event directly under the tenant passes when pointed at the global trait.
+- **Its producer leaves the tenant header out.** Per the generator's release notes, the C# producer does not resolve the tenant through the chain, and the Python template leaves it optional. Validation does not report this, so a subscriber filtering on the tenant header misses these events. Check any subscriber that filters that way.
+- **This will change.** When the generator follows the chain (`clabonte/generator#3295`), these events count as tenant-scoped, so they fail `ASYNC_TENANT_HEADER_NOT_REQUIRED` on the global trait and have to move to the tenant-required trait in that upgrade.
 
-**The legacy header names go away in the next minor release.** A bound name now replaces `companyId`, `restaurantId` and `producedAt` on the wire. For `0.24.0` only, the C# producer also writes those literals when the bound name differs, and the C# and Python readers try the bound name and then the literal. A subscriber outside the generated code that reads `companyId` off the application properties must read the bound name before the next minor release. A message that declares no headers is unchanged.
+An event directly under the tenant cannot make this mistake from `0.25.0`: on the global trait it fails `ASYNC_TENANT_HEADER_NOT_REQUIRED`.
+
+**The legacy header names are still written at `0.25.0`.** A bound name replaces `companyId`, `restaurantId` and `producedAt` on the wire, but the C# and Python producers also write those literals when the bound name differs, and the readers try the bound name and then the literal. The `0.24.0` notes said this would end with that release; it did not, and the `0.25.0` notes name no removal release. A subscriber outside the generated code that reads `companyId` off the application properties should still move to the bound name. A message that declares no headers is unchanged.
 
 **`aggregateVersion` travels on every event of a C# entity.** It is written as an `aggregateVersion` application property even when a message's headers do not bind it, and it moves once per save of the record. Handler bases do not drop stale events. To compare, treat a version equal to or lower than the last one you applied for that record as stale, and treat `null` as no ordering information. Two events raised in one save share a version, so compare per label if a handler treats them as distinct work. A property that maps to the C# member `AggregateVersion` is reported as `ENTITY_AGGREGATE_VERSION_RESERVED`: an error on an event's subject, a warning otherwise.
 

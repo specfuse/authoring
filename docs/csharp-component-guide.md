@@ -236,6 +236,8 @@ The generated `TestSeed` (stable GUIDs and a pre-wired entity graph) and the `A.
 
 From generator 0.22.0, also call `TestSeed.SeedSpareParents(context)` from `EnsureFakeData()`, beside the rows you already add. It seeds a spare parent row for each `uniqueBy` tuple made only of references (one gadget per owner), so the generated create test does not collide with the seeded child and answer 409. It is emitted on every `TestSeed`, empty when no tuple needs it, so the call can stay put. Without it, the create test answers 404 on the parent lookup.
 
+**Known failures through generator 0.25.0.** On a relational provider the call can fail the whole seed, because a spare repeats its builder's values and hits a unique index on the parent itself (`clabonte/generator#3366`). Until that is fixed, add those parents yourself first with values of your own; the method skips a row already present. The in-memory provider enforces no index. Separately, a create test that names `TestSeed.Spare<Parent>Id` can answer 403 for a tenant-scoped role, because that role's token does not reach the spare (`clabonte/generator#3365`). The API is right to refuse, so treat those rows as known failures in a functional baseline.
+
 Also from 0.22.0, the generated service unit tests assert what each emitted event carries and the exact set of events an update emits, including `x-trigger-when` transitions. A red service test after a regen means the service emits something other than what the spec implies, not a flaky test: fix the service, there is no opt-out. Events now carry the acting user: generated controllers and worker handler bases enter `EventActorScope`, so `EventEnvelope.UserId` is filled. Hand-written code that emits on behalf of a user outside those entry points (a hand-written endpoint, a hub, a background service) wraps the work in `using var _ = EventActorScope.Enter(userId);` with the domain user id.
 
 ## 5. Extending generated code
@@ -466,6 +468,18 @@ Raw SQL or a dashboard reading `Status = 0` must change. Code using `OutboxStatu
 - **A wire reader looking for the tenant in the body.** A tenancy member the payload does not declare is no longer in the outbox body; read the envelope header.
 - **A `400` where the client used to succeed.** `filter` accepts only `filterableProperties` plus `Id`, `CreatedAt` and `UpdatedAt`, and an enum value in a request must match the spec exactly, case included, with `"unknown"` refused unless the enum declares it or is `x-extensible`. Stored enum data is unaffected.
 - **A `403` or `404` on a write.** A project declaring `tenancy` gets a write guard: a write outside the caller's visibility answers `403`, and a body reference outside it `404`, where a missing id used to be a `500` and another tenant's id was accepted.
+
+### 9.3 Upgrading to generator 0.25
+
+No migration is required by this release. It changes what hand-written code and tests can see:
+
+- **A test expecting a wrapped exception.** A domain exception now arrives as itself, not inside `InternalException`, so a 401, 403, 409, 412 or 422 raised below a service no longer answers 500. A test asserting the wrapper must assert the exception, and a host filter that unwraps `InternalException` can go. A group that writes its own exception classes must declare all ten that `domainExceptions` emits.
+- **A `404` from a system path.** The write guard now checks references for an unrestricted caller (`RecordVisibility.All`) too: a missing target answers `404` rather than a foreign-key `500`, and a reference into another tenant is refused for every caller. A system path that wrote a cross-tenant reference on purpose must have its column declare `x-references: none`. A pillar-bound group's guard also compares a reference to a held `Read{Entity}` replica. A guarded save of a changed reference costs one more query per target type.
+- **A `400` for a bad `filter` value.** A value that cannot convert to its property's type answers `400` for every type, where several answered `500`.
+- **Partitioned Service Bus topics.** The dispatcher now sends one batch per session. Rows already `Poisoned` by the old refusal stay `Poisoned`.
+- **`BlastRadius` values move.** It counts the route again, and a top-level list only superuser roles may call reads `platform`. `RequiresConfirmation` does not change. Recheck anything gating on the radius.
+- **Hand-written workarounds you can delete:** a filter adding `Location`, `API-Version` or `ETag`, a `<Compile Remove>` of the authorization conformance test in a spec with no roles, and a placeholder type written to get past CS0246 in a `pillar` or `domains` group.
+- **`Location` on a create can be absent on purpose.** When several reads spell the created entity's key, none is set. A client must then take the id from the response body.
 
 ## 10. The audit checklist
 

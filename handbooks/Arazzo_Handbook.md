@@ -1031,7 +1031,7 @@ tools:
     source: { type: workflow, workflowId: get-order-status }
 ```
 
-`Project_File.md` §1.5 covers the `mcpManifests` setting, what `validate` checks, and the 0.24.0 warning against registering `mcpHost` on a real manifest.
+`Project_File.md` §1.5 covers the `mcpManifests` setting, what `validate` checks, and the warning against registering `mcpHost` on a real manifest.
 
 ---
 

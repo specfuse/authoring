@@ -193,7 +193,7 @@ The three spec-path fields tell the generator where to find the bundled inputs.
 
 ### 1.5 `mcpManifests` (generator `0.24.0`)
 
-> **⚠ Do not register `mcpHost` or `mcpEvalHarness` on a real manifest at `0.24.0`.** They are verified on fixtures only. On a real manifest the generated tools fail to compile, five composite tools advertise required ids a caller cannot obtain, and **a preview tool commits instead of rolling back, so a `preview-*` tool performs the real write with no confirmation**. A group that does not register these two is unaffected. `mcpServerResources`, `validate` and the `MCP_*` findings work as documented.
+> **⚠ Do not register `mcpHost` or `mcpEvalHarness` on a real manifest at `0.24.0` or `0.25.0`.** They are verified on fixtures only. On a real manifest the generated tools fail to compile, five composite tools advertise required ids a caller cannot obtain, and **a preview tool commits instead of rolling back, so a `preview-*` tool performs the real write with no confirmation**. A group that does not register these two is unaffected. `mcpServerResources`, `validate` and the `MCP_*` findings work as documented.
 
 **Purpose**: A file, or a directory of `*.mcp.yaml` files, resolved against the project file's directory like `arazzoSpecifications`. A manifest declares one MCP server's tools, prompts and resources.
 
@@ -217,7 +217,7 @@ tools:
 | `source.type` | `operation`, `workflow`, `composite` |
 | Resource | `name`, `enum`, `schema` |
 
-**`server` is a closed list on `0.24.0`**: `admin`, `compliance`, `inbound`, `ops`, `scheduling`, `workforce`. Anything else is `MCP_MANIFEST_SHAPE_INVALID`. `budget` takes 1 to 40, `maxPageSize` 1 to 100.
+**`server` is a closed list through `0.25.0`**: `admin`, `compliance`, `inbound`, `ops`, `scheduling`, `workforce`. Anything else is `MCP_MANIFEST_SHAPE_INVALID`. `budget` takes 1 to 40, `maxPageSize` 1 to 100.
 
 **What `validate` checks**, all ERROR unless marked (`java -jar <jar> extensions` prints the current vocabulary):
 
@@ -1112,7 +1112,7 @@ Three opt-in C# ids, none in the snapshot list above. Each emits only when regis
 | `hostedScheduledJob` | `0.24.0` | The generic-host group | `{Job}ScheduledJob.g.cs` per job placed under `schedules.inProcess` or `schedules.cronJob`, plus `ScheduledJobRunner` for `cronJob` (§17.3). `inProcess` needs the `Cronos` package. |
 | `eventRuntimeHosted` | `0.24.0` | The generic-host group, beside `hostedTopicConsumer` | `HostedEventOutboxDrainer`, `HostedEventOutboxRetention` and `HostedEventInboxRetention`, when `runtime.host` is `genericHost` (§17.3). |
 | `mcpServerResources` | `0.24.0` | A C# group | An effects and a descriptions file per manifest server (§1.5). |
-| `mcpHost`, `mcpEvalHarness` | `0.24.0` | **Do not register on a real manifest at `0.24.0`** (§1.5) | `AddSpecfuseMcp()` and the tool, prompt and resource classes; a harness scoring a model's tool selection. |
+| `mcpHost`, `mcpEvalHarness` | `0.24.0` | **Do not register on a real manifest at `0.24.0` or `0.25.0`** (§1.5) | `AddSpecfuseMcp()` and the tool, prompt and resource classes; a harness scoring a model's tool selection. |
 | `tenantIsolationTest` | `0.21.0` | Test | `Generated/Unit/Infrastructure/TenantIsolationTests.g.cs`: per tenant-owned entity, a list never returns the foreign tenant's rows, a get, update or delete of a foreign row answers not found, `Unrestricted` sees both tenants, an empty visibility sees nothing, the model carries the `Tenant` filter. Adds the within-tenant facts for entities that declare `x-entity.visibility`. `TestSeed` gains the foreign tenant's graph. | Needs a `tenancy` block. Emits nothing unless a `Tenant` or `Visibility` filter is declared. The Test project must reference Infrastructure. Runs in memory under the unit-test step, not under the functional suite. |
 | `bareIgnoreSourceScanTest` | `0.21.0` | Test | `Generated/Unit/Infrastructure/BareIgnoreSourceScanTest.g.cs`: fails when hand-written C# calls `IgnoreQueryFilters()` with no argument, which drops the `Tenant` filter too, unless the call is listed in `bare-ignore-query-filters.baseline` at the solution root. | Needs a `tenancy` block and `tenancy.enforcement` unset; otherwise it emits nothing. The baseline is yours, never generated, and only shrinks: a missing file reads as empty, and a line for a call that is gone fails as stale. |
 

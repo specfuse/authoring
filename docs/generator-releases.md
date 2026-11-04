@@ -24,6 +24,54 @@ Newest first. An entry is **pending** until the kit release that pins it is publ
 | **Tracked issues** | you were waiting on a fix |
 | **Kit changes** | you want to know what moved in the handbooks, rules and tooling |
 
+## 0.25.0
+
+**Status: pending.** To be pinned by kit `v0.33.0` (jar sha256 `a8649a70…5df1cc9`; full record in [`compatibility.md`](https://github.com/specfuse/authoring/blob/main/compatibility.md) §61). Generator release date: 2026-11-04.
+
+### Do not use yet
+
+**Still do not register `mcpHost` or `mcpEvalHarness` on a real manifest.** This is unchanged from `0.24.0`: **a preview tool commits instead of rolling back.** FEAT-GEN-2026-0259 tracks the repair.
+
+### Before you regenerate
+
+**Spec authors**
+
+- **A tenant-scoped event must require the tenant header (ERROR).** An event under the tenant, on a trait that leaves the header optional, fails with `ASYNC_TENANT_HEADER_NOT_REQUIRED`. Move it to the tenant-required trait. A nullable tenant foreign key and the sub-tenant are not reported. An event below the tenant through a `belongsTo` chain still has to stay on the global trait: see the known issue below.
+
+**C# component repos.** No migration is required. [`csharp-component-guide.md`](csharp-component-guide.md) §9.3 has the steps.
+
+- **Domain exceptions are no longer wrapped.** A 401, 403, 409, 412 or 422 raised below a service stops answering 500. A test asserting `InternalException` must assert the exception itself. A group with its own exception classes must declare all ten that `domainExceptions` emits.
+- **The write guard covers unrestricted callers and tenant crossings.** Under `RecordVisibility.All`, a missing target answers 404, and a reference into another tenant is refused for every caller, including a held `Read{Entity}` replica. A column meant to cross declares `x-references: none`.
+- **A bad `filter` value answers 400** for every type, not 500.
+- **`BlastRadius` values move.** `RequiresConfirmation` does not.
+
+**TypeScript test support**
+
+- **A generated fake's child create refuses a missing or archived parent.** Seed a live parent into `RepositoryFakeStores` first. Your next regen reports every guarded create as breaking once, because the stored baseline never recorded the guard.
+
+### Known issues
+
+- **An event on an entity below the tenant through a `belongsTo` chain carries no tenant header (`clabonte/generator#3295`).** `validate` treats the entity as global, so requiring the header fails. Validation does not report the missing header, and a subscriber filtering on it misses these events. When this is fixed, those events must move to the tenant-required trait in that upgrade.
+- **C#: `TestSeed.SeedSpareParents` can fail the whole seed on a relational provider (`#3366`),** and **some generated create tests answer 403 for a tenant-scoped role (`#3365`).** Both are unchanged from `0.24.0`. See `csharp-component-guide.md` §4.4.
+
+### New in the spec
+
+- **`x-sample: { provider: fixed, format: "null" }`** seeds null on a `nullable: true` scalar (C#, Dart, TypeScript).
+- **C# list responses fill the `links` their envelope declares.** Additive on the wire.
+- **C# controllers set `Location`, `API-Version` and `ETag`** where the spec declares them. A create with several reads that spell its key sets no `Location`.
+- **`deletionState` works on reads below an aggregate root (C#).** It used to be ignored there.
+
+The vendor-extension vocabulary is unchanged.
+
+### Tracked issues
+
+`clabonte/generator#3296` is fixed. `#3295` is open (FEAT-GEN-2026-0269), and `#3289` (the closed MCP `server` list) is planned for `0.26.0`.
+
+### Kit changes
+
+- `AsyncAPI_Handbook.md` adds `ASYNC_TENANT_HEADER_NOT_REQUIRED`, rewrites the tenant-gap warning, and corrects the legacy header window: the `0.24.0` notes said those names were written for that release only, and `0.25.0` still writes them.
+- Handbooks and the C# component guide document the changes above.
+
 ## 0.24.0
 
 **Status: published.** Pinned by kit `v0.32.0` (released 2026-11-02) (jar sha256 `85d1496e…c088902e7`; full record in [`compatibility.md`](https://github.com/specfuse/authoring/blob/main/compatibility.md) §60). Generator release date: 2026-11-02.
