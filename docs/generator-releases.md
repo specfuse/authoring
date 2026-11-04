@@ -26,7 +26,7 @@ Newest first. An entry is **pending** until the kit release that pins it is publ
 
 ## 0.25.0
 
-**Status: pending.** To be pinned by kit `v0.33.0` (jar sha256 `a8649a70…5df1cc9`; full record in [`compatibility.md`](https://github.com/specfuse/authoring/blob/main/compatibility.md) §61). Generator release date: 2026-11-04.
+**Status: published.** Pinned by kit `v0.33.0` (released 2026-11-04) (jar sha256 `a8649a70…5df1cc9`; full record in [`compatibility.md`](https://github.com/specfuse/authoring/blob/main/compatibility.md) §61). Generator release date: 2026-11-04.
 
 ### Do not use yet
 
