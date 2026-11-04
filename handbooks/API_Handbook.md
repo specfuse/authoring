@@ -385,7 +385,7 @@ CustomerSearchRequest:
 ### 1.7 Paginated list wrapper
 - **Schema name:** `{Resource}List` (e.g., `CustomerList`).
 - **Data:** array of `Basic{Resource}` within the standard pagination envelope.
-- **Required:** every envelope field except `links`. `hasPrev` and `hasNext` are required because clients page on them: the generated C# `PaginatedList` always serializes both, computed from `page` and `pageCount`, and the generated Dart client reads `hasNext` as the server's answer rather than guessing from the row count. A schema that leaves them optional lets a conformant server omit the one field a client needs to decide whether to render a "next" control. `links` stays optional.
+- **Required:** every envelope field except `links`. `hasPrev` and `hasNext` are required because clients page on them: the generated C# `PaginatedList` always serializes both, computed from `page` and `pageCount`, and the generated Dart client reads `hasNext` as the server's answer rather than guessing from the row count. A schema that leaves them optional lets a conformant server omit the one field a client needs to decide whether to render a "next" control. `links` stays optional. From generator `0.25.0` a generated C# list response fills the `links` its envelope declares: relative URLs that keep the request's query and change only `page`, with `prev` and `next` null where no such page exists, and `last` null when the total is unknown.
 
 ```yaml
 CustomerList:
@@ -1094,6 +1094,7 @@ GET /orders/123?deletionState=archived   # 404 if 123 is live, so a caller can c
 - `deletionState` is legal only on a read of an entity declaring `archiveVisibility: operational`. On a `restricted` entity `validate` fails with `ARCHIVE_DELETION_STATE_TARGET_NOT_OPERATIONAL`, and on a hard-delete entity with `ARCHIVE_DELETION_STATE_HARD_TARGET` (both ERROR). The operation must name its entity in `x-operation.target`.
 - **`filter=deletedAt ne null` does not reach archived rows.** The `filter` runs inside the default query filter, which has already removed them, so it returns an empty page. `deletionState` is the only generated route to an archived row.
 - `deletionState=all` or `archived` still does not return a row whose owning **ancestor** is archived. The generated read bypasses the filter for this entity's own archive state only.
+- **Below an aggregate root, `deletionState` needs generator `0.25.0` (C#).** Before it, a generated service accepted the parameter on a child or related-aggregate read and ignored it, so `archived` returned live rows.
 - Standard GET by ID (`GET /orders/123`) returns `404` for an archived row.
 
 #### AI Agent Considerations
@@ -2187,7 +2188,7 @@ Sentinel name list to scan against (case-insensitive): `unknown`, `unspecified`,
 | Provider | When to use | Required fields | Example |
 |----------|-------------|-----------------|---------|
 | `faker` | Realistic data — names, emails, addresses, dates, numbers | `path` (required), `locale` (optional) | `{ provider: faker, path: person.firstName, locale: en-US }` |
-| `fixed` | Enum values, known constants, boolean defaults | `format` (required — the literal value) | `{ provider: fixed, format: "premium" }` |
+| `fixed` | Enum values, known constants, boolean defaults; from generator `0.25.0`, `format: "null"` seeds null on a `nullable: true` scalar | `format` (required — the literal value) | `{ provider: fixed, format: "premium" }` |
 | `template` | Compound/derived values — formatted codes, composed strings | `format` (required — template with `{faker.path}` interpolation) | `{ provider: template, format: "ORD-{{string.numeric(6)}}" }` |
 
 **JSON Schema**: `schemas/arazzo-extensions/x-sample.schema.json`
@@ -2772,6 +2773,8 @@ throw new ConflictException("template_in_use", "The template is used by an open 
 The `type` each one sets is fixed: `validationError`, `insufficientPrivileges`, `resourceNotFound`, `resourceConflict`, `preconditionFailed` and `businessRuleViolation`, in that order. A 409 whose `type` should be `businessRuleViolation` therefore still builds its `Error` and uses the `(Error error)` constructor.
 
 If `Error` also declares an `automatedDecision` property naming a schema, the constructor takes an optional `automatedDecision` of that type as a third argument. `InternalException` and `UnauthorizedException` get no reason constructor. Through `0.17.0` the exceptions took only an `int errorCode` or a message, so a project built the `Error` itself and passed it to the `(Error error)` constructor. That still works.
+
+**A domain exception is never wrapped, from `0.25.0` (C#).** Every generated service method and application-service gate lets all ten classes `domainExceptions` emits through unchanged, and wraps only anything else in `InternalException`. A group that writes its own exception classes instead of registering `domainExceptions` must declare all ten.
 
 **`id` follows the schema from `0.18.0`.** The exceptions set `Error.Id` to `Guid.NewGuid().ToString()` for the kit's plain-string `id`, and to `Guid.NewGuid()` for a `format: uuid` one. Through `0.17.0` it was `<entry assembly>-<UTC ticks>`, which two errors raised in the same tick shared. Treat `id` as opaque: it identifies one error occurrence in logs and support requests, and its format is not a contract.
 
