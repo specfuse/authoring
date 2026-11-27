@@ -295,6 +295,7 @@ Action requests (`*Request` bodies on `POST …:action`) are not replace bodies 
 - **Semantics:** partial update; all properties optional; unknown fields ignored per global rule.
 - **Content-Type:** `application/json`.
 - **Tri-state, decided per field:** a property **absent** from the body is untouched; a property **present** carries the field's new value. For collection-typed properties, "the new value" means the complete desired set — see §1.5.1.
+- **A value-object member references the value object itself.** Where the entity's property is an `x-value-object` (`Review.draft: Draft`), the `Update{Resource}` member is `$ref: Draft`, never an API-model form such as `UpdateDraft`: nothing in the spec says how a partial form merges into the value object, so an update replaces it whole. From generator `0.26.0` the form is `UPDATE_MEMBER_VALUE_OBJECT_FORM` (ERROR) at `validate`. It reads a direct `$ref` and an `allOf: [$ref]` wrapper, not arrays. Before, it passed `validate` and broke only the C# build, so a spec generating only Dart, Python or TypeScript can start failing on this pin.
 
 ```yaml
 UpdateCustomer:
@@ -444,6 +445,8 @@ The last two rows are one rule seen from two sides: a `default` on a `required` 
 > Tracked in `compatibility.md`, follow-up 22. **If you already have such properties, sweep existing rows** — on the C# path the bad value inserts silently, so the damage predates the diagnosis.
 
 **A required property no route fills fails `validate` from generator `0.19.0`.** `CREATE_REQUIRED_PROPERTY_UNPOPULATED` (ERROR, a WARNING through `0.18.0`) and `CREATE_REQUIRED_FK_UNPOPULATED` (ERROR) report a required, non-nullable, non-`readOnly` property that a generated create cannot fill: it is not in `New{Resource}`, has no `default:` / `x-default`, and declares neither `x-copied-from` nor `x-populate-from`. A value that comes from the caller or the clock is `x-populate-from` (`Vendor_Extensions.md` §1.11), which also has the table for choosing a route.
+
+**The AI create path is judged separately, from generator `0.26.0`.** An AI worker's create (the generated Python `add_<entity>`) sets only the properties `aiAccess.writableProperties` names plus the generator-managed columns; it has no caller, request or URL parent to fill anything else from, and `x-populate-from`, `x-copied-from` and `readOnly` do not apply on that path. A required, non-nullable column outside that set is written as NULL, so every AI insert fails. `AI_ACCESS_CREATE_REQUIRED_UNFILLABLE` (WARNING) names the entity and the property, or the `belongsTo` parent whose key no property declares. Fix it by listing the property in `writableProperties`, giving it a `default:`, making it nullable, or dropping `create` from `aiAccess.operations`. An implicit parent key has to be declared as a property first.
 
 ### 1.10 Streamed responses (`x-stream`, generator `0.19.0`)
 
