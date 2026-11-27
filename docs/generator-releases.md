@@ -79,7 +79,7 @@ The vendor-extension vocabulary is unchanged.
 
 ### Kit changes
 
-- `Project_File.md` documents the C# client artifacts, the `pci` floor on `pii` and the `keyScope: tenant` limits, and moves the MCP warning to this pin.
+- `Project_File.md` documents the C# client artifacts and the `keyScope: tenant` limits, and moves the MCP warning to this pin.
 - `API_Handbook.md`, `Vendor_Extensions.md`, `Arazzo_Handbook.md` and `AsyncAPI_Handbook.md` document the new findings and fixes above.
 - The C# component guide adds §9.4 and retires the `SeedSpareParents` known failures; `component-repos.md` points Dart apps at the migration recipe.
 
