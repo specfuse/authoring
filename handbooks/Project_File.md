@@ -193,7 +193,7 @@ The three spec-path fields tell the generator where to find the bundled inputs.
 
 ### 1.5 `mcpManifests` (generator `0.24.0`)
 
-> **⚠ Do not register `mcpHost` or `mcpEvalHarness` on a real manifest at `0.24.0` or `0.25.0`.** They are verified on fixtures only. On a real manifest the generated tools fail to compile, five composite tools advertise required ids a caller cannot obtain, and **a preview tool commits instead of rolling back, so a `preview-*` tool performs the real write with no confirmation**. A group that does not register these two is unaffected. `mcpServerResources`, `validate` and the `MCP_*` findings work as documented.
+> **⚠ Do not register `mcpHost` or `mcpEvalHarness` on a real manifest through `0.26.0`.** They are verified on fixtures only. On a real manifest the operation-backed tools fail to compile against the generated service signatures (`CS7036`, `CS0411`, `CS1503`), and a list tool reports only a success text, never the rows it read (`clabonte/generator#3271`). On `0.24.0` and `0.25.0` there was worse: **a preview tool committed instead of rolling back, so a `preview-*` tool performed the real write with no confirmation**, composite tools advertised required ids a caller could not obtain, and tool files missed the Domain usings. `0.26.0` fixes those three. A group that does not register these two is unaffected. `mcpServerResources`, `validate` and the `MCP_*` findings work as documented.
 
 **Purpose**: A file, or a directory of `*.mcp.yaml` files, resolved against the project file's directory like `arazzoSpecifications`. A manifest declares one MCP server's tools, prompts and resources.
 
@@ -217,7 +217,7 @@ tools:
 | `source.type` | `operation`, `workflow`, `composite` |
 | Resource | `name`, `enum`, `schema` |
 
-**`server` is a closed list through `0.25.0`**: `admin`, `compliance`, `inbound`, `ops`, `scheduling`, `workforce`. Anything else is `MCP_MANIFEST_SHAPE_INVALID`. `budget` takes 1 to 40, `maxPageSize` 1 to 100.
+**`server` is a closed list through `0.26.0`** (`clabonte/generator#3289`): `admin`, `compliance`, `inbound`, `ops`, `scheduling`, `workforce`. Anything else is `MCP_MANIFEST_SHAPE_INVALID`. `budget` takes 1 to 40, `maxPageSize` 1 to 100.
 
 **What `validate` checks**, all ERROR unless marked (`java -jar <jar> extensions` prints the current vocabulary):
 
@@ -1112,9 +1112,20 @@ Three opt-in C# ids, none in the snapshot list above. Each emits only when regis
 | `hostedScheduledJob` | `0.24.0` | The generic-host group | `{Job}ScheduledJob.g.cs` per job placed under `schedules.inProcess` or `schedules.cronJob`, plus `ScheduledJobRunner` for `cronJob` (§17.3). `inProcess` needs the `Cronos` package. |
 | `eventRuntimeHosted` | `0.24.0` | The generic-host group, beside `hostedTopicConsumer` | `HostedEventOutboxDrainer`, `HostedEventOutboxRetention` and `HostedEventInboxRetention`, when `runtime.host` is `genericHost` (§17.3). |
 | `mcpServerResources` | `0.24.0` | A C# group | An effects and a descriptions file per manifest server (§1.5). |
-| `mcpHost`, `mcpEvalHarness` | `0.24.0` | **Do not register on a real manifest at `0.24.0` or `0.25.0`** (§1.5) | `AddSpecfuseMcp()` and the tool, prompt and resource classes; a harness scoring a model's tool selection. |
+| `mcpHost`, `mcpEvalHarness` | `0.24.0` | **Do not register on a real manifest through `0.26.0`** (§1.5) | `AddSpecfuseMcp()` and the tool, prompt and resource classes; a harness scoring a model's tool selection. |
 | `tenantIsolationTest` | `0.21.0` | Test | `Generated/Unit/Infrastructure/TenantIsolationTests.g.cs`: per tenant-owned entity, a list never returns the foreign tenant's rows, a get, update or delete of a foreign row answers not found, `Unrestricted` sees both tenants, an empty visibility sees nothing, the model carries the `Tenant` filter. Adds the within-tenant facts for entities that declare `x-entity.visibility`. `TestSeed` gains the foreign tenant's graph. | Needs a `tenancy` block. Emits nothing unless a `Tenant` or `Visibility` filter is declared. The Test project must reference Infrastructure. Runs in memory under the unit-test step, not under the functional suite. |
 | `bareIgnoreSourceScanTest` | `0.21.0` | Test | `Generated/Unit/Infrastructure/BareIgnoreSourceScanTest.g.cs`: fails when hand-written C# calls `IgnoreQueryFilters()` with no argument, which drops the `Tenant` filter too, unless the call is listed in `bare-ignore-query-filters.baseline` at the solution root. | Needs a `tenancy` block and `tenancy.enforcement` unset; otherwise it emits nothing. The baseline is yours, never generated, and only shrinks: a missing file reads as empty, and a line for a call that is gone fails as stale. |
+
+#### Artifacts added in generator `0.26.0`: the C# API client
+
+A typed HTTP client for calling a Specfuse service from another C# service. Opt-in: a C# group that registers none of these ids generates byte-identical output. The generator's own `docs/CSHARP-CLIENT.md` is the full reference.
+
+| Id | Group | What it emits | Conditions |
+|---|---|---|---|
+| `apiClient` | A C# client group of its own, bound by `pillar` or by `domains` | `I{Aggregate}Client` and `{Aggregate}Client` per aggregate; `ApiException` with one subclass per spec `Error` status, `ApiError`, `ApiResult<T>` (body and `ETag`), `ConditionalResult<T>`, `RequestOptions`, `ClientJsonOptions.Default`; `ClientRegistration.g.cs` with `Add{Label}Clients(IServiceCollection, Uri, Action<IHttpClientBuilder>?)`. `{Label}` is the group's `pillar` in PascalCase, else the project name. | Register with `dto` and `updateDto`, which now accept a C# group and emit the client's own wire records and `Optional<T>`. The project must reference `Microsoft.AspNetCore.App` (`<FrameworkReference Include="Microsoft.AspNetCore.App" />`) or `Microsoft.Extensions.Http`, or it does not compile. |
+| `apiClientFake` | A pillar-bound Test-style group, one per client group | `Fake{Aggregate}Client : I{Aggregate}Client` with a settable `{Member}Handler` per member, recorded calls, and `AddFake{Label}Clients`. A member with no handler fails with `FakeClientNotConfiguredException`. | Call `AddFake{Label}Clients` **after** `Add{Label}Clients`, or the real client wins. A fake group whose pillar has no client group fails `generate` with a `ConfigurationException`. |
+
+What the client leaves out, it logs: one `WARN` per skipped operation, `Client skips operation <id> by rule <rule>`, where the rule is `csharp-client-streamed`, `csharp-client-no-aggregate`, `csharp-client-unsupported-style`, `csharp-client-binary-response` or `csharp-client-unsupported-shape`. Each client group carries its own copy of the support types, because a group writes only under its own `basePackage`: a file importing two client groups' namespaces gets `CS0104` and has to alias them. A hand-written implementation of `I{Aggregate}Client` gains abstract members whenever a regen reaches more operations.
 
 `hostedTopicConsumer`'s host must register a `ServiceBusClient`, set `AzureServiceBus:TopicName`, and reference `Microsoft.Extensions.Hosting` and `Microsoft.Extensions.Diagnostics.HealthChecks`. The C# host wiring is in `docs/csharp-component-guide.md`.
 
@@ -1408,7 +1419,7 @@ A **union of floors, not a ladder.** Each declared profile sets a minimum `atRes
 | Profile | What it adds |
 |---|---|
 | `law25` | Privacy floors per classification token. A classified property below the floor is `PROTECTION_LAW25_FLOOR`, whose remedy is *declare `x-protection.atRest: encrypted`, or `hashed` (with a rationale stating the value is never read back in plaintext, unless classified `credential`)*. |
-| `pci` | Cardholder-data floors. `cardholder` must be `atRest: encrypted` with `masking.first <= 6` and `masking.last <= 4`, or `atRest: hashed` with a rationale (PCI-DSS 3.5.1). `sad` must be `never-persist` — sensitive authentication data may not be stored after authorisation. Reported as `PROTECTION_PCI_FLOOR`. |
+| `pci` | Cardholder-data floors. `cardholder` must be `atRest: encrypted` with `masking.first <= 6` and `masking.last <= 4`, or `atRest: hashed` with a rationale (PCI-DSS 3.5.1). `sad` must be `never-persist` — sensitive authentication data may not be stored after authorisation. `pii` is floored too, at `encrypted`, or `hashed` with a rationale, because in a PCI-scoped project personal data sits beside cardholder data. Profiles are project-wide, so declaring `pci` floors every `pii` property in every service, including one declared `atRest: none` with a rationale. Reported as `PROTECTION_PCI_FLOOR`; from generator `0.26.0` the message on a `pii` property says why the floor applies. |
 | `soc2` | Not a floor but a metadata gate: it makes `rationale`, `reviewedOn` **and** `reviewedBy` mandatory on every declared `x-protection` (`PROTECTION_SOC2_METADATA_REQUIRED`). A `reviewedOn` older than 18 months is a **finding**, never a build failure — see §11.5 for why that is deliberate. |
 
 An unrecognised profile token is not a floor; it is simply not one of the three, and it configures nothing.
@@ -1419,7 +1430,7 @@ Declares the scope at which data keys are expected to exist. Two values are mean
 
 It does two things, and both are silent when the key is absent:
 
-- **`tenant` turns on a spec-level check.** An encrypted property on an entity that is not tenant-scoped — no tenant in its `belongsTo` chain — is `PROTECTION_ENCRYPTED_TENANT_SCOPE_REQUIRED` (FE-G26). The remedy the generator names is *add the project's tenant to this entity's `belongsTo` chain, or set `encryption.keyScope: global` if this entity is intentionally global.* **With `keyScope` absent the check does not run at all**, so a non-tenant-scoped encrypted entity passes validation in a project that intended tenant-scoped keys.
+- **`tenant` turns on a spec-level check.** An encrypted property on an entity that is not tenant-scoped — no tenant in its `belongsTo` chain — is `PROTECTION_ENCRYPTED_TENANT_SCOPE_REQUIRED` (FE-G26). The remedy the generator names is *add the project's tenant to this entity's `belongsTo` chain, or set `encryption.keyScope: global` if this entity is intentionally global.* In practice the check accepts only a **direct** `belongsTo` on the tenant: an entity two or more hops below it is refused although its chain reaches the tenant, and the message wrongly says it does not (`clabonte/generator#3372`, open at `0.26.0`). Until that is fixed, declare the tenant as a direct parent of the entity, or use `keyScope: global`. From `0.26.0`, an entity in another pillar whose tenant foreign key is a `resolve: remote` `x-references` to the tenant root, under the tenancy foreign-key name, counts as tenant-scoped. **With `keyScope` absent the check does not run at all**, so a non-tenant-scoped encrypted entity passes validation in a project that intended tenant-scoped keys.
 - **The declared value is carried into the generated C# `EncryptionProfile.DeclaredKeyScope`**, where the runtime compares it against the scope the host's key provider is configured for and refuses to continue on a disagreement (`DeclaredKeyScopeMismatchException`) — because proceeding writes ciphertext keyed at a scope the specification never declared. Declare nothing and `DeclaredKeyScope` is `null`, and that mismatch can never be raised.
 
 Anything other than `tenant` reads as "not tenant scoped" for the first check and is passed through verbatim for the second, so treat `global` as the spelling to use rather than a synonym of your own.

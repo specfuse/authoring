@@ -60,6 +60,7 @@ Generated code ships as source inside the component, so it joins the component's
     hello_orders_core:
       path: ./packages/hello_orders_core
   ```
+  From generator 0.26.0 the generated package needs Dart `>=3.13.0` and Flutter `>=3.47.0` and moves to the riverpod 4 / freezed 4 line, so the app raises its own SDK floors and pins with it and drops `custom_lint`. The ordered recipe is in [`generator-releases.md`](generator-releases.md#0260).
 - **Python:** make the generated libraries members of a [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/):
   ```toml
   [tool.uv.workspace]

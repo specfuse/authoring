@@ -24,6 +24,65 @@ Newest first. An entry is **pending** until the kit release that pins it is publ
 | **Tracked issues** | you were waiting on a fix |
 | **Kit changes** | you want to know what moved in the handbooks, rules and tooling |
 
+## 0.26.0
+
+**Status: pending.** Pinned by kit `v0.34.0` (jar sha256 `82ed3138…5faf4416`; full record in [`compatibility.md`](https://github.com/specfuse/authoring/blob/main/compatibility.md) §62). Generator release date: 2026-11-27.
+
+### Do not use yet
+
+**Still do not register `mcpHost` or `mcpEvalHarness` on a real manifest.** The preview tool no longer commits, and two other defects are fixed, but on a real manifest the operation-backed tools still fail to compile against the service signatures, and a list tool returns only a success text (`clabonte/generator#3271`). See `Project_File.md` §1.5.
+
+### Before you regenerate
+
+**Spec authors**
+
+- **An `Update*` member typed as a value object's API-model form fails `validate` (ERROR).** `UpdateReview.draft: UpdateDraft` beside `Review.draft: Draft` is `UPDATE_MEMBER_VALUE_OBJECT_FORM`. Reference the value object itself; an update replaces it whole (`API_Handbook.md` §1.5). It never compiled in C#, but a spec generating only Dart, Python or TypeScript passed on `0.25.0`.
+- **Two new warnings.** `AI_ACCESS_CREATE_REQUIRED_UNFILLABLE` names a required column an AI worker's create cannot fill (`API_Handbook.md` §1.9). `TENANT_REFERENCE_NOT_WRITE_CHECKED` now also covers a key into a held replica that keeps no tenant column (`Vendor_Extensions.md`, `x-references`).
+
+**Dart/Flutter apps.** The generated `pubspec.yaml` moves to the analyzer-14 line, so the app must move with it. In this order:
+
+1. Raise the app's `environment.sdk` to `>=3.13.0` and `environment.flutter` to `>=3.47.0`.
+2. Bump the app's own pins to overlap the generated ones: `flutter_riverpod ^3.5.0`, `riverpod_annotation ^4.0.8`, `riverpod_generator ^4.0.10`, `freezed ^4.0.1`, `build_runner ^2.15.3`, `json_annotation ^4.12.0`, `json_serializable ^6.14.1`.
+3. Remove `custom_lint` from `dev_dependencies` and its plugin entry from `analysis_options.yaml`, and move `riverpod_lint` to `>=3.1.9`. A lint package of your own built on `custom_lint_builder` must go too; if it lives inside the app's tree, delete it or add it to `analyzer: exclude:`.
+4. Run `flutter pub get`, then `dart run build_runner build --delete-conflicting-outputs`, then `dart format .`. The new language version reformats files you did not touch, generated ones included; review that diff on its own.
+5. Remove `const` wherever it reaches a generated provider: providers are now `final xProvider = X._();`. Drop `const` from a list literal holding them, and make a `const` variable `final`.
+6. Replace any test use of a Riverpod internal API with `ProviderContainer` / `ProviderScope`, and delete the imports that leaves unused.
+
+Your own widgets importing `material.dart` may need the same `// ignore: deprecated_member_use` the generated ones now carry.
+
+**C# component repos.** [`csharp-component-guide.md`](csharp-component-guide.md) §9.4 has the steps.
+
+- **Clean up ordinal outbox `Status` rows before deploying the hosts.** The drainers no longer rewrite `'0'`..`'3'`, so such a row is never sent.
+- **One hand-edited migration for `TenantDataKeys`.** Its string columns get bounds, and SQL Server refuses to narrow `State` unless the migration drops and recreates the filtered index around it.
+- **A rolled-back unit of work no longer publishes its buffered events.**
+
+**TypeScript test support**
+
+- **A parent-scoped list on a fake serves only that parent's rows** when several parents share a store. A test that seeds children straight into the store must also list them on the parent row, or create them through the fake.
+
+### Known issues
+
+- **Chain-owned events carry no tenant header (`clabonte/generator#3295`).** Unchanged from `0.25.0`; see `AsyncAPI_Handbook.md`.
+- **Under `encryption.keyScope: tenant`, a field two or more `belongsTo` hops below the tenant cannot be encrypted (`#3372`).** Declare the tenant as a direct parent, or use `keyScope: global` (`Project_File.md` §15).
+
+### New in the spec
+
+- **A typed C# API client**, `apiClient` with `dto` and `updateDto`, and a test fake, `apiClientFake`, for a service calling another Specfuse service (`Project_File.md` §11.1). Opt-in; nothing changes for a group that does not register them.
+- **Arazzo `x-async` may key on the step's own outputs on every step**, not only the first, as the handbook recommends.
+- **Encryption under `keyScope: tenant`** accepts an entity whose tenant key is a `resolve: remote` `x-references` to the tenant root.
+
+The vendor-extension vocabulary is unchanged.
+
+### Tracked issues
+
+`clabonte/generator#3365` and `#3366` are fixed: `TestSeed.SeedSpareParents` inserts on SQL Server, and generated create tests no longer route tenant-scoped roles to a spare they cannot reach. Drop the workarounds (`csharp-component-guide.md` §4.4). Still open: `#3271`, `#3289` (closed MCP `server` list), `#3295` and `#3372`.
+
+### Kit changes
+
+- `Project_File.md` documents the C# client artifacts, the `pci` floor on `pii` and the `keyScope: tenant` limits, and moves the MCP warning to this pin.
+- `API_Handbook.md`, `Vendor_Extensions.md`, `Arazzo_Handbook.md` and `AsyncAPI_Handbook.md` document the new findings and fixes above.
+- The C# component guide adds §9.4 and retires the `SeedSpareParents` known failures; `component-repos.md` points Dart apps at the migration recipe.
+
 ## 0.25.0
 
 **Status: published.** Pinned by kit `v0.33.0` (released 2026-11-04) (jar sha256 `a8649a70…5df1cc9`; full record in [`compatibility.md`](https://github.com/specfuse/authoring/blob/main/compatibility.md) §61). Generator release date: 2026-11-04.
